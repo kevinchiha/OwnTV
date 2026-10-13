@@ -107,7 +107,7 @@ open class MainActivity : ComponentActivity() {
     private val playbackSession: tv.own.owntv.player.PlaybackSession by inject()
     private val reconciler: tv.own.owntv.kevbox.playlist.PlaylistReconciler by inject()
     private val liveVm: tv.own.owntv.features.live.LiveViewModel by viewModel()
-    private var sourceAtStop: Long? = null
+    private var switchesAtStop: Int? = null
     // Activity-scoped: the same instance Compose retrieves via koinViewModel() inside setContent.
     private val shellViewModel: ShellViewModel by viewModel()
     // The sole locale authority (SharedPreferences-backed; see docs/internationalization.md 0b).
@@ -140,7 +140,8 @@ open class MainActivity : ComponentActivity() {
         if (!isChangingConfigurations) engines.onAppBackgrounded()
         // KevBox: remember the visible line, so onStart can tell whether the stream it would bring back
         // still belongs to it.
-        sourceAtStop = reconciler.visibleSourceId.value
+        // A switch count, not the ID: the ID is unknown until this run's first fetch.
+        switchesAtStop = reconciler.visibleSourceSwitches.value
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -153,7 +154,7 @@ open class MainActivity : ComponentActivity() {
         // is Open, so a remembered stream never plays behind the lock or a status screen.
         // A line switch while backgrounded leaves the old line's stream to bring back: drop it instead.
         kevbox.onForeground()
-        val sameLine = reconciler.visibleSourceId.value == sourceAtStop
+        val sameLine = switchesAtStop.let { it == null || it == reconciler.visibleSourceSwitches.value }
         if (kevbox.gate.value == tv.own.owntv.kevbox.GateState.Open && sameLine) engines.onAppForegrounded()
         // Staleness-based auto refresh on resume (interval modes only — STARTUP is cold-start only). The
         // ViewModel throttles this internally so a quick toggle doesn't re-run the check.

@@ -36,8 +36,8 @@ class KevBoxViewModel(
     /** False until this run's first good playlist fetch (see [KevBoxCoordinator.playlistKnown]). */
     val playlistKnown: StateFlow<Boolean> = coordinator.playlistKnown
 
-    /** The visible line's source ID: when it changes, the gate stops the old line's stream. */
-    val visibleSourceId: StateFlow<Long?> = reconciler.visibleSourceId
+    /** Moves when the visible line switches, the first fetch of a cold start included: the gate stops the old stream. */
+    val visibleSourceSwitches: StateFlow<Int> = reconciler.visibleSourceSwitches
 
     private val _signIn = MutableStateFlow(SignInUiState())
     val signIn: StateFlow<SignInUiState> = _signIn.asStateFlow()

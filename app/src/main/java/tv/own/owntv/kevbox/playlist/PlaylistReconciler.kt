@@ -80,6 +80,16 @@ class PlaylistReconciler(
      */
     val visibleSourceId: StateFlow<Long?> = _visibleSourceId.asStateFlow()
 
+    private val _visibleSourceSwitches = MutableStateFlow(0)
+
+    /**
+     * Goes up by one whenever a reconcile moves off a visible source (switch, hide) to another or to
+     * none. "Before" is read from the store, not from [visibleSourceId], so the first fetch of a cold
+     * start counts too: the stored pick may be playing, and if the admin moved this TV to another line
+     * while it was off, that stream must stop (AC-30). An admin edit keeps the ID and never counts.
+     */
+    val visibleSourceSwitches: StateFlow<Int> = _visibleSourceSwitches.asStateFlow()
+
     /** Only ever called with a successful fetch. */
     suspend fun apply(rows: List<PlaylistRow>) = mutex.withLock {
         if (closed) return@withLock
@@ -293,6 +303,7 @@ class PlaylistReconciler(
         val visibleAfter = after.visibleId()
         // The ID first: a reader of the counter compares it with the ID to tell a switch from an edit.
         _visibleSourceId.value = visibleAfter
+        if (visibleBefore != null && visibleAfter != visibleBefore) _visibleSourceSwitches.value += 1
         if (visibleChanged || visibleAfter != visibleBefore) _visibleSourceChanges.value += 1
         _screen.value = plan.screen
         _currentClientNumber.value = plan.pick

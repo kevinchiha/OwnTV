@@ -28,8 +28,8 @@ import tv.own.owntv.ui.theme.stageAccent
  * first, then the lock, then the playlist screens (AC-10). [content] is composed only while the
  * gate is Open, with the expiry popup over it.
  *
- * [onStopPlayback] runs whenever the gate leaves Open and whenever the visible source ID changes
- * while it stays Open: a hidden line may belong to another TV now, so nothing keeps streaming it
+ * [onStopPlayback] runs whenever the gate leaves Open and whenever the visible source switches
+ * while it stays Open, the first fetch after a cold start included: a hidden line may belong to another TV now, so nothing keeps streaming it
  * (AC-30). An admin edit of the line keeps its ID and keeps playing (AC-19, AC-36). [onExit] is Back on the first-run playlist choice, which leaves without a pick (AC-16).
  */
 @Composable
@@ -37,7 +37,7 @@ fun KevBoxGate(onExit: () -> Unit, onStopPlayback: () -> Unit, content: @Composa
     val vm: KevBoxViewModel = koinViewModel()
     val gate by vm.gate.collectAsStateWithLifecycle()
     val playlistKnown by vm.playlistKnown.collectAsStateWithLifecycle()
-    val sourceId by vm.visibleSourceId.collectAsStateWithLifecycle()
+    val switches by vm.visibleSourceSwitches.collectAsStateWithLifecycle()
     val stop by rememberUpdatedState(onStopPlayback)
 
     val open = gate == GateState.Open
@@ -47,13 +47,12 @@ fun KevBoxGate(onExit: () -> Unit, onStopPlayback: () -> Unit, content: @Composa
         if (lastOpen[0] && !open) stop()
         lastOpen[0] = open
     }
-    // Null means "not known yet this run" (before the first fetch, the stored pick plays under no
-    // ID), so only a move from one known source to another is a switch.
-    val lastSource = remember { arrayOf(sourceId) }
-    LaunchedEffect(sourceId) {
-        val before = lastSource[0]
-        if (open && before != null && sourceId != null && sourceId != before) stop()
-        if (sourceId != null) lastSource[0] = sourceId
+    // The reconciler counts switches from the stored pick, so the first fetch of a cold start that
+    // moves this TV off the line it was playing stops that stream too.
+    val lastSwitches = remember { intArrayOf(switches) }
+    LaunchedEffect(switches) {
+        if (open && switches != lastSwitches[0]) stop()
+        lastSwitches[0] = switches
     }
 
     when (val state = gate) {

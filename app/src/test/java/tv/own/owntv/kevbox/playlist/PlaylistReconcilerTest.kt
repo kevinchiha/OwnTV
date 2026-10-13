@@ -416,13 +416,42 @@ class PlaylistReconcilerTest {
         reconciler.apply(listOf(row("1"), row("2")))
         reconciler.choose("1")
         val first = reconciler.visibleSourceId.value!!
+        val switches = reconciler.visibleSourceSwitches.value
 
         reconciler.apply(listOf(row("1").copy(password = "new"), row("2")))
         assertEquals(first, reconciler.visibleSourceId.value)
+        assertEquals(switches, reconciler.visibleSourceSwitches.value)
 
         reconciler.choose("2")
         assertEquals(mapped("2")!!.sourceId, reconciler.visibleSourceId.value)
         assertTrue(reconciler.visibleSourceId.value != first)
+        assertEquals(switches + 1, reconciler.visibleSourceSwitches.value)
+    }
+
+    @Test
+    fun `on a cold start, a first fetch that moves off the stored pick counts as a switch`() = runBlocking {
+        // The stored pick plays before this run's first fetch; the admin moved the TV to row 2 while it was off.
+        core.nextId = 6
+        core.sources[5] = FakeSource(row("1").toFields(), mutableSetOf(10, 11))
+        store.state = ManagedState(pick = "1", sources = mapOf("1" to ManagedSource(5, hidden = false)))
+        assertNull(reconciler.visibleSourceId.value)
+
+        reconciler.apply(listOf(row("2")))
+
+        assertTrue(mapped("1")!!.hidden)
+        assertEquals(mapped("2")!!.sourceId, reconciler.visibleSourceId.value)
+        assertEquals(1, reconciler.visibleSourceSwitches.value)
+    }
+
+    @Test
+    fun `on a cold start, a first fetch that keeps the stored pick, even edited, is no switch`() = runBlocking {
+        core.sources[5] = FakeSource(row("1").toFields(), mutableSetOf(10, 11))
+        store.state = ManagedState(pick = "1", sources = mapOf("1" to ManagedSource(5, hidden = false)))
+
+        reconciler.apply(listOf(row("1").copy(password = "new")))
+
+        assertEquals(5L, reconciler.visibleSourceId.value)
+        assertEquals(0, reconciler.visibleSourceSwitches.value)
     }
 
     @Test
