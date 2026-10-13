@@ -332,11 +332,13 @@ internal fun EpgSourceForm(
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     // KevBox: a guide URL that carries credentials (filled from a playlist, or saved that way) lives in
-    // filledUrl and is saved as is; the field shows only its masked form. Typing in the field replaces
-    // it with what was typed. A member never sees or copies the line's username and password (AC-34).
+    // filledUrl and is saved as is. The text field stays empty and shows the masked form as its
+    // placeholder, so editing starts from a blank field: an address the member types replaces the
+    // filled one, and an edit left empty keeps it. The masked text never becomes part of the saved URL,
+    // and a member never sees or copies the line's username and password (AC-34).
     var filledUrl by remember { mutableStateOf(initial?.url?.takeIf { HttpClient.redactUrl(it) != it }) }
     var url by remember { mutableStateOf(if (filledUrl != null) "" else initial?.url ?: "") }
-    val savedUrl = filledUrl ?: url
+    val savedUrl = url.ifBlank { filledUrl ?: url }
     var ua by remember { mutableStateOf(initial?.userAgent ?: "") }
     var autoRefresh by remember { mutableStateOf(initialAutoRefresh) }
     var useLogos by remember { mutableStateOf(initialUseLogos) }
@@ -386,10 +388,11 @@ internal fun EpgSourceForm(
         )
         val urlLabel = stringResource(R.string.settings_epg_sources_url)
         StageFieldRow(
-            // KevBox: a filled URL shows masked; typing replaces it with the typed address.
-            OwnTVIcon.PENCIL, urlLabel, filledUrl?.let { HttpClient.redactUrl(it) } ?: url, { filledUrl = null; url = it },
+            // KevBox: the field holds only what the member types; a filled URL shows masked as the
+            // placeholder, never as editable text (editing it in place used to save "***" into the URL).
+            OwnTVIcon.PENCIL, urlLabel, url, { url = it },
             SettingHelp(urlLabel, fieldHelp, extra = submitButton),
-            placeholder = stringResource(R.string.settings_epg_sources_url_hint), keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+            placeholder = filledUrl?.let { HttpClient.redactUrl(it) } ?: stringResource(R.string.settings_epg_sources_url_hint), keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
             backLabel = parent, submitHint = submitHint, modifier = toSubmit,
         )
         val fillTitle = stringResource(R.string.settings_epg_sources_fill_playlist)
