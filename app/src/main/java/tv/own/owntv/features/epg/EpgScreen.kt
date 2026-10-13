@@ -921,6 +921,7 @@ private fun GuideEmpty(title: String, body: String? = null, action: String? = nu
  * OK Browse · ▲▼ Channels · ◀ Menu · Hold OK Options; inside a row: OK Watch · ◀ ▶ Programs · Back Channels.
  */
 @Composable
+// KevBox: liveMode added (Live TV's ◀ opens the category sidebar).
 private fun GuideKeyHints(cellMode: Boolean, liveMode: Boolean = false) {
     val hints = if (cellMode) {
         listOf(
