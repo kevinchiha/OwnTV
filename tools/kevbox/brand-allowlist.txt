@@ -1,0 +1,4 @@
+# KevBox: resource names whose "OwnTV" text may ship in the KevBox Live APK.
+# One name per line, with a # reason. Only licence or attribution text that credits the upstream
+# project belongs here. rebrand-strings.py leaves these names alone and check-brand.sh ignores them.
+settings_about_license  # licence line "© 2026 OwnTV · GPLv3 License" credits the upstream GPLv3 project
