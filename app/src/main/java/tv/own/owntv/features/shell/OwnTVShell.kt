@@ -558,12 +558,15 @@ fun OwnTVShell(
     // Its moves take 320 ms, or none with Animations Off. Made here, above exitPlayer, which uses it.
     val liveVideoStage = remember { tv.own.owntv.kevbox.live.LiveVideoStage() }
     androidx.compose.runtime.SideEffect { liveVideoStage.durationMs = shellAnimationLevel.scale(320) }
-    val exitPlayer = {
+    // KevBox: keepForGrid is false for exits that are not the user leaving full screen (Multiview's
+    // exit, the sleep timer); those always stop the stream. exitPlayer below is the user's exit.
+    val exitPlayerWith = { keepForGrid: Boolean ->
         // KevBox: read before anything below changes it. Back from a Live TV channel opened in the grid
         // keeps the stream and shrinks the video into the grid's box; the bridge carries the picture
         // until the box reports, so it is armed before the player box goes.
-        val backToGrid = tv.own.owntv.kevbox.live.isBackToGrid(
+        val backToGrid = keepForGrid && tv.own.owntv.kevbox.live.isBackToGrid(
             playerMode, selectedSection, zapSource, liveVm.liveOnExo.value, liveVm.catchupActive.value,
+            rewound = liveVm.timeshiftOffsetSec.value != null,
         )
         val openedChannel = liveVideoStage.boxChannel
         val playingChannel = liveVm.previewChannel.value
@@ -583,6 +586,8 @@ fun OwnTVShell(
             // moves to its row.
             liveVideoStage.boxChannel = playingChannel
             liveVm.onFullscreenExited(keepStream = true)
+            // KevBox: the box channel becomes core's previewed one, so OK on it opens full screen at once.
+            if (playingChannel != null) liveVm.keepInBox(playingChannel)
             if (playingChannel != null && playingChannel.id != openedChannel?.id) liveVm.revealChannel(playingChannel)
         } else {
             liveVideoStage.boxChannel = null // KevBox: any other exit empties the grid's box, as before
@@ -595,6 +600,7 @@ fun OwnTVShell(
         focusRail()
         Unit
     }
+    val exitPlayer = { exitPlayerWith(true) } // KevBox: the user's own exit, see exitPlayerWith.
     /**
      * Turn the channel on screen into tile 1 of the grid, with [extra] filling the tiles after it.
      *
@@ -632,7 +638,7 @@ fun OwnTVShell(
             multiview = null
             multiviewPickFor = null
         }
-        if (playerMode != PlayerMode.NONE) exitPlayer()
+        if (playerMode != PlayerMode.NONE) exitPlayerWith(false) // KevBox: a stop, never Back to the grid.
         liveVm.stopPreview()
         liveVideoStage.boxChannel = null // KevBox: the stream Back kept for the grid's box stops too
     }
@@ -946,10 +952,12 @@ fun OwnTVShell(
         else -> null
     }
 
-    // KevBox: the window has reached the player's rectangle. Derived, so the shell recomposes when this
-    // flips, not on every frame of a move. Live on mpv never reports, so it only counts with liveOnExo.
+    // KevBox: false only while the window moves to the player, or is about to (it sits elsewhere and the
+    // player has not reported yet). With no window, the player appears in place, so an engine flip in full
+    // screen keeps the HUD. Derived, so the shell recomposes when this flips, not on every frame of a
+    // move. Live on mpv never reports, so it only counts with liveOnExo.
     val livePlayerSettled by remember(liveVideoStage) {
-        androidx.compose.runtime.derivedStateOf { liveVideoStage.settledOn(tv.own.owntv.kevbox.live.VideoSite.PLAYER) }
+        androidx.compose.runtime.derivedStateOf { !liveVideoStage.arrivingAt(tv.own.owntv.kevbox.live.VideoSite.PLAYER) }
     }
 
     CompositionLocalProvider(
@@ -1558,7 +1566,7 @@ fun OwnTVShell(
                   grid.releaseAll()
                   multiview = null
                   multiviewPickFor = null
-                  exitPlayer()
+                  exitPlayerWith(false) // KevBox: leaving Multiview stops playback, never Back to the grid.
               },
               modifier = Modifier.fillMaxSize(),
           )

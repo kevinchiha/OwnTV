@@ -1201,6 +1201,18 @@ class LiveViewModel(
         if (!keepStream && !livePreviewEnabled.value) live.stopExo() // KevBox: `!keepStream &&`
     }
 
+    /**
+     * KevBox: Back to the Live TV grid hands [channel] to the top box (kevbox/live/LiveVideoStage.kt).
+     * Recording it as core's previewed channel lets OK on it open full screen at once (expectPromotion).
+     * Same URL, so core only sets the mute; sound stays on. A CH+/- tune still waiting is dropped, and
+     * the box tunes the channel on screen instead.
+     */
+    fun keepInBox(channel: ChannelEntity) {
+        pendingZapTuneJob?.cancel()
+        pendingZapTuneJob = null
+        live.preview(channel, muted = false)
+    }
+
     fun clearLiveOnExo() {
         // A live tune still in flight would otherwise start over whatever takes mpv now.
         live.cancelTune()

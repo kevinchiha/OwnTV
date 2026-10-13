@@ -24,10 +24,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.node.DrawModifierNode
@@ -36,7 +36,6 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.requireDensity
 import androidx.compose.ui.node.requireLayoutCoordinates
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.flow.collectLatest
 import tv.own.owntv.core.database.entity.ChannelEntity
@@ -44,7 +43,6 @@ import tv.own.owntv.core.nav.MainSection
 import tv.own.owntv.features.shell.PlayerMode
 import tv.own.owntv.player.ExoPreviewSurface
 import tv.own.owntv.player.LivePreviewEngine
-import kotlin.math.roundToInt
 
 /*
  * Live TV's one video window.
@@ -57,14 +55,14 @@ import kotlin.math.roundToInt
  * Who cuts the patch: a site the window has settled on cuts its own, so its overlays draw above the
  * video and anything composed later (the categories sidebar) covers it. While the window moves,
  * LiveVideoPatch cuts it at the window's current rectangle instead. Once the last site leaves, the
- * window waits out the grace period hidden, unless the bridge was armed and the player left (see
- * patchShows).
+ * window goes at once, unless the bridge was armed and the player left: then it waits up to the grace
+ * period for the box (see patchShows).
  */
 
 /** Where the video window can sit. */
 enum class VideoSite { BOX, PLAYER }
 
-/** How long the window stays after its last site leaves, so a site handing over to the next keeps the surface. */
+/** How long an armed bridge keeps the window after the player leaves, waiting for the box to report. */
 internal const val GRACE_MS = 600L
 
 /** The player beats the box; neither means no target. */
@@ -97,8 +95,9 @@ internal fun lerpRect(from: Rect, to: Rect, t: Float): Rect = Rect(
 
 /**
  * True when leaving the player hands the stream back to the Live TV grid's box: full screen, opened
- * from Live TV with Live TV on screen, the live channel on ExoPlayer, and no catch-up archive. Only
- * then does Back keep the stream and shrink the video into the box; every other exit stops it.
+ * from Live TV with Live TV on screen, the live channel on ExoPlayer at the live edge (no catch-up
+ * archive, no rewind). Only then does Back keep the stream and shrink the video into the box; every
+ * other exit stops it.
  */
 internal fun isBackToGrid(
     playerMode: PlayerMode,
@@ -106,9 +105,10 @@ internal fun isBackToGrid(
     zapSource: MainSection?,
     liveOnExo: Boolean,
     catchupActive: Boolean,
+    rewound: Boolean,
 ): Boolean = playerMode == PlayerMode.FULLSCREEN &&
     section == MainSection.LIVE_TV && zapSource == MainSection.LIVE_TV &&
-    liveOnExo && !catchupActive
+    liveOnExo && !catchupActive && !rewound
 
 /** The clock reports and frames share: Choreographer frame times are on the System.nanoTime base. */
 internal fun stageNowMs(): Long = System.nanoTime() / 1_000_000L
@@ -153,8 +153,14 @@ class LiveVideoStage(durationMs: Int = 320) {
 
     val target: VideoSite? get() = pickTarget(box != null, player != null)
 
-    /** True while a site wants the video, or within [GRACE_MS] of the last one leaving. */
-    val visible: Boolean get() = target != null || current != null
+    /** The armed player left and no target has appeared yet: the window waits for the box. */
+    private val bridging: Boolean get() = bridgeArmed && lastCleared == VideoSite.PLAYER
+
+    /**
+     * True while a site wants the video, or while an armed bridge waits (up to [GRACE_MS]) for the box.
+     * Any other leave hides the window at once, so nothing shows through a see-through background.
+     */
+    val visible: Boolean get() = target != null || (current != null && bridging)
 
     /** True while [LiveVideoPatch] should cut the patch at [current]: see [patchShows]. */
     val patchVisible: Boolean
@@ -162,13 +168,21 @@ class LiveVideoStage(durationMs: Int = 320) {
 
     /**
      * Keep showing the video at the player's rectangle once the player leaves, until the box reports.
-     * Call it on an exit that hands the stream back to the grid's box, before the player goes.
+     * Call it on an exit that hands the stream back to the grid's box, before the player goes. Does
+     * nothing while the player is not on screen, so a stale arm cannot outlive it.
      */
     fun armBridge() {
-        bridgeArmed = true
+        if (player != null) bridgeArmed = true
     }
 
-    /** True while [frame] has work to do: a move, or a grace period to time out. */
+    /**
+     * True while the window is moving to [site], or about to: [site] has not reported yet and the window
+     * sits somewhere else. With no window at all, [site] appears in place, so it does not count.
+     */
+    fun arrivingAt(site: VideoSite): Boolean =
+        if (siteOf(site) == null) current != null else target == site && !settledOn(site)
+
+    /** True while [frame] has work to do: a move, a hidden window to drop, or a bridge to time out. */
     internal val needsFrames: Boolean get() = move != null || (target == null && lastClearMs != null)
 
     private fun siteOf(site: VideoSite): Site? = when (site) {
@@ -206,12 +220,16 @@ class LiveVideoStage(durationMs: Int = 320) {
         if (target == null && before != null) lastCleared = site
     }
 
-    /** Advance the move and the grace period to [nowMs]. */
+    /**
+     * Advance the move and the bridge to [nowMs]. A window hidden by an unarmed leave keeps its
+     * rectangle until this next frame, so a site whose node is swapped within one frame (a dock)
+     * reports again and the window moves on from where it was instead of jumping.
+     */
     fun frame(nowMs: Long) {
         val to = targetSite()
         if (to == null) {
             val cleared = lastClearMs
-            if (cleared != null && graceOver(cleared, nowMs)) {
+            if (cleared != null && (!bridging || graceOver(cleared, nowMs))) {
                 current = null
                 lastClearMs = null
                 lastCleared = null
@@ -251,7 +269,7 @@ class LiveVideoStage(durationMs: Int = 320) {
         if (to === before) return
         val from = current
         if (from == null) {
-            // No window yet (the first site, or one after the grace period ran out): appear in place.
+            // No window yet (the first site, or one after the last window went): appear in place.
             current = to.bounds
             currentCornerPx = to.cornerPx
             move = null
@@ -268,6 +286,12 @@ val LocalLiveVideoStage = staticCompositionLocalOf<LiveVideoStage?> { null }
 /**
  * The bottom window: one [ExoPreviewSurface] at the stage's current rectangle, composed while the
  * stage is visible. Subtitles are left to the site above it, which knows whether it wants them.
+ *
+ * The window is laid out once, at the full size of this layer, and placed by its graphics layer:
+ * moved and scaled down to [LiveVideoStage.current]. A SurfaceView applies a layout resize off the
+ * frame, so resizing it each frame left the video lagging its see-through patch (a black strip along
+ * the trailing edges). A layer transform reaches the surface in step with the frame. All stage reads
+ * happen in the layer block, so a move neither recomposes nor re-lays out the window.
  */
 @Composable
 fun LiveVideoLayer(stage: LiveVideoStage, engine: LivePreviewEngine, keepAwake: Boolean, autoFrameRate: Boolean) {
@@ -281,21 +305,23 @@ fun LiveVideoLayer(stage: LiveVideoStage, engine: LivePreviewEngine, keepAwake: 
     Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
         ExoPreviewSurface(
             engine = engine,
-            modifier = Modifier.layout { measurable, constraints ->
-                // Read here, not in composition, so a move re-lays out the window without recomposing it.
+            modifier = Modifier.fillMaxSize().graphicsLayer {
                 val r = stage.current ?: Rect.Zero
-                val w = r.width.roundToInt().coerceAtLeast(0)
-                val h = r.height.roundToInt().coerceAtLeast(0)
-                val placeable = measurable.measure(Constraints.fixed(w, h))
-                layout(constraints.maxWidth, constraints.maxHeight) {
-                    placeable.place((r.left - origin.x).roundToInt(), (r.top - origin.y).roundToInt())
-                }
-            }.graphicsLayer {
+                if (size.width <= 0f || size.height <= 0f) return@graphicsLayer
+                // The float rectangle, unrounded, so the window lines up with the patch exactly.
+                val sx = r.width / size.width
+                val sy = r.height / size.height
+                transformOrigin = TransformOrigin(0f, 0f)
+                translationX = r.left - origin.x
+                translationY = r.top - origin.y
+                scaleX = sx
+                scaleY = sy
                 // Round the surface's hole like the site's corners: with Glass on, nothing opaque covers
-                // the corner slivers above, so an unclipped surface shows square corners. Read in the
-                // layer phase, so a move still recomposes nothing. No alpha and no offscreen
-                // compositing, so the hole still reaches the window.
-                shape = RoundedCornerShape(stage.currentCornerPx)
+                // the corner slivers above, so an unclipped surface shows square corners. The shape is
+                // in unscaled pixels, so divide by the scale (near uniform: every site is 16:9). No
+                // alpha, no offscreen compositing, no render effect, so the hole still reaches the window.
+                val scale = (sx + sy) / 2f
+                shape = RoundedCornerShape(if (scale > 0f) stage.currentCornerPx / scale else 0f)
                 clip = true
             },
             keepAwake = keepAwake,

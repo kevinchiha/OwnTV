@@ -39,28 +39,69 @@ class LiveVideoStageTest {
     }
 
     @Test
-    fun theWindowHoldsFor599msAfterTheLastClearAndGoesAt600() {
+    fun anArmedBridgeHoldsTheWindowFor599msAndDropsItAt600() {
         val stage = LiveVideoStage()
-        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
-        stage.clear(VideoSite.BOX, nowMs = 1_000)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.armBridge()
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
         assertNull(stage.target)
         stage.frame(1_599)
         assertTrue(stage.visible)
-        assertEquals(box, stage.current)
+        assertEquals(full, stage.current)
         stage.frame(1_600)
         assertFalse(stage.visible)
         assertNull(stage.current)
     }
 
     @Test
-    fun aSiteReturningInsideTheGracePeriodKeepsTheWindow() {
+    fun theBoxReportingInsideTheBridgeKeepsTheWindowAndMovesIt() {
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.armBridge()
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 1_300)
+        assertTrue(stage.visible)
+        assertTrue(stage.arrivingAt(VideoSite.BOX))
+        stage.frame(1_620)
+        assertTrue(stage.settledOn(VideoSite.BOX))
+        stage.frame(5_000)
+        assertTrue(stage.visible)
+    }
+
+    @Test
+    fun anUnarmedLeaveHidesTheWindowAtOnce() {
         val stage = LiveVideoStage()
         stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
         stage.clear(VideoSite.BOX, nowMs = 1_000)
-        stage.report(VideoSite.BOX, box, 28f, nowMs = 1_300)
-        stage.frame(5_000)
+        assertFalse(stage.visible)
+        stage.frame(1_016)
+        assertFalse(stage.visible)
+        assertNull(stage.current)
+    }
+
+    @Test
+    fun aSiteReportingAgainBeforeTheNextFrameMovesOnFromWhereItWas() {
+        // A dock can swap the player's node: it clears and reports again within one frame.
+        val mini = Rect(1300f, 760f, 1880f, 1086f)
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
+        stage.report(VideoSite.PLAYER, mini, 21f, nowMs = 1_000)
         assertTrue(stage.visible)
-        assertTrue(stage.settledOn(VideoSite.BOX))
+        assertEquals(full, stage.current)
+        assertFalse(stage.settledOn(VideoSite.PLAYER))
+        stage.frame(1_320)
+        assertTrue(stage.settledOn(VideoSite.PLAYER))
+    }
+
+    @Test
+    fun aSiteAfterTheWindowWentAppearsInPlace() {
+        val stage = LiveVideoStage()
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        stage.clear(VideoSite.BOX, nowMs = 1_000)
+        stage.frame(1_016)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 1_100)
+        assertTrue(stage.settledOn(VideoSite.PLAYER))
     }
 
     @Test
@@ -154,7 +195,7 @@ class LiveVideoStageTest {
         val stage = LiveVideoStage()
         stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
         stage.clear(VideoSite.PLAYER, nowMs = 1_000)
-        assertTrue(stage.visible)
+        assertFalse(stage.visible)
         assertFalse(stage.patchVisible)
     }
 
@@ -164,8 +205,44 @@ class LiveVideoStageTest {
         stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
         stage.armBridge()
         stage.clear(VideoSite.BOX, nowMs = 1_000)
-        assertTrue(stage.visible)
+        assertFalse(stage.visible)
         assertFalse(stage.patchVisible)
+    }
+
+    @Test
+    fun armingWithNoPlayerDoesNothing() {
+        val stage = LiveVideoStage()
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        stage.armBridge() // stale: the player is not on screen
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 500)
+        stage.frame(820)
+        stage.clear(VideoSite.BOX, nowMs = 1_000)
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
+        assertFalse(stage.visible)
+        assertFalse(stage.patchVisible)
+    }
+
+    @Test
+    fun aMoveToThePlayerCountsAsArrivingUntilItSettles() {
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        // Full screen is up but the player has not reported yet: the window sits in the box.
+        assertTrue(stage.arrivingAt(VideoSite.PLAYER))
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 1_000)
+        stage.frame(1_319)
+        assertTrue(stage.arrivingAt(VideoSite.PLAYER))
+        stage.frame(1_320)
+        assertFalse(stage.arrivingAt(VideoSite.PLAYER))
+    }
+
+    @Test
+    fun withNoWindowThePlayerIsNeverArriving() {
+        // An engine flip to ExoPlayer in full screen: no window yet, so the player appears in place.
+        val stage = LiveVideoStage(durationMs = 320)
+        assertFalse(stage.arrivingAt(VideoSite.PLAYER))
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 1_000)
+        assertFalse(stage.arrivingAt(VideoSite.PLAYER))
+        assertTrue(stage.settledOn(VideoSite.PLAYER))
     }
 
     @Test
@@ -184,31 +261,35 @@ class LiveVideoStageTest {
     }
 
     @Test
-    fun backToGridWhenAllFourHold() = assertTrue(
-        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false),
+    fun backToGridWhenAllHold() = assertTrue(
+        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false),
     )
 
     @Test
     fun notBackToGridFromTheMiniPlayerOrAudioMode() {
         for (mode in listOf(PlayerMode.NONE, PlayerMode.MINI, PlayerMode.AUDIO)) {
-            assertFalse(isBackToGrid(mode, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false))
+            assertFalse(isBackToGrid(mode, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false))
         }
     }
 
     @Test
     fun notBackToGridOutsideLiveTv() {
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SEARCH, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false))
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.MOVIES, liveOnExo = true, catchupActive = false))
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, null, liveOnExo = true, catchupActive = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SEARCH, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.MOVIES, liveOnExo = true, catchupActive = false, rewound = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, null, liveOnExo = true, catchupActive = false, rewound = false))
     }
 
     @Test
     fun notBackToGridOnMpv() =
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = false, catchupActive = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = false, catchupActive = false, rewound = false))
 
     @Test
     fun notBackToGridDuringCatchup() =
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = true))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = true, rewound = false))
+
+    @Test
+    fun notBackToGridWhenRewound() =
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = true))
 
     @Test
     fun lerpRectEndsAndMiddle() {

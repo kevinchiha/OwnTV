@@ -106,11 +106,11 @@ keep one file per row, with its full path.
 | `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -c 'KevBoxAutoSetup(' app/src/main/java/tv/own/owntv/MainActivity.kt` (the count must be 2) |
 | `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` |
 | `app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` | `grep -n 'LiveOnly.browseSections' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` |
-| `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.LiveVideoLayer(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVideoSite(liveVideoStage' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerChromeReady) PlayerHud(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.isBackToGrid(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` |
+| `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.LiveVideoLayer(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVideoSite(liveVideoStage' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerChromeReady) PlayerHud(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.isBackToGrid(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'exitPlayerWith(false)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVm.keepInBox(playingChannel)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt` | `grep -n 'liveVideoSite(videoStage' app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt` |
 | `app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt` | `grep -n 'if (subOn && subtitles)' app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt && grep -n 'fun ExoSubtitleLayer' app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'class SidebarExit' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'okOnRow = liveMode' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'LocalLiveVideoStage.current' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
-| `app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` | `grep -n 'fun onFullscreenExited(keepStream: Boolean' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` |
+| `app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` | `grep -n 'fun onFullscreenExited(keepStream: Boolean' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt && grep -n 'fun keepInBox(channel: ChannelEntity)' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` | `grep -n 'KevBox: every channel shows' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt && grep -n 'KevBox: reload when a playlist finishes a sync' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` |
 | `app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` |
@@ -230,18 +230,25 @@ Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
   window, a single `ExoPreviewSurface` in `LiveVideoLayer`, composed first in the shell's root
   `Box` so the whole UI draws above it. It moves, without being handed to a new surface, between the
   grid's top box (`GuideVideo`), full screen and the mini-player (the shell's player box), over
-  320 ms or at once with Animations Off. The UI shows the video through a see-through patch (a
-  `BlendMode.Clear` draw): a site the window has settled on cuts its own, so its overlays draw on
-  top and the category sidebar covers it; while the window moves, `LiveVideoPatch` cuts one at the
-  window's current rectangle. When the last site leaves, the window waits 600 ms (`GRACE_MS`) so
-  the next site keeps the surface, hidden unless the shell armed the bridge (`armBridge`) on a
-  player exit: that carries the picture from full screen until the box reports. Back from a
-  channel opened in the grid (`isBackToGrid`) keeps the stream, sound on
-  (`onFullscreenExited(keepStream = true)`), puts the playing channel in the box, and after
-  CH+/CH− moves the grid's cursor to it (`revealChannel`). Every other exit (catch-up, mpv, Audio
-  Mode, the mini-player's Close) empties the box and stops the stream as before. If upstream changes
-  `ExoPreviewSurface`, the shell's player box, `GuideVideo` or `exitPlayer`, check the grow and the
-  shrink on a TV.
+  320 ms or at once with Animations Off. The window is laid out once at the root box's full size and
+  placed by a graphics layer (translation and scale from the top-left corner, corner clip divided by
+  the scale): a SurfaceView resized by layout lags the frame and trailed a black strip. The UI shows
+  the video through a see-through patch (a `BlendMode.Clear` draw): a site the window has settled on
+  cuts its own, so its overlays draw on top and the category sidebar covers it; while the window
+  moves, `LiveVideoPatch` cuts one at the window's current rectangle. When the last site leaves, the
+  window goes at once, so nothing shows through a see-through background. The one exception is an
+  armed bridge (`armBridge`, which only takes while the player is on screen): after Back to the
+  grid the window stays at the player's rectangle for up to 600 ms (`GRACE_MS`) until the box
+  reports. Back to the grid (`isBackToGrid`) is only the user's own exit from full screen (Back,
+  the HUD's back) on a Live TV channel opened in the grid, live on ExoPlayer at the live edge. It
+  keeps the stream, sound on (`onFullscreenExited(keepStream = true)`), puts the playing channel in
+  the box, records it as core's previewed channel (`keepInBox`, which also drops a CH+/CH− tune
+  still waiting) so the next OK opens full screen at once, and after CH+/CH− moves the grid's
+  cursor to it (`revealChannel`). Every other exit stops the stream and empties the box as before:
+  catch-up, a rewind (archive or saved copy), mpv, Audio Mode, the mini-player's Close, Multiview's
+  exit and the sleep timer (`exitPlayerWith(false)`). The TV Guide section's `GuideVideo` also uses
+  the stage; KevBox hides that section. If upstream changes `ExoPreviewSurface`, the shell's player
+  box, `GuideVideo` or `exitPlayer`, check the grow and the shrink on a TV.
 
 ## Regenerating the rebrand
 
