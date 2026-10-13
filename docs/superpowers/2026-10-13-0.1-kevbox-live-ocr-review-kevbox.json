@@ -1,0 +1,363 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 19 finding(s) across 9 selected item(s).",
+  "summary": {
+    "files_reviewed": 9,
+    "comments": 19,
+    "total_tokens": 865847,
+    "input_tokens": 841819,
+    "output_tokens": 24028,
+    "cache_read_tokens": 626218,
+    "cache_write_tokens": 215517,
+    "elapsed": "2m5s"
+  },
+  "tool_calls": {
+    "total": 32,
+    "by_tool": {
+      "code_comment": 6,
+      "code_search": 11,
+      "file_read": 12,
+      "file_read_diff": 3
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "src/components/trex-server-card.tsx",
+      "content": "`saveTrexServerAddress` returns a result object for server-side errors, but the server action call can still throw on the client: a network failure, a deployment mismatch (\"Failed to find Server Action\"), or a redirect. That rejection goes unhandled inside the transition, so the admin gets no toast and may think the save worked. Wrap the call in try/catch and show `toast.error`, the same way the load path handles `.catch`.",
+      "suggestion_code": "    startSave(async () =\u003e {\n      try {\n        const res = await saveTrexServerAddress(value);\n        if (res.success) {\n          setLoadError(null);\n          toast.success(savedText(res.rowsChanged));\n        } else {\n          toast.error(res.error);\n        }\n      } catch (err: unknown) {\n        toast.error(`KevBox Live is unavailable: ${err instanceof Error ? err.message : String(err)}`);\n      }\n    });",
+      "existing_code": "    startSave(async () =\u003e {\n      const res = await saveTrexServerAddress(value);",
+      "start_line": 39,
+      "end_line": 40,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/trex-server-card.tsx",
+      "content": "There is no loading state. Until `getTrexServerAddress` resolves, the input shows `\"\"` and Save is enabled. If the admin types before the load finishes, `setValue(res.serverUrl)` silently replaces what they typed. If the load failed, they can save without ever seeing the current address, and that save rewrites the server URL on every member playlist. Add a `loading` flag that disables the input and Save until the load settles, and consider keeping Save disabled when `loadError` is set (or adding a retry).",
+      "existing_code": "          \u003cButton type=\"submit\" disabled={isPending}\u003e",
+      "start_line": 71,
+      "end_line": 71,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/trex-server-card.tsx",
+      "content": "One Save rewrites the server URL on every matching KevBox Live playlist, and each member's TV picks up the change within 15 minutes. A typo, or an accidental Enter in the field, therefore breaks every member's playback at once, and there is no confirmation or undo. Ask for confirmation before calling the action. Show the old and new address, and ideally how many playlists will change. Do this only when the value differs from the loaded address.",
+      "existing_code": "      const res = await saveTrexServerAddress(value);",
+      "start_line": 40,
+      "end_line": 40,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/trex-server-card.tsx",
+      "content": "This copies the message format from `unavailable()` in `live-actions.ts`, so the two can drift apart. Move the formatter into a shared module, for example `@/lib/kevbox-live`, and use it in both places. It can't simply be exported from a `\"use server\"` file, because every export there must be an async server action.",
+      "existing_code": "        if (!cancelled) setLoadError(`KevBox Live is unavailable: ${e instanceof Error ? e.message : String(e)}`);",
+      "start_line": 30,
+      "end_line": 30,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/trex-server-card.tsx",
+      "content": "The server trims the address before saving, but the input keeps the untrimmed text after a successful save, so the form and the stored value don't match. Call `setValue(value.trim())` on success, or have the action return the saved URL and set that.",
+      "suggestion_code": "        setValue(value.trim());\n        toast.success(savedText(res.rowsChanged));",
+      "existing_code": "        toast.success(savedText(res.rowsChanged));",
+      "start_line": 43,
+      "end_line": 43,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "supabase/migrations/0013_member_playlist.sql",
+      "content": "The lock-out only runs on the TV. This policy returns `server_url`/`username`/`password` to any signed-in owner, including members whose `member_access.active = false` (see 0002). A locked member can call `/rest/v1/member_playlist` with their JWT, take the Xtream credentials and play them in any other player, which defeats `get_access_verdict()`. Add the lock-out to the policy. That also uses the `(select auth.uid())` initPlan form, which runs `auth.uid()` once per query instead of once per row.",
+      "suggestion_code": "create policy \"read own playlists\" on public.member_playlist\n  for select to authenticated using (\n    (select auth.uid()) = user_id\n    and not exists (\n      select 1 from public.member_access a\n       where a.user_id = (select auth.uid()) and a.active = false\n    )\n  );",
+      "existing_code": "create policy \"read own playlists\" on public.member_playlist\n  for select to authenticated using (auth.uid() = user_id);",
+      "start_line": 28,
+      "end_line": 29,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "supabase/migrations/0013_member_playlist.sql",
+      "content": "The spec says \"one row per subscription, keyed by client number\", but the unique key is `(user_id, client_number)`. `upsertLiveRow` uses `on conflict (user_id, client_number)`. If a sheet row's login email changes and Kevin sends again, a second row with the same client number is created for the new user. The old login keeps that line's credentials, so two accounts share one Trex line and can trip the stream cap. If one subscription should map to one login, make `client_number` unique on its own and upsert on it, reassigning `user_id`. Otherwise, the send action must delete rows with that client number that belong to other users.",
+      "existing_code": "  constraint member_playlist_user_client_key unique (user_id, client_number)",
+      "start_line": 22,
+      "end_line": 22,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "scripts/prove-member-playlist-rls.sh",
+      "content": "This check passes even when the query returns 0 rows. That is exactly what you get if kevbox_admin does not actually bypass RLS (no policy matches the role), so it doesn't prove admin reads work. Assert that the count equals 2, for example with `do $$ begin if (select count(*) ...) \u003c\u003e 2 then raise exception 'expected 2'; end if; end $$;`. Also, the member checks never try PATCH or DELETE on member_playlist, never request B's row with an explicit `user_id=eq.\u003cB\u003e` filter, and never try to write kevbox_live_settings as member A. Add those negative cases.",
+      "existing_code": "  admin_check \"select member_playlist\" \\\n    \"select count(*) from public.member_playlist where user_id in ('$USER_A', '$USER_B');\"",
+      "start_line": 228,
+      "end_line": 229,
+      "category": "test",
+      "severity": "medium"
+    },
+    {
+      "path": "scripts/prove-member-playlist-rls.sh",
+      "content": "This grant is never revoked, so the local stack keeps a role membership that production doesn't have, and later local checks can pass for the wrong reason. Run `revoke kevbox_admin from postgres;` in `cleanup`. Also, `USER_A` and `USER_B` are put straight into SQL. Check that they are UUIDs (e.g. `[[ $USER_A =~ ^[0-9a-f-]{36}$ ]]`) before using them.",
+      "existing_code": "psql_q -c 'grant kevbox_admin to postgres;' \u003e/dev/null 2\u003e\"$WORK/grant.err\" ||",
+      "start_line": 209,
+      "end_line": 209,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "Hand edits only check that `serverUrl` is non-empty. They skip `isHttpAddress`, so a typo like `example.com:8080` or `ftp://…` goes straight to the member's TV, even though `saveTrexServerAddress` rejects the same input. Apply the same check here.",
+      "suggestion_code": "    const next = { serverUrl: c.serverUrl.trim(), username: c.username.trim(), password: c.password.trim() };\n    if (!next.serverUrl || !next.username || !next.password) return { success: false, error: FIELDS_REQUIRED };\n    if (!isHttpAddress(next.serverUrl)) return { success: false, error: BAD_ADDRESS };",
+      "existing_code": "    const next = { serverUrl: c.serverUrl.trim(), username: c.username.trim(), password: c.password.trim() };\n    if (!next.serverUrl || !next.username || !next.password) return { success: false, error: FIELDS_REQUIRED };",
+      "start_line": 191,
+      "end_line": 192,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "Rows are found through the customer's *current* sheet email. The row itself is keyed by `user_id`. This causes two problems:\n- If the Stremio email in the sheet changes, the row stays under the old login, and the old TV keeps serving the Trex line.\n- If the sheet row is deleted, `findCustomer` fails first.\n\nIn both cases status shows \"Not on KevBox Live\" and Remove/Edit can't reach the row, so the admin can't revoke it. Consider looking the row up by `client_number` alone (and showing or removing rows on other logins), or listing orphaned rows somewhere.",
+      "existing_code": "  const loginId = email ? await findLoginId(db, email) : null;\n  if (!loginId || !(await getLiveRow(db, loginId, ref))) return { error: NOT_ON_LIVE };",
+      "start_line": 175,
+      "end_line": 176,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "The new login's password is `kevbox\u003cclientNumber\u003e` (see `memberLoginPassword`), which is easy to guess. Before this change that login unlocked little. Now the same login can read `member_playlist` through Supabase RLS, which holds the plaintext Trex username, password and server. Anyone who knows a member's email and a small client number can take the line. Consider a random password delivered to the member, or at least forcing a password change on first sign-in.",
+      "existing_code": "    const { userId } = await createOrGetAuthUser(email, memberLoginPassword(ref));",
+      "start_line": 241,
+      "end_line": 241,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "`createOrGetAuthUser` returns `created`, but it is ignored here. If two clicks race, or the account was created elsewhere between the `findLoginId` check and this call, the action still reports \"Login created\" and writes a `live.create_login` audit for an account it did not create. Check `created` and return the \"already exists\" error when it is false.",
+      "existing_code": "    await writeAudit(db, { adminEmail: s.user?.email ?? null, userId, action: \"live.create_login\" });",
+      "start_line": 242,
+      "end_line": 242,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "Raw Postgres or Supabase error messages are sent to the browser, including constraint and table names and connection details. Log the full error on the server and return a generic message.",
+      "existing_code": "  return { success: false, error: `KevBox Live is unavailable: ${e instanceof Error ? e.message : String(e)}` };",
+      "start_line": 53,
+      "end_line": 53,
+      "category": "security",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/prove-member-playlist-rls.sh",
+      "content": "The negative checks for member A pass on any response that isn't 2xx. A 400 from a bad column name, a 404 or a 5xx would all count as a PASS without proving the grant was revoked. The `kevbox_live_settings` read check below has the same problem. Assert the PostgREST error code is `42501`, as the anon loop already does. Also, the migration revokes UPDATE and DELETE from `authenticated`, but nothing tests that. Add a PATCH and a DELETE by member A on A's own row and on B's row. Expect 42501, or an empty result with B's row unchanged. Otherwise a regression that re-grants UPDATE would let a member point their playlist at someone else's line, and this script would not catch it.",
+      "suggestion_code": "  if [[ \"$(jq -r '.code // empty' \"$WORK/body\" 2\u003e/dev/null)\" == 42501 ]]; then\n    pass \"member A cannot insert into member_playlist (HTTP $code)\"\n  else\n    fail \"member A cannot insert into member_playlist\" \"HTTP $code\"\n  fi",
+      "existing_code": "  if [[ \"$code\" =~ ^2 ]]; then\n    fail \"member A cannot insert into member_playlist\" \"HTTP $code\"\n  else\n    pass \"member A cannot insert into member_playlist (HTTP $code)\"\n  fi",
+      "start_line": 183,
+      "end_line": 187,
+      "category": "test",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/kevbox-live-section.tsx",
+      "content": "When `clientNumber` changes while the component stays mounted (for example, the dialog is re-pointed at another customer), `loaded`, `editing` and `form` keep the previous customer's values until the new fetch finishes. During that window the panel shows the old customer's row. An open edit form would also send the previous customer's server and username to the new `clientNumber`. `load()` after an action has the same problem because it skips the cancellation guard. Reset this state when `clientNumber` changes, or key the section by `clientNumber` in the dialog.",
+      "suggestion_code": "  useEffect(() =\u003e {\n    let cancelled = false;\n    setLoaded(null);\n    setEditing(false);\n    setConfirmRemove(false);\n    void fetchStatus(clientNumber).then((next) =\u003e {\n      if (!cancelled) setLoaded(next);\n    });",
+      "existing_code": "  useEffect(() =\u003e {\n    let cancelled = false;\n    void fetchStatus(clientNumber).then((next) =\u003e {\n      if (!cancelled) setLoaded(next);\n    });",
+      "start_line": 66,
+      "end_line": 70,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "`findLoginId` and `getTrexServer` don't depend on each other but run one after the other. Each time the customer window opens, that adds a database round-trip. Run them together with `Promise.all`. `sendToKevboxLive` can do the same.",
+      "suggestion_code": "    const [loginId, serverUrl] = await Promise.all([\n      stremioEmail ? findLoginId(db, stremioEmail) : Promise.resolve(null),\n      getTrexServer(db),\n    ]);",
+      "existing_code": "    const loginId = stremioEmail ? await findLoginId(db, stremioEmail) : null;\n    const serverUrl = await getTrexServer(db);",
+      "start_line": 106,
+      "end_line": 107,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "This BEGIN/COMMIT/ROLLBACK/release helper repeats the same code written out by hand in `changeTrexServer` (src/server/admin/live.ts). Move it into the server data layer and have `changeTrexServer` use it, so transaction handling lives in one place.",
+      "existing_code": "async function inTransaction\u003cT\u003e(fn: (client: PoolClient) =\u003e Promise\u003cT\u003e): Promise\u003cT\u003e {",
+      "start_line": 68,
+      "end_line": 68,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "`LiveStatus.serverSet` is computed and returned, but the UI never reads it. A missing server already shows up as the `no_server` blocker. Remove the field, or use it in the UI.",
+      "existing_code": "  serverSet: boolean;",
+      "start_line": 38,
+      "end_line": 38,
+      "category": "maintainability",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Kevbox live admin feature: server actions, lib, and UI components",
+      "files": [
+        "src/app/live-actions.ts",
+        "src/components/kevbox-live-section.tsx",
+        "src/lib/kevbox-live.ts",
+        "src/server/admin/live.ts",
+        "src/components/customer-detail-dialog.tsx"
+      ]
+    },
+    {
+      "label": "Trex server card on settings page",
+      "files": [
+        "src/components/trex-server-card.tsx",
+        "src/app/(dashboard)/settings/page.tsx"
+      ]
+    },
+    {
+      "label": "Member playlist migration and RLS proof script",
+      "files": [
+        "supabase/migrations/0013_member_playlist.sql",
+        "scripts/prove-member-playlist-rls.sh"
+      ]
+    }
+  ],
+  "session_id": "c4e1ea64-f434-4dd8-8193-3fdbba09052e",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "c4e1ea64-f434-4dd8-8193-3fdbba09052e",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "ccceca6c26772eb6a35665f87c7d1d792e920ec1a3b2f775b43ee33116435647"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "main",
+      "requested_head": "phase/0.1-kevbox-live",
+      "resolved_base": "f57ff1521cc233a8a2ec0edd49314f80b1bae70e",
+      "resolved_head": "16e825fbe8dfc1088343ac164d7d91b663bd7b99",
+      "exact_range": "f57ff1521cc233a8a2ec0edd49314f80b1bae70e..16e825fbe8dfc1088343ac164d7d91b663bd7b99",
+      "source_artifact_sha256": "1f850bf470200cd6473960b71520d08286afdacef8e869277c4123d03aa77bc9"
+    },
+    "execution": {
+      "ocr_version": "v1.12.13",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "1c4530572b81132d63b980b6980daf1513da6995a17724dfb795b6c8f939ce6f",
+          "path": "src/lib/kevbox-live.ts",
+          "fingerprint": "e926a4bd6a87e1f9c2c6d8bd2fd11d1f9b879c92fa11d5596e6d03eb62251ed0"
+        },
+        {
+          "item_id": "5d9f24cad3c3e6aef1d8c7e251eff3d152e97b9172f3611d0f18948d7f0359ed",
+          "path": "src/components/customer-detail-dialog.tsx",
+          "fingerprint": "431566627103a81dc82317a64fba719340d1ce2e94f218ddee7528ce674f02ec"
+        },
+        {
+          "item_id": "6f4c47f8db8e1e4b709dc205c356fbad17655da931c19ba7c3765878996a15eb",
+          "path": "src/server/admin/live.ts",
+          "fingerprint": "0a696b1ff506e20ff2fcd78076de6afaa49f022b90ceb822ec3bc8623767bc95"
+        },
+        {
+          "item_id": "8af1fd16409c3404691e16a8df0635a4799c3525f23f2eeb9e22753279e559a4",
+          "path": "src/app/live-actions.ts",
+          "fingerprint": "c7983bbdf32a194bee4c5a8c85d7418164c2a7a4987b86f1d69e868972d0dccc"
+        },
+        {
+          "item_id": "c72ad6db9ade621b7d6f05bbce68d7f954e340652305258cf2bd5fb116b9a36f",
+          "path": "scripts/prove-member-playlist-rls.sh",
+          "fingerprint": "0eefa7087cae20faefae779ea271539575dfa4a1fd08e034553031ad761b4da5"
+        },
+        {
+          "item_id": "c8ba2f2322f958d33b00df8683568e6b8e59cec24969b28e3efa5e10cc361d41",
+          "path": "src/components/kevbox-live-section.tsx",
+          "fingerprint": "0e15e201decee90d17b01d847634e4fe75a046f8986e3ee4d2e891cd9466eb66"
+        },
+        {
+          "item_id": "d111f28d48965e45e040129c9c6f9e0559be201339e4d8fa8ec4e12e2070fcbc",
+          "path": "supabase/migrations/0013_member_playlist.sql",
+          "fingerprint": "8edf6a23402bf84ddce34b53d8434c16ff55add12984861a615526ef40c12cd7"
+        },
+        {
+          "item_id": "ec74c60ba910ae78c0e6ee5679f8553f497739207498fdc79c16790591c5692d",
+          "path": "src/components/trex-server-card.tsx",
+          "fingerprint": "e0a5dbf8b3ddaf7994d8854d99765f9d01a92f6aa11f4b52e3da1f351f7cb69a"
+        },
+        {
+          "item_id": "ed775a02866c80451c5f5f7a03abf74bfb90314e60424747a473ccfacae08b0b",
+          "path": "src/app/(dashboard)/settings/page.tsx",
+          "fingerprint": "d1ae5cec248b15972c67ff403fe6bcaafd820eabdbed846206024326422e262e"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "1c4530572b81132d63b980b6980daf1513da6995a17724dfb795b6c8f939ce6f",
+          "path": "src/lib/kevbox-live.ts",
+          "fingerprint": "e926a4bd6a87e1f9c2c6d8bd2fd11d1f9b879c92fa11d5596e6d03eb62251ed0"
+        },
+        {
+          "item_id": "5d9f24cad3c3e6aef1d8c7e251eff3d152e97b9172f3611d0f18948d7f0359ed",
+          "path": "src/components/customer-detail-dialog.tsx",
+          "fingerprint": "431566627103a81dc82317a64fba719340d1ce2e94f218ddee7528ce674f02ec"
+        },
+        {
+          "item_id": "6f4c47f8db8e1e4b709dc205c356fbad17655da931c19ba7c3765878996a15eb",
+          "path": "src/server/admin/live.ts",
+          "fingerprint": "0a696b1ff506e20ff2fcd78076de6afaa49f022b90ceb822ec3bc8623767bc95"
+        },
+        {
+          "item_id": "8af1fd16409c3404691e16a8df0635a4799c3525f23f2eeb9e22753279e559a4",
+          "path": "src/app/live-actions.ts",
+          "fingerprint": "c7983bbdf32a194bee4c5a8c85d7418164c2a7a4987b86f1d69e868972d0dccc"
+        },
+        {
+          "item_id": "c72ad6db9ade621b7d6f05bbce68d7f954e340652305258cf2bd5fb116b9a36f",
+          "path": "scripts/prove-member-playlist-rls.sh",
+          "fingerprint": "0eefa7087cae20faefae779ea271539575dfa4a1fd08e034553031ad761b4da5"
+        },
+        {
+          "item_id": "c8ba2f2322f958d33b00df8683568e6b8e59cec24969b28e3efa5e10cc361d41",
+          "path": "src/components/kevbox-live-section.tsx",
+          "fingerprint": "0e15e201decee90d17b01d847634e4fe75a046f8986e3ee4d2e891cd9466eb66"
+        },
+        {
+          "item_id": "d111f28d48965e45e040129c9c6f9e0559be201339e4d8fa8ec4e12e2070fcbc",
+          "path": "supabase/migrations/0013_member_playlist.sql",
+          "fingerprint": "8edf6a23402bf84ddce34b53d8434c16ff55add12984861a615526ef40c12cd7"
+        },
+        {
+          "item_id": "ec74c60ba910ae78c0e6ee5679f8553f497739207498fdc79c16790591c5692d",
+          "path": "src/components/trex-server-card.tsx",
+          "fingerprint": "e0a5dbf8b3ddaf7994d8854d99765f9d01a92f6aa11f4b52e3da1f351f7cb69a"
+        },
+        {
+          "item_id": "ed775a02866c80451c5f5f7a03abf74bfb90314e60424747a473ccfacae08b0b",
+          "path": "src/app/(dashboard)/settings/page.tsx",
+          "fingerprint": "d1ae5cec248b15972c67ff403fe6bcaafd820eabdbed846206024326422e262e"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 125390
+  }
+}
