@@ -480,6 +480,7 @@ fun EpgScreen(
                 )
             }
             // The key hints at the bottom right of the top area, level with the video's bottom edge (owner, 2026-10-01).
+            // KevBox: liveMode, so ◀ reads "Categories" in Live TV.
             Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus, liveMode = liveMode) }
         }
 
