@@ -1,1 +1,2 @@
 - Task 1: done. No Interfaces deviations. (safe_literals.txt unchanged: KevBoxVersion.kt has no string literals to classify.)
+- Task 4: done. No Interfaces deviations. (Additive only: PrefsSessionStore.PREFS_NAME constant names the prefs file for Task 8; SupabaseApi answers Http(0, "") without a network call when the URL is blank, so signIn reports Failed.)
