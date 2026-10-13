@@ -133,3 +133,5 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt`, plus KevBo
 **Verify:** `GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew testStandardDebugUnitTest --tests 'tv.own.owntv.kevbox.live.*'`, then commit, then `bash tools/kevbox/check-divergence.sh` (it reads committed state only).
 
 ## Build log
+baseline: gate green (tests, lint, check-divergence 0 failures)
+Task 1: started at a0defb47
