@@ -1,0 +1,1692 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 39 finding(s) across 106 selected item(s).",
+  "summary": {
+    "files_reviewed": 106,
+    "comments": 39,
+    "total_tokens": 6171308,
+    "input_tokens": 6046466,
+    "output_tokens": 124842,
+    "cache_read_tokens": 4133240,
+    "cache_write_tokens": 1912892,
+    "elapsed": "3m40s"
+  },
+  "tool_calls": {
+    "total": 139,
+    "by_tool": {
+      "code_comment": 18,
+      "code_search": 63,
+      "file_find": 12,
+      "file_read": 40,
+      "file_read_diff": 6
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/ui/SignInScreen.kt",
+      "content": "The email goes out exactly as typed. TV on-screen keyboards and autofill often add a trailing space or capital letters, and nothing later in the chain trims it (`KevBoxViewModel.submitSignIn` → `coordinator.signIn` has no `trim`). The member then sees WRONG_CREDENTIALS even though the address is right. Trim the email before sending it. Leave the password as typed.",
+      "suggestion_code": "    fun submit() { if (canSubmit) onSubmit(email.trim(), password) }",
+      "existing_code": "    fun submit() { if (canSubmit) onSubmit(email, password) }",
+      "start_line": 53,
+      "end_line": 53,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/player/PlayerHud.kt",
+      "content": "This effect is keyed on a boolean, so it only fires when `error` goes from null to non-null. If the member zaps to another channel and that one fails too, and `error` is replaced without going back to null first, the expiry check never runs again. The player also keeps whatever `channelShowsExpired` said last time. Keying on the error value itself makes every new failure trigger a check. `ExpiryMonitor` already reuses its last answer for 10 minutes, so this adds no extra network calls.",
+      "suggestion_code": "    LaunchedEffect(player, error) { if (error != null) kevbox.onChannelFailed() }",
+      "existing_code": "    val failed = error != null\n    LaunchedEffect(player, failed) { if (failed) kevbox.onChannelFailed() }",
+      "start_line": 244,
+      "end_line": 245,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/ui/StatusScreens.kt",
+      "content": "`KevBoxGate` already shows `AccessLockedScreen` instead of the app, so nothing behind it can get focus and this key filter protects nothing. It does have a side effect: it also eats VolumeUp, VolumeDown, Mute and media keys, so the member can't change the volume on the lock screen. Either remove the filter or only swallow D-pad and Enter keys.",
+      "existing_code": "            .onPreviewKeyEvent { it.key != Key.Back }",
+      "start_line": 50,
+      "end_line": 50,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/PlaylistReconciler.kt",
+      "content": "If any `delete` fails, the error is swallowed and `store.clear()` still runs. A source that was not deleted then stays in Core, possibly still linked and visible, with the member's Xtream credentials on it. Because the mapping is gone, no later run can find it again, so sign-out and the refused-refresh lock-out (AC-13/14) can leave a working line on the TV. Keep the IDs that failed to delete in the store and retry them, for example on the next `wipe` or at `start`, instead of clearing everything.",
+      "suggestion_code": "        val failed = mutableMapOf\u003cString, ManagedSource\u003e()\n        ids.forEach { id -\u003e\n            try {\n                sources.delete(id)\n            } catch (e: Exception) {\n                if (e is CancellationException) throw e\n                failed[\"orphan-$id\"] = ManagedSource(id, hidden = true)\n            }\n        }\n        if (failed.isEmpty()) store.clear() else store.write(ManagedState(pick = null, sources = failed))",
+      "existing_code": "        ids.forEach { id -\u003e\n            try {\n                sources.delete(id)\n            } catch (e: Exception) {\n                if (e is CancellationException) throw e\n            }\n        }\n        store.clear()",
+      "start_line": 128,
+      "end_line": 135,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/PlaylistReconciler.kt",
+      "content": "Here the pending orphan is resolved through `_rows.value`, but only `apply()` in the current process fills that list. Consider a cold start after the process died mid-Create: `KevBoxCoordinator.timerLoop` runs `playlistCheck`, and the response can be `Fetch.SessionRejected`, which goes to `signOut()` and then `wipe()`, all before any successful `apply`. In that case `_rows` is empty, the orphaned source is never found, and `store.clear()` throws away the only clue it existed. To fix this, persist the server URL and username with `pendingCreate` in `ManagedSourceStore`, rather than only the client number.",
+      "existing_code": "        state.pendingCreate\n            ?.let { pending -\u003e _rows.value.firstOrNull { it.clientNumber == pending } }",
+      "start_line": 124,
+      "end_line": 125,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/PlaylistReconciler.kt",
+      "content": "The adoption step takes any Xtream source with the same URL and username. It does not check whether that ID is already in `mapping` under another client number. It can also pick up a source the user added by hand. If two rows share a login, two client numbers end up pointing at one source, and a later Hide or `wipe` would unlink or delete the visible line, or the user's own source. Skip the adopted ID when it is already in `mapping.values`.",
+      "suggestion_code": "                        val adopted = if (pending == row.clientNumber) {\n                            sources.findByLogin(row.serverUrl, row.username)\n                                ?.takeIf { id -\u003e mapping.values.none { it.sourceId == id } }\n                        } else {\n                            null\n                        }",
+      "existing_code": "                        val adopted = if (pending == row.clientNumber) {\n                            sources.findByLogin(row.serverUrl, row.username)\n                        } else {\n                            null\n                        }",
+      "start_line": 190,
+      "end_line": 194,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+      "content": "`first()` throws `NoSuchElementException` when the list is empty. Today only the caller's `profiles.isEmpty()` check prevents that. Add a `require(profileIds.isNotEmpty())` or handle the empty case so the `LocalSources.create` contract is safe on its own.",
+      "existing_code": "        val first = profileIds.first()",
+      "start_line": 58,
+      "end_line": 58,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+      "content": "This is an exact string comparison. If Core's `addXtreamSource` or `updateSource` normalizes the URL (trailing slash, scheme, trimming), crash-recovery adoption will never match and a duplicate source gets created. The same applies to `planReconcile`'s `current != target.toFields()` check: a normalized URL would never compare equal, so `UpdateInPlace` and a full resync would run on every 15-minute cycle. Compare normalized values on both sides.",
+      "existing_code": "            it.type == SourceType.XTREAM \u0026\u0026 it.url == serverUrl \u0026\u0026 it.username == username",
+      "start_line": 52,
+      "end_line": 52,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "content": "These values are pasted into the generated Java string literal without escaping. A `\"` or `\\` in the env var or Gradle property (or a pasted value with a trailing newline) breaks BuildConfig compilation or quietly changes the value. `TMDB_EDGE_KEY` a few lines below already escapes its value; do the same here. Trimming the values also helps, since the release `.env` files are hand-edited.",
+      "suggestion_code": "        fun javaString(v: String) = \"\\\"${v.trim().replace(\"\\\\\", \"\\\\\\\\\").replace(\"\\\"\", \"\\\\\\\"\")}\\\"\"\n        buildConfigField(\"String\", \"KEVBOX_SUPABASE_URL\", javaString(kevboxSupabaseUrl))\n        buildConfigField(\"String\", \"KEVBOX_SUPABASE_ANON_KEY\", javaString(kevboxSupabaseAnonKey))",
+      "existing_code": "        buildConfigField(\"String\", \"KEVBOX_SUPABASE_URL\", \"\\\"$kevboxSupabaseUrl\\\"\")\n        buildConfigField(\"String\", \"KEVBOX_SUPABASE_ANON_KEY\", \"\\\"$kevboxSupabaseAnonKey\\\"\")",
+      "start_line": 69,
+      "end_line": 70,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/release/KevBoxVersion.kt",
+      "content": "This check can never be true. Each segment is already limited to at most 2 digits, so its value is at most 99. Either remove the check, or drop the `length \u003e 2` guard and keep this as the only range check. Doing both just suggests a rule is enforced in two places. A single regex like `^(0|[1-9][0-9]?)\\.…$`, matching the one in version.sh, would also make the two implementations easier to keep in sync.",
+      "existing_code": "        if (numbers.any { it \u003e MAX_SEGMENT }) return null",
+      "start_line": 24,
+      "end_line": 24,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "release.sh",
+      "content": "The pre-flight checks only compare against the release `gh release view` marks as latest, which leaves out drafts and prereleases. Nothing checks that the tag `v$version` does not already exist, on the remote or as a draft left by an earlier failed run. In that case `gh release create` fails only after the full build. If the tag already exists, gh ignores `--target` and attaches the release to whatever commit that tag points at, which may not be HEAD. Add a pre-flight check, for example `git ls-remote --tags origin \"refs/tags/v$version\"` or `gh release view \"v$version\"`, and stop if the tag or release already exists.",
+      "existing_code": "gh release create \"v$version\" --repo \"$release_repo\" --target \"$(git rev-parse HEAD)\" \\",
+      "start_line": 147,
+      "end_line": 147,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+      "content": "`signOut()` and `signIn()` write the store without taking `refreshLock`. If a refresh is already waiting on `refreshGrant` (from the 15-minute playlist check, the 5-minute verdict check or `onForeground`) and the member signs out, `signOut` sees a still-valid token, skips the lock, logs out and runs `store.clear()`. The refresh then finishes and calls `store.save(renewed)` and `_email.value = …`. The TV signs back in after the wipe, holding tokens the server just logged out.\n\nThe same thing happens if the member signs in to a different account while a refresh is in flight: the old account's session overwrites the new one.\n\nFix: run `store.save`/`store.clear` in `signIn` and `signOut` under `refreshLock`. Inside `refresh`, re-check before saving that the store still holds `current`.",
+      "suggestion_code": "                val renewed = parseSession(response.body, previous = current)\n                    ?: return@withLock Fetch.Failed\n                // A sign-out or a new sign-in may have replaced the session while the call ran.\n                if (store.load()?.refreshToken != current.refreshToken) return@withLock Fetch.SignedOut\n                store.save(renewed)\n                _email.value = renewed.email\n                Fetch.Ok(renewed)",
+      "existing_code": "                val renewed = parseSession(response.body, previous = current)\n                    ?: return@withLock Fetch.Failed\n                store.save(renewed)\n                _email.value = renewed.email\n                Fetch.Ok(renewed)",
+      "start_line": 134,
+      "end_line": 138,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+      "content": "`store.save` calls `KeystoreTokenCipher.encrypt`, which can throw. Keystore errors such as `ProviderException`, `KeyStoreException` and `InvalidKeyException` are common on cheap TV firmware. `KevBoxViewModel.submitSignIn` runs `coordinator.signIn` in `viewModelScope.launch` without a try/catch or exception handler, so one Keystore fault crashes the app instead of showing \"Failed\".\n\nIt is also blocking work on the Main dispatcher: a Keystore round-trip plus a SharedPreferences `commit()`. `freshSession()` does the same on every read.\n\nFix: catch non-cancellation exceptions here and return `SignInResult.Failed`. Move store I/O to `Dispatchers.IO`.",
+      "suggestion_code": "                val session = parseSession(http.body, previous = null) ?: return SignInResult.Failed\n                try {\n                    withContext(Dispatchers.IO) { store.save(session) }\n                } catch (e: CancellationException) {\n                    throw e\n                } catch (_: Exception) {\n                    return SignInResult.Failed\n                }",
+      "existing_code": "                val session = parseSession(http.body, previous = null) ?: return SignInResult.Failed\n                store.save(session)",
+      "start_line": 47,
+      "end_line": 48,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt",
+      "content": "`existingKey()` turns every exception into null, including a temporary Keystore failure such as a keystore daemon hiccup at boot. `encrypt` then calls `createKey()`, and generating a key under the same alias replaces the existing one. Every blob written before can no longer be decrypted, so the member is silently signed out.\n\nTwo concurrent encrypts can also race to create the key: one of them seals with a key that is replaced right after.\n\nFix: only create the key when `KeyStore.containsAlias(ALIAS)` is false. Let other Keystore exceptions propagate so the caller can fail. Make key creation `@Synchronized`.",
+      "suggestion_code": "    @Synchronized\n    private fun keyForEncrypt(): SecretKey {\n        val store = KeyStore.getInstance(KEYSTORE).apply { load(null) }\n        return if (store.containsAlias(ALIAS)) store.getKey(ALIAS, null) as SecretKey else createKey()\n    }",
+      "existing_code": "        cipher.init(Cipher.ENCRYPT_MODE, existingKey() ?: createKey())",
+      "start_line": 21,
+      "end_line": 21,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+      "content": "Only `IOException` is caught here. Building the request runs outside the try block, and `header(APIKEY_HEADER, anonKey)` throws `IllegalArgumentException` if the anon key from BuildConfig contains a newline or other non-ASCII character (for example a key pasted with a trailing `\\n` into the env var).\n\nThat exception escapes every call. For sign-in it reaches an unguarded `viewModelScope.launch` and crashes the app. Fix: either validate `anonKey` once in the constructor (then `root = null` makes every call fail cleanly), or build the request inside the try block.",
+      "existing_code": "            } catch (_: IOException) {\n                // Connection refused, unknown host, timeout, reset: all mean no usable network.\n                ApiResponse.NoNetwork\n            }",
+      "start_line": 96,
+      "end_line": 99,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "tools/kevbox/check-divergence.sh",
+      "content": "A deleted upstream file (status `D`) can never pass this rule. Its diff has one hunk, and every line in it is upstream's own removed content, so a `KevBox:` marker can't appear there. The only way through is the exempt list, but the header comment and the `deleted` output make it look as if deletions are handled normally. The first fork deletion will block the gate with the message \"diff hunk with no KevBox: comment\", which doesn't point at the real fix. Handle `D` the same way as binary files: fail with a clear \"deleted upstream file; list it in divergence-exempt.txt with a reason\", or skip the hunk check for deletions and require only the UPSTREAM-SYNC.md row.",
+      "suggestion_code": "      if [[ \"$status\" == D ]]; then\n        echo \"deleted $path\"\n        fail \"$path\" \"deleted upstream file cannot carry a KevBox: marker; list it in $exempt_file with a reason\"\n      elif is_binary \"$path\"; then\n        echo \"changed $path\"\n        fail \"$path\" \"binary file, cannot carry a KevBox: marker; list it in $exempt_file with a reason\"\n      else\n        echo \"changed $path\"\n        hunk=\"$(first_unmarked_hunk \"$path\")\"\n        [[ -z \"$hunk\" ]] || fail \"$path\" \"diff hunk with no KevBox: comment: $hunk\"\n      fi",
+      "existing_code": "      if [[ \"$status\" == D ]]; then echo \"deleted $path\"; else echo \"changed $path\"; fi\n      if is_binary \"$path\"; then\n        fail \"$path\" \"binary file, cannot carry a KevBox: marker; list it in $exempt_file with a reason\"\n      else\n        hunk=\"$(first_unmarked_hunk \"$path\")\"\n        [[ -z \"$hunk\" ]] || fail \"$path\" \"diff hunk with no KevBox: comment: $hunk\"\n      fi",
+      "start_line": 138,
+      "end_line": 144,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+      "content": "There are two stale-flight problems here.\n1. `reconciler.reopen()` runs before the sign-in has succeeded. `wipe()` closes the reconciler so that a fetch landing after sign-out can't apply, but this reopens it early. Say a playlist flight started for member A is still in its network call when A signs out and B signs in. A's rows reach `reconciler.apply` after `reopen()` and create A's source on B's TV. A failed sign-in (wrong password) also leaves the reconciler open while the TV is signed out.\n2. `playlistCheck()` joins any in-flight `SingleFlight`, so it may return the old flight's result and never fetch B's rows. B's rows would then wait for the next 15-minute tick. `verdictCheck` has the same problem: an old `access.check()` that finishes after `access.reset()` saves the previous member's verdict, which can lock the new member.\n\nFix: reopen only on `Success`. Give sessions a generation counter, bumped on signIn and signOut. Drop the result of any flight whose generation is stale, or make `SingleFlight` start a fresh run after a sign-in instead of joining the old one.",
+      "suggestion_code": "    suspend fun signIn(email: String, password: String): SignInResult {\n        val result = auth.signIn(email, password)\n        if (result is SignInResult.Success) {\n            reconciler.reopen()\n            scope.launch { verdictCheck() }\n            playlistCheck() // must not join a flight started under the previous session\n        }",
+      "existing_code": "    suspend fun signIn(email: String, password: String): SignInResult {\n        reconciler.reopen()\n        val result = auth.signIn(email, password)\n        if (result is SignInResult.Success) {\n            scope.launch { verdictCheck() }\n            playlistCheck()\n        }",
+      "start_line": 127,
+      "end_line": 133,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/expiry/ExpiryMonitor.kt",
+      "content": "`reset()` and `dismissPopup()` change state without taking `mutex`. Meanwhile `runTest` holds the mutex, suspends in `test(sourceId)`, and writes `lastDecisive` and `lastTestAtMs` and calls `apply()` afterwards. The coordinator calls `expiry.reset()` when the visible source changes and on sign-out. If a tick's test of the old line is in flight at that moment, it lands after the reset and shows Expired or Expiring, plus the player's \"expired\" message, for a line the TV no longer shows, or for the next member after a sign-out. These are also plain `var`s written from Main (`dismissPopup`) and from the coordinator's scope, with no visibility guarantee. Fix: make `reset()` suspend and run it under `mutex`, or keep a generation counter that `reset()` bumps and that `runTest` checks before it writes.",
+      "existing_code": "    fun reset() {\n        lastDecisive = null\n        lastTestSourceId = null\n        lastTestAtMs = null\n        expiredDismissed = false\n        _popup.value = null\n        _channelShowsExpired.value = false\n    }",
+      "start_line": 122,
+      "end_line": 129,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+      "content": "`reconciler.currentSourceId()` reads the prefs store and calls Room through `sources.fields()`. If either throws, this coroutine ends before `timerLoop()` starts. For the rest of the process, no periodic playlist, verdict or expiry check runs. Wrap the read in `quietly` or a try/catch so the timers always start.",
+      "suggestion_code": "        scope.launch {\n            quietly { storedPick.value = reconciler.currentSourceId() != null }\n            timerLoop()\n        }",
+      "existing_code": "        scope.launch {\n            storedPick.value = reconciler.currentSourceId() != null\n            timerLoop()\n        }",
+      "start_line": 96,
+      "end_line": 99,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+      "content": "This misses changes that happened while the app was in the background. `KevBoxGate` collects with `collectAsStateWithLifecycle`, so if the visible source changed (or the gate went Open → Locked → Open) in the background, the gate is still Open here. `onAppForegrounded()` then brings back the old line's stream; the gate's effect stops it only afterwards, or never in the Open→Locked→Open case. That breaks AC-30. Record `visibleSourceChanges` in `onStop`. In `onStart`, call `discardBackgroundRestore` instead of restoring when the counter has changed or the gate left Open in between.",
+      "existing_code": "        if (kevbox.gate.value == tv.own.owntv.kevbox.GateState.Open) engines.onAppForegrounded()",
+      "start_line": 145,
+      "end_line": 145,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/SessionStore.kt",
+      "content": "The comment says `commit` is used so a rotated refresh token is not lost, but the `Boolean` that `commit()` returns is thrown away. If the write fails (disk full, I/O error), `save` returns as if it worked. `KevBoxAuth.refresh` then keeps the new pair in memory only, while the old refresh token stays on disk. The server has already rotated that old token, so once Supabase's reuse window passes, the next refresh or restart gets `refresh_token_already_used`. That becomes `SessionRejected`, and the TV signs out and wipes its managed sources. Check the result and report the failure, for example by throwing so `refresh` returns `Failed` and the session in memory doesn't drift from the one on disk.",
+      "suggestion_code": "        val ok = prefs.edit().putString(BLOB_KEY, Base64.getEncoder().encodeToString(sealed)).commit()\n        check(ok) { \"session write failed\" }",
+      "existing_code": "        prefs.edit().putString(BLOB_KEY, Base64.getEncoder().encodeToString(sealed)).commit()",
+      "start_line": 72,
+      "end_line": 72,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt",
+      "content": "`commit()` does a blocking disk write, and nothing here moves it off the caller's thread. `KevBoxViewModel` calls `coordinator.choose` and `coordinator.signOut` from `viewModelScope`, which runs on `Dispatchers.Main`. That means `reconcile()` and `wipe()` run their `store.read()`/`write()`/`clear()` on the UI thread. One `choose` writes up to twice (the pending marker, then the `finally` block), so the TV can stutter or hit an ANR.\n\nThe result of `commit()` is also ignored. If the write fails, the mapping is lost without any sign, which is exactly the duplicate-source case this method is meant to prevent.\n\nFix: wrap `read()`, `write()` and `clear()` in `withContext(Dispatchers.IO)`, and check the boolean `commit()` returns (throw or log on `false`).",
+      "suggestion_code": "    override suspend fun write(state: ManagedState) = withContext(Dispatchers.IO) {\n        // ... build json ...\n        check(prefs.edit().putString(STATE_KEY, json.toString()).commit()) { \"Failed to persist managed source state\" }\n    }",
+      "existing_code": "        prefs.edit().putString(STATE_KEY, json.toString()).commit()",
+      "start_line": 49,
+      "end_line": 49,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt",
+      "content": "A Quick pin on Choose playlist gets deleted for good. The pruning effect (`LaunchedEffect(quickPinned, rootItems.size)`, ~line 892) builds `known` from `rootItems`, and this row is in `rootItems` only while `kevboxChoice != null`. `reconciler.rows` starts empty on a cold start before the first fetch, and it also drops below two when the admin removes a playlist. In either case `tab_CHOOSE_PLAYLIST` is missing from `known`, so `setQuickPinnedKeys` removes the pin. The comment there says rows that are \"only hidden for now keep their pins\". Fix: add `tabRowKey(SettingsTab.CHOOSE_PLAYLIST)` to the hard-coded set of hidden-but-known keys in that effect.",
+      "suggestion_code": "        val known = rootItems.map { it.key }.toSet() + tv.own.owntv.features.settings.VIDEO_QUICK_ROWS.map { it.key } +\n            setOf(\"ambient_glow\", \"catchup_sources\", \"vp_tunneled\", \"vp_preview_audio\", \"vp_timeshift_window\", \"vp_timeshift_resume\", \"vp_multiview_tiles\", tabRowKey(SettingsTab.CHOOSE_PLAYLIST))",
+      "existing_code": "        if (kevboxChoice != null) RootRow(\n            tabRowKey(SettingsTab.CHOOSE_PLAYLIST), TileTone.PRIMARY, OwnTVIcon.PLAYLIST,",
+      "start_line": 550,
+      "end_line": 551,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+      "content": "The Sources card always shows 7, but the group has 8 rows whenever Choose playlist is visible (two or more playlists). Since the count now depends on runtime state, work it out from `kevboxPlaylistChoice()` in `SettingsPage`, as is already done for the profile count at index 1, instead of hard-coding it.",
+      "existing_code": "    SettingsGroupCard(OwnTVIcon.LIST, R.string.settings_group_sources, R.string.settings_card_sources, 7),",
+      "start_line": 218,
+      "end_line": 218,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt",
+      "content": "Removing these rows and search entries leaves dead code behind: `appIconRowFocus`, `showAppIcon` with its App icon dialog, and the `appIcon`/`brandAccent` state can no longer be reached. In SetupWizard's DisplaySizeStep, `appIcon`/`pickIcon` and the icon picker are also unused now. Remove them, or put them behind one KevBox marker, so they don't cause unused-variable warnings or merge noise.",
+      "existing_code": "        // KevBox: no App icon row (KevBox Live ships one icon) and no Accent-colored logo row: the mark's\n        // play triangle is transparent in KevBox Live, so that toggle would change nothing.",
+      "start_line": 795,
+      "end_line": 796,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values/kevbox_brand_strings.xml",
+      "content": "Replacing \"OwnTV\" everywhere has made some strings untrue. These ones describe upstream services that KevBox doesn't own:\n- The translation QR/link still opens upstream OwnTV's translation project. There are no \"KevBox Live translation components\", and translators would be sent to OwnTV.\n- `settings_metadata_fair_share` says the built-in service is \"shared by everyone using KevBox Live\", and `settings_metadata_shared_worker_description` calls it the \"KevBox Live Worker\". It is actually OwnTV's shared Worker, and its quota is shared with all OwnTV users.\n\nAdd these keys to an exclusion list in `rebrand-strings.py` so they keep their upstream wording, for example \"the OwnTV translation project\" and \"OwnTV's shared Worker\". Otherwise, reword them in a way that stays accurate.",
+      "existing_code": "    \u003cstring name=\"settings_language_contribution_description\"\u003eScan the QR code or open the link to choose any available language and contribute across all six KevBox Live translation components.\u003c/string\u003e",
+      "start_line": 43,
+      "end_line": 43,
+      "category": "other",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxViewModel.kt",
+      "content": "Nothing catches exceptions in these `viewModelScope` launches, and `viewModelScope` has no exception handler, so any throw crashes the app.\n\n- **`choose`**: `reconciler.choose` calls Room/Core (`sources.update`, `create`, `resync`, `store.write`), and any of these can throw.\n- **`signOut`**: `reconciler.wipe()` calls `store.read()` and `findByLogin`, which can also throw.\n- **`submitSignIn`**: `auth.signIn` calls `store.save` (Keystore encryption), which can throw. The app crashes, and `busy` would also be left `true` for good.\n\nThe coordinator protects the same calls with `quietly`/`SingleFlight.guarded`, but the paths users trigger themselves don't. Catch non-cancellation exceptions here. For sign-in, reset `busy` and show `SignInError.FAILED`.",
+      "suggestion_code": "fun choose(clientNumber: String) {\n    viewModelScope.launch {\n        withContext(NonCancellable) {\n            try { coordinator.choose(clientNumber) } catch (e: CancellationException) { throw e } catch (_: Exception) { }\n        }\n    }\n}",
+      "existing_code": "    fun choose(clientNumber: String) {\n        viewModelScope.launch { withContext(NonCancellable) { coordinator.choose(clientNumber) } }\n    }",
+      "start_line": 61,
+      "end_line": 63,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/res/values-fr/kevbox_brand_strings.xml",
+      "content": "The generator just does `text.replace(\"OwnTV\", \"KevBox Live\")`. French elides before the vowel in \"OwnTV\" but not before \"K\", so these strings now have wrong elisions: \"d'KevBox Live\" / \"d’KevBox Live\" (here and in recording_failed_drm, content_storage_folder_fallback, settings_help_*, settings_language_contribution_*, settings_metadata_fair_share, settings_open_subtitles_access_priority, settings_proxy_description, setup_line_app_icon) and \"qu’KevBox Live\" (settings_app_startup_description, settings_help_startup). They should read \"de KevBox Live\" and \"que KevBox Live\". You can't fix this by editing the file, because `--check` would flag the change as drift. Add a French rule to `_swap` instead, alongside the English \"an\"→\"a\" rule: `(?\u003c=\\b[dD])['’]OwnTV` → `e OwnTV` and `\\bqu['’]OwnTV` → `que OwnTV`, run before the brand swap. Then regenerate.",
+      "suggestion_code": "    \u003cstring name=\"app_icon_restart_message\"\u003eVous avez choisi une nouvelle icône et un nouveau logo. Ils s\\'appliqueront après le redémarrage de KevBox Live.\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"app_icon_restart_message\"\u003eVous avez choisi une nouvelle icône et un nouveau logo. Ils s\\'appliqueront après le redémarrage d\\'KevBox Live.\u003c/string\u003e",
+      "start_line": 3,
+      "end_line": 3,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values-da/kevbox_brand_strings.xml",
+      "content": "This has the same naive-replacement problem. The Danish genitive takes no apostrophe (\"KevBox Lives\"), and settings_help_bg_background in this file already uses \"KevBox Lives\". This string uses \"KevBox Live's\" and settings_open_subtitles_access_priority uses \"KevBox Live’s\", so the file is inconsistent with itself. Normalize this through a locale rule in the generator, not a hand edit.",
+      "existing_code": "    \u003cstring name=\"content_storage_folder_fallback\"\u003eDin downloadmappe er ikke tilgængelig lige nu, så downloads gemmes i KevBox Live\\'s egen mappe, indtil den er tilbage.\u003c/string\u003e",
+      "start_line": 16,
+      "end_line": 16,
+      "category": "other",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values-es/kevbox_brand_strings.xml",
+      "content": "setup_disclaimer and setup_byo_source_description are copied as-is in every locale (ar, bn, cs, da, de, es, es-rUS, eu, fr). In KevBox Live the playlist comes from kevbox.dev and the locked app hides adding sources, so telling members to \"add your own Xtream/M3U/Stalker source\" contradicts that model. Either confirm the SetupWizard changes make these strings unreachable when a KevBox session is active, or add them to brand-allowlist.txt and override them with KevBox-specific text.",
+      "existing_code": "    \u003cstring name=\"setup_disclaimer\"\u003eKevBox Live es únicamente un reproductor multimedia. No incluye canales, listas de reproducción ni contenido. Eres responsable de añadir tus propias fuentes Xtream, M3U o Stalker a las que tengas acceso legal.\u003c/string\u003e",
+      "start_line": 59,
+      "end_line": 59,
+      "category": "other",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/res/values-hu/kevbox_brand_strings.xml",
+      "content": "The Hungarian definite article is wrong throughout this file. Core's text used \"az\" because \"OwnTV\" starts with a vowel. \"KevBox Live\" starts with a consonant, so it needs \"a\"/\"A\". This affects about 35 strings, for example \"Az KevBox Live újraindítása\", \"az KevBox Live-ből\", \"az KevBox Live-nek\" and \"Üdvözöl az KevBox Live\".\n\nThe cause is in `rebrand-strings.py`. `_swap` fixes articles only for English (`an OwnTV` → `a KevBox Live`) and does a plain token swap everywhere else. The script also says not to hand-edit these files, so fixing the text here would be lost on the next Core bump.\n\nFix: add a locale-specific rule next to the English one, for example `re.sub(r\"\\b([Aa])z \" + BRAND, r\"\\1 \" + REPLACEMENT, text)` when the folder qualifier is `hu`, then regenerate.",
+      "suggestion_code": "    \u003cstring name=\"app_icon_restart_message\"\u003eÚj ikont és logót választott. A KevBox Live újraindítása után lépnek életbe.\u003c/string\u003e\n    \u003cstring name=\"app_icon_restart_title\"\u003eÚjraindítja a KevBox Live-t?\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"app_icon_restart_message\"\u003eÚj ikont és logót választott. Az KevBox Live újraindítása után lépnek életbe.\u003c/string\u003e\n    \u003cstring name=\"app_icon_restart_title\"\u003eÚjraindítja az KevBox Live-t?\u003c/string\u003e",
+      "start_line": 3,
+      "end_line": 4,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/res/values-hu/kevbox_brand_strings.xml",
+      "content": "Same article error, shown on the first screen of setup: this should read \"Üdvözöl a KevBox Live\". Fix it through the generator's Hungarian article rule rather than by editing this file.",
+      "suggestion_code": "    \u003cstring name=\"setup_welcome_title\"\u003eÜdvözöl a KevBox Live\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"setup_welcome_title\"\u003eÜdvözöl az KevBox Live\u003c/string\u003e",
+      "start_line": 63,
+      "end_line": 63,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/res/values-de/kevbox_brand_strings.xml",
+      "content": "The blanket rename also changes strings that name **upstream OwnTV services**, not the app. Three are now wrong:\n- The shared metadata/subtitle Worker is still OwnTV's. Calling it \"KevBox Live Worker\" here, in `settings_open_subtitles_access_priority` and in `settings_metadata_fair_share` (\"shared by all KevBox Live users\") misstates who runs it and who shares the daily quota.\n- The translation QR/link strings (`settings_language_help_translate`, `settings_language_contribution_*`) send members to OwnTV's Weblate project but describe it as a KevBox Live project.\n\nThe same applies in every locale (ar, bn, cs, da, de, en-rGB, es, es-rUS, eu, fr). Add these names to `brand-allowlist.txt`, or give them hand-written overrides, so they keep the OwnTV name or say \"OwnTV's shared service\". Better still, hide the translation entry in the fork.",
+      "existing_code": "    \u003cstring name=\"settings_metadata_shared_worker_description\"\u003eKevBox Live Worker · keine Einrichtung\u003c/string\u003e",
+      "start_line": 49,
+      "end_line": 49,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values-tr/kevbox_brand_strings.xml",
+      "content": "The Turkish suffixes are now grammatically wrong. `rebrand-strings.py` swaps the brand name as plain text, so it keeps the suffixes that suited \"OwnTV\" (read \"ti-vi\": front vowel, ends in a vowel). \"Live\" is read /layv/, which has a back vowel and ends in a consonant. Under Turkish vowel harmony the suffixes should be:\n- `Live'den` → `Live'dan`\n- `Live’nin` → `Live'ın`\n- `Live'yi` → `Live'ı`\n- `Live’ye` → `Live'a`\n- `Live’de` → `Live'da`\n\nAffected keys: `content_exit_owntv`, `content_storage_folder_fallback`, `player_trailer_blocked_title`, `recording_failed_drm`, `settings_auto_frame_rate_warning_description(_mobile)`, `settings_help_bg_background`, `settings_help_fonts`, `settings_help_language`, `settings_language_help_translate`, `settings_language_pick_help`, `settings_language_system_help`, `settings_open_subtitles_access_priority`, `settings_recording_timers_inexact`, `setup_line_app_icon`, `setup_set_up_owntv`, `setup_welcome_title`.\n\nThis file is generated, so a hand edit will not stick: `rebrand-strings.py --check` would flag it, and the next run would overwrite it. Put the fix in the generator instead. Either add per-locale suffix rewrites after `_swap` (for example, for `tr`, map `KevBox Live['’](den|nin|yi|ye|de)` to `dan|ın|ı|a|da`), or add a manual per-locale override layer that the generator merges in.",
+      "existing_code": "    \u003cstring name=\"content_exit_owntv\"\u003eKevBox Live\\'den çıkılsın mı?\u003c/string\u003e",
+      "start_line": 15,
+      "end_line": 15,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/setup/SetupWizard.kt",
+      "content": "This redirect only runs after composition, so a locked step restored from saved state still gets composed for one frame first, along with its side effects. For example, `ADD_SOURCE_REMOTE` composes `RemoteSetupScreen`, and that can start the remote listener via `onStartListener`. The redirect then changes `step` without calling `vm.stopRemoteListener()`, so the listener keeps running. `SYNC_DEVICE` and the import steps can start work the same way. Fix: clamp the step before the `when`, so a locked step is never composed.",
+      "suggestion_code": "    // KevBox: a locked step restored from saved state is never composed; it maps to Create profile.\n    if (step !in KEVBOX_OPEN_STEPS) step = Step.CREATE_PROFILE",
+      "existing_code": "    LaunchedEffect(step) { if (step !in KEVBOX_OPEN_STEPS) step = Step.CREATE_PROFILE }",
+      "start_line": 112,
+      "end_line": 112,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/res/values-sv/kevbox_brand_strings.xml",
+      "content": "The Swedish possessive is now wrong, and it doesn't match the rest of the file. Core wrote \"OwnTV:s\" because Swedish uses a colon before the genitive -s only after abbreviations or acronyms such as \"TV\". \"KevBox Live\" ends in an ordinary word, so the genitive is \"KevBox Lives\". `settings_help_bg_background` in this same file already uses \"KevBox Lives\".\n\nThe colon form appears in `content_storage_folder_fallback`, `settings_app_icon_summary`, `settings_language_contribution_qr_description` and `settings_open_subtitles_access_priority`. Hand-editing these strings won't last because they're generated, so fix it in `rebrand-strings.py`. Add a `sv`-specific substitution of `OwnTV:s` → `KevBox Lives`, like the English \"an\" → \"a\" handling.",
+      "suggestion_code": "    \u003cstring name=\"settings_app_icon_summary\"\u003eFärg på KevBox Lives ikon och logotyp\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"settings_app_icon_summary\"\u003eFärg på KevBox Live:s ikon och logotyp\u003c/string\u003e",
+      "start_line": 23,
+      "end_line": 23,
+      "category": "other",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values-hu/kevbox_brand_strings.xml",
+      "content": "This is a separate problem from the article finding. Hungarian case suffixes follow vowel harmony. Core's suffixes were front-vowel because \"OwnTV\" is read as \"-tévé\". \"Live\" (\"lájv\") takes back-vowel suffixes, so the generated text is wrong in these places: \"Live-ből\" should be \"Live-ból\", \"Live-nek\" (auto frame rate warnings, recording timers) should be \"Live-nak\", and \"Live-ben\" (trailer blocked, glass, fonts, language pick/system help) should be \"Live-ban\". Fix this in rebrand-strings.py with a Hungarian suffix rule next to the article rule, so the next Core bump keeps the fix.",
+      "suggestion_code": "    \u003cstring name=\"content_exit_owntv\"\u003eKilépsz a KevBox Live-ból?\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"content_exit_owntv\"\u003eKilépsz az KevBox Live-ből?\u003c/string\u003e",
+      "start_line": 15,
+      "end_line": 15,
+      "category": "other",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values-pt-rPT/kevbox_brand_strings.xml",
+      "content": "The grammatical gender is mixed within this file. Most strings use the masculine form (\"o KevBox Live\", \"do KevBox Live\"). Others use the feminine form: \"Sair da KevBox Live\", \"Utilizador da KevBox Live\", \"na KevBox Live\" (trailer), \"da KevBox Live\" (the three translation strings), \"a KevBox Live volta\" (surround) and \"está pronta\" (update_ready). Core was already inconsistent here, and copying the brand name straight across keeps that. Pick one gender, probably masculine, and make all of these match. Do it through the generator, for example a per-locale fix-up table, because the file is regenerated.",
+      "suggestion_code": "    \u003cstring name=\"content_exit_owntv\"\u003eSair do KevBox Live?\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"content_exit_owntv\"\u003eSair da KevBox Live?\u003c/string\u003e",
+      "start_line": 15,
+      "end_line": 15,
+      "category": "other",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values-pl/kevbox_brand_strings.xml",
+      "content": "The grammatical gender is inconsistent. Here and in update_ready (\"jest gotowa\") the forms are feminine. settings_help_theme (\"zaprojektowany\") and settings_sources_probe_unknown (\"nie zdołał\") are masculine. The user sees the brand with different genders on different screens. Use one form everywhere, and apply it through the generator so a regeneration does not undo it.",
+      "suggestion_code": "    \u003cstring name=\"recovery_title\"\u003eKevBox Live nie mógł otworzyć swojej bazy danych\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"recovery_title\"\u003eKevBox Live nie mogła otworzyć swojej bazy danych\u003c/string\u003e",
+      "start_line": 22,
+      "end_line": 22,
+      "category": "other",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "CI workflows and gitignore",
+      "files": [
+        ".github/workflows/android.yml",
+        ".github/workflows/automerge-core-bump.yml",
+        ".github/workflows/release-notes.yml",
+        ".gitignore"
+      ]
+    },
+    {
+      "label": "Release scripts and versioning",
+      "files": [
+        "release.sh",
+        "tools/kevbox/release-checks.sh",
+        "tools/kevbox/test-release-checks.sh",
+        "tools/kevbox/version.sh",
+        "app/src/main/java/tv/own/owntv/kevbox/release/KevBoxVersion.kt",
+        "app/build.gradle.kts"
+      ]
+    },
+    {
+      "label": "KevBox rebrand/divergence tooling",
+      "files": [
+        "tools/kevbox/check-brand.sh",
+        "tools/kevbox/check-divergence.sh",
+        "tools/kevbox/core_res.py",
+        "tools/kevbox/rebrand-art.py",
+        "tools/kevbox/rebrand-strings.py"
+      ]
+    },
+    {
+      "label": "Fake Xtream e2e server",
+      "files": [
+        "tools/kevbox/e2e/fake_xtream.py"
+      ]
+    },
+    {
+      "label": "KevBox core wiring, gate and DI",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/KevBoxGate.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/KevBoxViewModel.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+        "app/src/main/java/tv/own/owntv/MainActivity.kt",
+        "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/access/AccessMonitor.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/expiry/ExpiryMonitor.kt"
+      ]
+    },
+    {
+      "label": "KevBox playlist reconciliation",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/playlist/PlaylistReconciler.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/playlist/ReconcilePlanner.kt"
+      ]
+    },
+    {
+      "label": "KevBox session, auth and Supabase API",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/session/SessionStore.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt"
+      ]
+    },
+    {
+      "label": "KevBox UI screens",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/ui/AccountPage.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/ui/ChoosePlaylist.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/ui/ExpiryPopupHost.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/ui/LockedEntries.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/ui/SignInScreen.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/ui/StatusScreens.kt",
+        "app/src/main/java/tv/own/owntv/player/PlayerHud.kt"
+      ]
+    },
+    {
+      "label": "Existing screens adapted for KevBox",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+        "app/src/main/java/tv/own/owntv/features/more/MoreScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/setup/SetupWizard.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/components/ContentPane.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt"
+      ]
+    },
+    {
+      "label": "Brand drawables: icons and splash (part 1)",
+      "files": [
+        "app/src/main/res/drawable/kevbox_icon_background.xml",
+        "app/src/main/res/drawable/owntv_icon_monochrome.xml",
+        "app/src/main/res/drawable/owntv_mark_play.xml",
+        "app/src/main/res/drawable/owntv_mark_play_small.xml",
+        "app/src/main/res/drawable/owntv_notification.xml",
+        "app/src/main/res/drawable/owntv_splash_board.xml",
+        "app/src/main/res/drawable/owntv_splash_cobalt.xml",
+        "app/src/main/res/drawable/owntv_splash_eggshell.xml",
+        "app/src/main/res/drawable/owntv_splash_olive.xml",
+        "app/src/main/res/drawable/owntv_splash_olive_cream.xml"
+      ]
+    },
+    {
+      "label": "Brand drawables: splash variants (part 2)",
+      "files": [
+        "app/src/main/res/drawable/owntv_splash_petrol.xml",
+        "app/src/main/res/drawable/owntv_splash_pixel.xml",
+        "app/src/main/res/drawable/owntv_splash_static_board.xml",
+        "app/src/main/res/drawable/owntv_splash_static_cobalt.xml",
+        "app/src/main/res/drawable/owntv_splash_static_eggshell.xml",
+        "app/src/main/res/drawable/owntv_splash_static_olive.xml",
+        "app/src/main/res/drawable/owntv_splash_static_olive_cream.xml",
+        "app/src/main/res/drawable/owntv_splash_static_petrol.xml",
+        "app/src/main/res/drawable/owntv_splash_static_pixel.xml",
+        "app/src/main/res/drawable/owntv_splash_static_sunflower.xml"
+      ]
+    },
+    {
+      "label": "Brand drawables and adaptive icons (part 3)",
+      "files": [
+        "app/src/main/res/drawable/owntv_splash_static_tomato.xml",
+        "app/src/main/res/drawable/owntv_splash_sunflower.xml",
+        "app/src/main/res/drawable/owntv_splash_tomato.xml",
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_board.xml",
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_cobalt.xml",
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_eggshell.xml",
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_olive.xml",
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_olive_cream.xml",
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_petrol.xml",
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_pixel.xml"
+      ]
+    },
+    {
+      "label": "Adaptive icons and base strings",
+      "files": [
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_sunflower.xml",
+        "app/src/main/res/mipmap-anydpi-v26/owntv_icon_tomato.xml",
+        "app/src/main/res/values/kevbox_brand_strings.xml",
+        "app/src/main/res/values/kevbox_strings.xml"
+      ]
+    },
+    {
+      "label": "Brand string translations (part 1)",
+      "files": [
+        "app/src/main/res/values-ar/kevbox_brand_strings.xml",
+        "app/src/main/res/values-bn/kevbox_brand_strings.xml",
+        "app/src/main/res/values-cs/kevbox_brand_strings.xml",
+        "app/src/main/res/values-da/kevbox_brand_strings.xml",
+        "app/src/main/res/values-de/kevbox_brand_strings.xml",
+        "app/src/main/res/values-en-rGB/kevbox_brand_strings.xml",
+        "app/src/main/res/values-es-rUS/kevbox_brand_strings.xml",
+        "app/src/main/res/values-es/kevbox_brand_strings.xml",
+        "app/src/main/res/values-eu/kevbox_brand_strings.xml",
+        "app/src/main/res/values-fr/kevbox_brand_strings.xml"
+      ]
+    },
+    {
+      "label": "Brand string translations (part 2)",
+      "files": [
+        "app/src/main/res/values-hi/kevbox_brand_strings.xml",
+        "app/src/main/res/values-hu/kevbox_brand_strings.xml",
+        "app/src/main/res/values-it/kevbox_brand_strings.xml",
+        "app/src/main/res/values-ja/kevbox_brand_strings.xml",
+        "app/src/main/res/values-ko/kevbox_brand_strings.xml",
+        "app/src/main/res/values-ml/kevbox_brand_strings.xml",
+        "app/src/main/res/values-nb/kevbox_brand_strings.xml",
+        "app/src/main/res/values-nl/kevbox_brand_strings.xml",
+        "app/src/main/res/values-pl/kevbox_brand_strings.xml",
+        "app/src/main/res/values-pt-rPT/kevbox_brand_strings.xml"
+      ]
+    },
+    {
+      "label": "Brand string translations (part 3)",
+      "files": [
+        "app/src/main/res/values-pt/kevbox_brand_strings.xml",
+        "app/src/main/res/values-ru/kevbox_brand_strings.xml",
+        "app/src/main/res/values-sv/kevbox_brand_strings.xml",
+        "app/src/main/res/values-tr/kevbox_brand_strings.xml",
+        "app/src/main/res/values-zh-rCN/kevbox_brand_strings.xml",
+        "app/src/main/res/values-zh-rTW/kevbox_brand_strings.xml"
+      ]
+    }
+  ],
+  "session_id": "83a7556f-1579-48a0-903c-358544fe6e3a",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "83a7556f-1579-48a0-903c-358544fe6e3a",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "phase/0.1-kevbox-live",
+      "resolved_base": "c2417205f6e6dec5e6782090d680c58b18960b80",
+      "resolved_head": "19c055ac9295895275e32ff87cf1549a42a26458",
+      "exact_range": "c2417205f6e6dec5e6782090d680c58b18960b80..19c055ac9295895275e32ff87cf1549a42a26458",
+      "source_artifact_sha256": "aaba5f6e7ab519e1041fdcf17d2530eeb7ca8af35ae2446c9762c832f99e4522"
+    },
+    "execution": {
+      "ocr_version": "v1.12.13",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "006a9445f141ecbdde0bd74bc5c37cb147cf4824bd046fe57beddc99f0c8691f",
+          "path": "tools/kevbox/check-divergence.sh",
+          "fingerprint": "f45a4f1e814689aa25724d634f8a1ee6df9eb79f048354ef3d629cd08eaeaa77"
+        },
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "2672362eb056f6859f5a519b691f2957ffd02d503a6522f816d6d79f7f803649"
+        },
+        {
+          "item_id": "0a3514cbd582ff57dcdbe1db91c8091225a35d0211dc7680fa72c71adac8172c",
+          "path": "app/src/main/java/tv/own/owntv/player/PlayerHud.kt",
+          "fingerprint": "a51bbf94c32fd655597a5179e94820fd14ce9ac7937578ca5c877142f2e441d9"
+        },
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "b6201dde80e6b55e747008acdc5d8471eb08c741f984e907f07dac90df0cda23"
+        },
+        {
+          "item_id": "0c7ff254c5aa300dde5b72a8625b9ae3718aba3dc6d9ba4199d553f941d0002d",
+          "path": "app/src/main/res/values-pt/kevbox_brand_strings.xml",
+          "fingerprint": "58f69cb02f8c6c08493f0ef30288c9c97e2860d6c6dc861b436ae571b19bacb4"
+        },
+        {
+          "item_id": "0f6f03225684f09a2d1259ea2a152f434c1aa16de885c25b224db0bca1423a11",
+          "path": "app/src/main/java/tv/own/owntv/features/more/MoreScreen.kt",
+          "fingerprint": "203ef7d34159ac3c1cdce8ccfb11352eeec9588582cd4270cdcb174a60d55728"
+        },
+        {
+          "item_id": "11f4b9f18f69d781cbcf8761482b2009a3b6d1a26b360d2f7a8df67a927ab36b",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_petrol.xml",
+          "fingerprint": "8a8e203adb94f292e50b46e1a639a8004a5a895dfc4d60170e945c33758e3a28"
+        },
+        {
+          "item_id": "150a985974fd7380c6b4abe112cd268b96632bc65f87e4e5fac002e56ac8828e",
+          "path": "app/src/main/res/values-en-rGB/kevbox_brand_strings.xml",
+          "fingerprint": "c01ba42c4745d39c1d0afefde828c723c924d386ae0a25fd617b6fd953490499"
+        },
+        {
+          "item_id": "15d5d21cd02c6c99198382e6fbc7fde3146b9527578d6c203cb2125b569fabaf",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/AccountPage.kt",
+          "fingerprint": "8238f2ff87196bf4094c6921e7bdca6e531cd687b6c7a0e70838e766ba4b557d"
+        },
+        {
+          "item_id": "1c82827c1bbd81e7265df540a2a19d6bfc8dc0bff84137c7bb6d871f6d005d47",
+          "path": "tools/kevbox/release-checks.sh",
+          "fingerprint": "996ea695c785c6312ae4b0096afecbbbe7f11615470961b6efa7831073f8fca9"
+        },
+        {
+          "item_id": "1d7e5f14ef311db69bbbd3207572b15d69cd354d986070173c8cb80f308728c1",
+          "path": "app/src/main/res/drawable/owntv_notification.xml",
+          "fingerprint": "8ef4065ea3f85d31d7840fbc5c950a69e469acdfeeca96c9c8c520471f5024a6"
+        },
+        {
+          "item_id": "20232d84cd4ec00ff590b6a63bd9eeda4cee16145425e90b4abc1e74977b6a89",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/LockedEntries.kt",
+          "fingerprint": "d43c21deb145f68b718efbbc8c7f5b963a14864940c8d90213237efc8945c3f5"
+        },
+        {
+          "item_id": "21f5b7ba7deffdffd82de2993f48b1b136c94061cfb7396716505791b579432d",
+          "path": "app/src/main/res/values-pl/kevbox_brand_strings.xml",
+          "fingerprint": "e442ebea36c6999487ea49cc51fc1905075e657bca5cfb489def2f949e2a5192"
+        },
+        {
+          "item_id": "24e7e6b349d872efb44272797b9bd561e944ac5b9e4d8509a925564d00b9b1d0",
+          "path": "app/src/main/res/drawable/owntv_splash_static_pixel.xml",
+          "fingerprint": "c92511830489c8e590d82ac76d5e0f06094ca3bf49d931951bc856f82772d4ea"
+        },
+        {
+          "item_id": "27c5d4271e95f72ec42008b086ffd9fe5f6b0340cd6a202cc4b6de1764032a17",
+          "path": "app/src/main/res/values-zh-rTW/kevbox_brand_strings.xml",
+          "fingerprint": "93199aa5763eac69d3638c75a54e0e5b797d4dd09d8264c0654d73ecbb3e49e7"
+        },
+        {
+          "item_id": "29810a5ea480d4f61ce2dd929ec88183d7852ea4705c0801c20d65eece083b5f",
+          "path": "app/src/main/res/values-tr/kevbox_brand_strings.xml",
+          "fingerprint": "45759eec8cd1ea38ffe84b9e57b55185236a20c1e02640b0cd43d9c03266885d"
+        },
+        {
+          "item_id": "2c0c1c60d7bc131b8eb3402f373b48c0ba3a0a4f10431c0a6c5a27f7e46bf4b1",
+          "path": "app/src/main/res/drawable/owntv_splash_cobalt.xml",
+          "fingerprint": "90d4b3a0466fdcc58657f1484102c39d99cd166b41efa86fed8f8ef138dadacf"
+        },
+        {
+          "item_id": "2e9a7ea7802bfdb8500c06106d8d1476378f53a7cca20da4303b1658dbe14563",
+          "path": "app/src/main/res/values-fr/kevbox_brand_strings.xml",
+          "fingerprint": "310e2d592fae4450bf944a829cfd46c0260abae977cd9c48ee1069d975fc6bde"
+        },
+        {
+          "item_id": "2f5da75a6cb4bc675908fa5df8aeb54182c333ccc34c02094e4679df6d99f3a9",
+          "path": "app/src/main/res/drawable/kevbox_icon_background.xml",
+          "fingerprint": "df5fc51ac7b667386f69d795797d59698353dc044375bf9f36209e59f7124cb1"
+        },
+        {
+          "item_id": "2fcaad777a4cac056470d7f5728833ce5db3793af9d4a1c9d7026969b4af0d62",
+          "path": "app/src/main/res/drawable/owntv_splash_olive.xml",
+          "fingerprint": "a54c0b6549273c41e8f471e8f899af75e50553e5610dcbffe5d110257320efb9"
+        },
+        {
+          "item_id": "35e898131f2db86e6d422997c3869a34ec82294a65b1b0b25ea81383efbbee89",
+          "path": "app/src/main/res/values-pt-rPT/kevbox_brand_strings.xml",
+          "fingerprint": "2a07819bda60a9b21d20cd556441199f66d03bf59fb58f1238307c49e3581f9d"
+        },
+        {
+          "item_id": "39b7c10295b5a08d15252e1926e1e19537d4cc77e7330c4ccb502c303a9ddb90",
+          "path": "app/src/main/res/drawable/owntv_splash_sunflower.xml",
+          "fingerprint": "3908051b90db6f9d8a6fa45da78082d92866fc5a3d946eb4f7bf723e6730ac61"
+        },
+        {
+          "item_id": "3e8993f92b9e45b8e3598e2cadd16b0dbe7f414d329fc552b0dc917d61760d5c",
+          "path": "app/src/main/res/drawable/owntv_splash_board.xml",
+          "fingerprint": "ccaa7d46373cabb1d6a6a0bfd01b95d2285038b8a71c903541a07d038087370e"
+        },
+        {
+          "item_id": "41675d757a1610b710cbf9277d9df424fb4aa721aa32f875c7fb4cfd165d04f2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/expiry/ExpiryMonitor.kt",
+          "fingerprint": "3e933dda605503ef27a57e12a9103d0f25cfb476e09525ca1dcc19995afaa83f"
+        },
+        {
+          "item_id": "41881bcd844544daea38dfa851d8ce27293642d3d08b8e6c60f35d6b818f7074",
+          "path": "app/src/main/res/values-nb/kevbox_brand_strings.xml",
+          "fingerprint": "015f331c019f028cbd1422e4d97c7eb144cffe54104fb8f9d2dcc19787806700"
+        },
+        {
+          "item_id": "4575c0f51518268e426d4fc6638eb63ad6c960d47ae43f876f010faf0f80efaf",
+          "path": "app/src/main/res/values-ml/kevbox_brand_strings.xml",
+          "fingerprint": "b2fdb76e9acc85ca1547f1d7bf9be3f022be2f91a504b176ab3205611756bfed"
+        },
+        {
+          "item_id": "520e7438075203620b9fd2ba87cdb4ee3e40624d21d2b42d4c9477504db45f58",
+          "path": "app/src/main/res/values-da/kevbox_brand_strings.xml",
+          "fingerprint": "a03780c42a9358104e0dc80d3d6c013f28d4a0508e1ef8f96194a1858a314e09"
+        },
+        {
+          "item_id": "588081a7125e5b9d289bf0b5ece5ecae89df3d89445574970198d66048f9ccf5",
+          "path": "app/src/main/res/drawable/owntv_splash_tomato.xml",
+          "fingerprint": "85fbf68a47d300d7b4a38809348aa9d56cd6c26059f9881fdd6ed4ea6b8fa6d3"
+        },
+        {
+          "item_id": "5e03cbb9d7d14ca2e713f1ea7420480b3469f6ecfc092e49e3c08b677bcd8b9e",
+          "path": "app/src/main/res/values-hu/kevbox_brand_strings.xml",
+          "fingerprint": "00ef8ba2558e96039e866abea60aadad0ee630a9deb085d1aab8b834fe85d27a"
+        },
+        {
+          "item_id": "5f719ff6f0263f5d6fa06067b4cc508f16ebd5ff3ae8b6c1faa37c0c7df3b284",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/SessionStore.kt",
+          "fingerprint": "2d4f27f76337ab03320b82b3c127c29ab6d8ff5dbe613c57f1018576b7d5e524"
+        },
+        {
+          "item_id": "668e1bb39af0f14a6117e2e5fa60d51306483520ab48d7e0a891936daea64ef2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt",
+          "fingerprint": "782efffc9e32b80c762da5acc2a73914201e76d7ea7a7d9a57010e09cd97910b"
+        },
+        {
+          "item_id": "676461cedb8c7c226ee724f056efd38e222babdd0c4530ccc6d9d57ef5af6b04",
+          "path": "app/src/main/res/drawable/owntv_splash_static_eggshell.xml",
+          "fingerprint": "315dea8005f31fe23129810caf6b49e00ac80c3fef461495e7cfd6939f4a9a58"
+        },
+        {
+          "item_id": "67e737cc3de0a56edde32c209c98cfd66196f4d78b27a115bd9b454625fab270",
+          "path": "app/src/main/res/values-ar/kevbox_brand_strings.xml",
+          "fingerprint": "28b8190f2097619e86c417faa14d7f15e7d98f67e051f035df9b3abfd12fbd82"
+        },
+        {
+          "item_id": "6a2afad1068963312b61e35583e7ef601796aacbf7a22d09e3a097ac8126cb7c",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxGate.kt",
+          "fingerprint": "738f4b2c343879d77d28ac6434316f80c6ac1ecc09628360820d17705e19c43e"
+        },
+        {
+          "item_id": "6f6d88943ed1fe3ab571eb100d8acc603d2c56460def14d7d03ffadaeeb30721",
+          "path": "app/src/main/res/values-sv/kevbox_brand_strings.xml",
+          "fingerprint": "0bbb8518744474239fcedd8b23ae5831ab09d8afff2456698cb6cfd900b8e81c"
+        },
+        {
+          "item_id": "6f856bc7c1732e0e95b38842f0cef38902d87d789edc12b3d6ea5f92cd9aeeb5",
+          "path": "app/src/main/res/drawable/owntv_splash_static_tomato.xml",
+          "fingerprint": "32ccda8eebb2b7d6b4758ccfd4c1d8463ae6bdf72d0451c40eff893fba27a0e0"
+        },
+        {
+          "item_id": "70c36a70a0efac805a1e361b6311dc92acdfaf5e525670fb8b8a544883cdbadc",
+          "path": "app/src/main/res/drawable/owntv_splash_static_petrol.xml",
+          "fingerprint": "69c02bd30fc695640873596420a9deebdfe426e9b0e75bd024229b40fbf7b28f"
+        },
+        {
+          "item_id": "738fbd154541eedba5894defd67db39a64d8ce1efdb302c41a4523133c93c0a4",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt",
+          "fingerprint": "85033165c957aba2161fcdf3e6f2015e057da6c9690dc249617e8fd9dcde07c2"
+        },
+        {
+          "item_id": "74ace147ea93f7da86f3c19a2a14ffeb8bdc37713a22ab036576cf1319cc11eb",
+          "path": ".github/workflows/automerge-core-bump.yml",
+          "fingerprint": "80127014f2f4df47158e7f8fe616fe0de10006911f324c24c70472011609c8a3"
+        },
+        {
+          "item_id": "74d2bd8ac6e928503fecbfee09d8e8e9dbb115d168746cd935928063eadc85e9",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_cobalt.xml",
+          "fingerprint": "fa9598eaa4368a30ef14a0fed27b82fb9f8f9fcd48f87cb59dce316e2eb7bf99"
+        },
+        {
+          "item_id": "7b6c87212bb9cf80828f602cb0422c1d7277a8a6dec3e60589c0db828211d05d",
+          "path": "app/src/main/res/values-es/kevbox_brand_strings.xml",
+          "fingerprint": "dada440d3139ea250dba25e7d7895a0d5139daa8959cb19308f968d467bd9829"
+        },
+        {
+          "item_id": "7c09cbc81b75eba400cb07bab7706aac0e9f6bc0312645c000b5bc892c23599b",
+          "path": "app/src/main/res/values-ru/kevbox_brand_strings.xml",
+          "fingerprint": "3fa1f4619296644ed03cd5afe9c7b295eb13b5ade44eca1568f1895b97ee3b84"
+        },
+        {
+          "item_id": "7c4b364aafad7e5eea0875a0560d2b2ae7c2bdb0de8357bdec0b3fd8919e800b",
+          "path": "app/src/main/res/values-es-rUS/kevbox_brand_strings.xml",
+          "fingerprint": "c328145b3fb0ed33d411ff2e9bb590ebd057d085d45140137a00b6f34f946665"
+        },
+        {
+          "item_id": "7ce53a48991fc1d5076985784b11fdbe7834f6562e79967d5be9085ba47df6de",
+          "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+          "fingerprint": "9490adbcf6eb1117da9ffe9d836007c5bad34cb311d0f7a5a0683d7597094655"
+        },
+        {
+          "item_id": "7e31c95b45e9ade22ddc3051a2978b6b9af2cc057d427f91eda9c6762d6a7995",
+          "path": "app/src/main/res/values-bn/kevbox_brand_strings.xml",
+          "fingerprint": "9d86af75ea0c2111e86b36adf40fd5438bf4c63c60cfeee3434a314634902ec7"
+        },
+        {
+          "item_id": "804bf8c2d53d493ce6dc56c675efbf70d2122bfdea98fdb6cb4a0b5fb9632bfa",
+          "path": "app/src/main/res/drawable/owntv_splash_olive_cream.xml",
+          "fingerprint": "99fcc21ec0216a37424c937dfae9493e9d94cce4ee83c737555e91e871086d3e"
+        },
+        {
+          "item_id": "85d04f9eabcf5c7b891917e71fdbc6a0eca52cb722e5acb8048dbd97bc869bf5",
+          "path": "app/src/main/res/drawable/owntv_mark_play_small.xml",
+          "fingerprint": "5137936d51b42c4bb6facba6f17299eb59c764dfcab0066134cd88ffcf975bd9"
+        },
+        {
+          "item_id": "8b5aeacd45efbf1196ec88abdf709829751a174c9170102c2963f8d0c679a806",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt",
+          "fingerprint": "50de1a80c7f5efc6fe573085869f716671ae64464ba151baf20745e66d15efeb"
+        },
+        {
+          "item_id": "8daba089c3583fc25c60d6fded5ce851496e5016a1e9765246cf5607adb4e388",
+          "path": "app/src/main/res/values-eu/kevbox_brand_strings.xml",
+          "fingerprint": "cda95b8d50496367bddcff13bdad35c8042290e7af4e23bd332b0ed111998752"
+        },
+        {
+          "item_id": "8ebb8184b41d816fc187c03279a9de16e2d893e1b03a34edc0e288bfaff1b543",
+          "path": "release.sh",
+          "fingerprint": "d6b40da7fa3ff78b79123ab1a43d83d0a6e9ed429099146d5cfc946de1178e1f"
+        },
+        {
+          "item_id": "900ae40dcb3ee194b79aa68c0146a283920197430494a9a73e56f0fd6f24a6a4",
+          "path": "app/src/main/res/values-nl/kevbox_brand_strings.xml",
+          "fingerprint": "295db8e5a8277e1db0eeb7252b0febc0c8406232e86cbc95314b7035bb5f72f1"
+        },
+        {
+          "item_id": "92bf7497889db9c0f174e934d94d5a3ce6439aa7530b5a4658530e6d33976035",
+          "path": "app/src/main/res/values-ja/kevbox_brand_strings.xml",
+          "fingerprint": "f7f61b850f56e6434024f697c7aacd4072b1bb4b249e1198d514d56e8f31ccce"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "1bbe129b308bd332abedd4f4ecb3966e0d1f0a4164be8102c2ef67eed327eb3c"
+        },
+        {
+          "item_id": "95e2beecffdc70b6174c4deaa6e68650dda44cf7816d7ac95ac796c013f8e764",
+          "path": "app/src/main/res/drawable/owntv_splash_static_cobalt.xml",
+          "fingerprint": "3ff65d6416a70cf61e9f18faffa769b6d6e6967d45b8f61d28f4ea648a12b400"
+        },
+        {
+          "item_id": "974e87c92e8629953adc992d6cf5400fb2c053e5efde3036562cfee218e04aa5",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_pixel.xml",
+          "fingerprint": "4a50f7dbe1f412faf73044744bc2c9a8b78750d6c92a214ef272b7ea54d67430"
+        },
+        {
+          "item_id": "98adb9c0f6c303cd6ced911a375a1642eda7f430d08f4ca4d691b42d30c614f4",
+          "path": "app/src/main/res/values-ko/kevbox_brand_strings.xml",
+          "fingerprint": "2c6cd86adcadd6f676ff8d75a4fabb57c0063106a43f680ce2f86b6330fb7748"
+        },
+        {
+          "item_id": "9e5fd477697272d3d3f98eba0a73bd304aad4e74a9415fa4a1cf793fc5a8b778",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt",
+          "fingerprint": "9ed5267c748896f5299f666819d644b1692560d0dd9092ca70d54467e5e846ff"
+        },
+        {
+          "item_id": "9f18b4c30e9c70373e8bba1289c21e5ed2be1075ba6ba08a77d559d7638ebaf0",
+          "path": "app/src/main/res/drawable/owntv_splash_static_sunflower.xml",
+          "fingerprint": "3a9c108b1dcd5b5e5d8f9202fb68b839c66995b6d6054c3f072ec3c5e43b1f9c"
+        },
+        {
+          "item_id": "a2c67b7d6a8446a581216c7a503b97eca0e04778787c023eeb1b212c51c043fe",
+          "path": "app/src/main/res/values-de/kevbox_brand_strings.xml",
+          "fingerprint": "ae3a42ce69039e65863545ad05c837d3a366a3288eb9a5bc0d10d96a4d8b4377"
+        },
+        {
+          "item_id": "a3301aed91cd1ea3caf065b3d19ff0825d6efbccd4be87d8966f7e6c8c9296d8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/access/AccessMonitor.kt",
+          "fingerprint": "de94e634c4c724db3a15a96e70a05ae46aef685f9d79ebad9b55d14965099895"
+        },
+        {
+          "item_id": "a3b8b2a2f0af70357e11e72cf8abd52be8bf6b20630a54cb4a1b7ebe8c16dc15",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/SignInScreen.kt",
+          "fingerprint": "c2e109be3b036496b6ae3a0a24aedcc601500581bb5d07309e73e21c67f96195"
+        },
+        {
+          "item_id": "a5343afc40918ec1b8eda239bca9597eca2af7e50b5e13152e7e46bde88a9dc2",
+          "path": "app/build.gradle.kts",
+          "fingerprint": "f5a8bd093229456de7b05ae475e688c01914fe43f6d51e0d70d365bbbebf7a1b"
+        },
+        {
+          "item_id": "a8246682b32f27d549d61af003a44430be3f096f8e2b4bf8aeadce832d636465",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/ExpiryPopupHost.kt",
+          "fingerprint": "5da12a47be4a97c23e2f6b750a2f95b1ba7a484202480dedda50c7a1ab5a4a81"
+        },
+        {
+          "item_id": "a9be246db667e5cb54154dd809e246d7cf56fb5172e91ad1ef1c4fc82e8b90e0",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/ChoosePlaylist.kt",
+          "fingerprint": "8b8c86f2aa20f88588facd5f04fcecee1b9db03a0e1963f8f1a3765fb2acd205"
+        },
+        {
+          "item_id": "a9d448b2582da82729b96a6af32e73891ce28e7cd9ba7d5784fac7adf39c0ade",
+          "path": "tools/kevbox/rebrand-strings.py",
+          "fingerprint": "d3804fa9531e860dfe77abce3c811183de2c0650b2cae0d81122d2c34447ac3a"
+        },
+        {
+          "item_id": "a9f0587e23d956e145a53f842abfc6186eb54cc1d6abeb5ec6ec07b2f0b92bec",
+          "path": "app/src/main/res/values/kevbox_brand_strings.xml",
+          "fingerprint": "7f58ab037c6cde88f8de7404c7bd7294a8d6f59aee1a32d9b180af9cd3792889"
+        },
+        {
+          "item_id": "ab0931b9eef9304d904ff1c728f79a91bf392b0dde7f7e4df37eced3c447ac09",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_olive_cream.xml",
+          "fingerprint": "cd002b56e1b0252c1fe4909cc3e8f46746b0cf43568c1049f3c4672fa466a303"
+        },
+        {
+          "item_id": "ab6793c6e847893ba1e4c24649cf1397ae8f5e1a2bbbb3d216c99c66de35e13f",
+          "path": "app/src/main/res/values-it/kevbox_brand_strings.xml",
+          "fingerprint": "b45fd74e26ff3ccea63666bb21f36229f402cbcdcbd0c3084c1b31bbd2ea0d38"
+        },
+        {
+          "item_id": "ae0a8d95e462a999024a992a2f5c0185f52df01ffba1a742a563bf19508df73f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+          "fingerprint": "38c3e380f38cae3abdd5511c7c7ad1eff67df33a6f915948c9def2e0acd79f16"
+        },
+        {
+          "item_id": "aee3b1f00d3b8ee155a1c70821fc236c9c1ff7be4dd20f958ed1cf1eb98d7c76",
+          "path": ".gitignore",
+          "fingerprint": "ef443c3da2c818dd9eda13f8c0299a49b84d1c32c4159f6d6201591bd93dc70d"
+        },
+        {
+          "item_id": "afa4a18fa1fab4abac7498af1520dd993101c14bc8ca814d750e1061c310eec8",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_olive.xml",
+          "fingerprint": "530015c4eceae4e6f2a0f5569a70343d3e9e01eec08d005d82546304302a1c37"
+        },
+        {
+          "item_id": "b3577f7090adf779a6c422d84312e0d44097175194efdc48871c5f53f41c604e",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_board.xml",
+          "fingerprint": "195cf1772504955a42d4d4f8abdcf31f7e77e7af1214fabe71f97b0f39a0ae29"
+        },
+        {
+          "item_id": "b4994f701f8a1c0bdc19f924bc82a28beaa3211c62bdee866e731553af22aadd",
+          "path": "app/src/main/res/values-zh-rCN/kevbox_brand_strings.xml",
+          "fingerprint": "96828134d8403b4414f2f09c9b6324145ce654916434f49f363b9559affa3b70"
+        },
+        {
+          "item_id": "b62ca0033f1e240bbe168165bc0e8693dea9490235e95e5f7260078794b60ef9",
+          "path": "app/src/main/res/drawable/owntv_splash_petrol.xml",
+          "fingerprint": "28272986a16af0e4f63d48f82e3a56f3e6c4aa6a0769d93150e11ae6feed95ab"
+        },
+        {
+          "item_id": "b98408c6e83e26ac5718b7700dfd4e5a34142544e7262d606d11f3b2a16babe9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/ReconcilePlanner.kt",
+          "fingerprint": "c477449e6b052a50e789eb8168f11d5680ff63887431774f0c8950c8bcdd824f"
+        },
+        {
+          "item_id": "bbba5fea5f633ca415f0ea20e5fb65758f35aa5b3bfd9f766f56c88b9f20a75a",
+          "path": ".github/workflows/release-notes.yml",
+          "fingerprint": "b864bc6467c578e963f8d85e3576f368ece1e5a85a2f7773fac91cd20e41d6f8"
+        },
+        {
+          "item_id": "bc0026edc028dd04848ad659ab0d77857592179c0011ce8814eb0b1a500ec571",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt",
+          "fingerprint": "948da548eedc3ec5b71f7bef8e88fac218028ee55edbcc4e29c6eb03f9c2a6ea"
+        },
+        {
+          "item_id": "bd5a8b2996f580226152cd983dad80a5bb8d7d23a2a34c2b71f03bcbce604dbe",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_eggshell.xml",
+          "fingerprint": "4cb88ebd2ab7a988ee9ec82aa91b41355589bb4c9ae367d57bae94327384be87"
+        },
+        {
+          "item_id": "bd9770009be53cae20864c14f3f829db7197f8e7478bd2ec5b8d3cc75976fbf1",
+          "path": "app/src/main/res/drawable/owntv_splash_static_olive.xml",
+          "fingerprint": "aa82c5ff769f19fc46e8a13a2dbca112ed01f27d5ad5890f82558fb0cc55a862"
+        },
+        {
+          "item_id": "c49af9b1275e4d91e638dd9e9ad4498cd510b960549bd61b696ac5414d1a37b7",
+          "path": "app/src/main/res/drawable/owntv_splash_static_olive_cream.xml",
+          "fingerprint": "c3bc125f4d59aa8c534e8533c1d20120195efe67abe70efd0dd0d298a031042c"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "485ecb539891a986a54ec7383c896ff5020696f323f770c84cc56a54007b552f"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "c667a3f8f2dab2403df258c694a68cba72de4487ba13b94be4645eb139d3cdb1"
+        },
+        {
+          "item_id": "ccbcea3a4cb1eb9a6cf643aa5f88703c731eec459d6d206294ee1eb2b3901d06",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxViewModel.kt",
+          "fingerprint": "69ef26955725135a9b35a1cd6a26ffdeffb03cd1d18a5456eefb9dae67d89065"
+        },
+        {
+          "item_id": "ceffeb87fe1cec7728023c952a66b5889825a508c3309a8381e18ebba0b0d953",
+          "path": "tools/kevbox/core_res.py",
+          "fingerprint": "1388717eedab77c2872d375bdf598b3c68d4dd954ced5dae725383bf4efce295"
+        },
+        {
+          "item_id": "cf1b4a639f42ddbed230d0556034c87d3fdfafece974b3e7783f9d4290b66a85",
+          "path": "app/src/main/res/values-hi/kevbox_brand_strings.xml",
+          "fingerprint": "5a37194ce9974940f562c133471d87506eb448ebbcdd90faa8d96dcccd2e05ce"
+        },
+        {
+          "item_id": "cf4a243a351868b81a8fe1aa5113a6a441651f98de37934c6e32e93f9333934f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/KevBoxVersion.kt",
+          "fingerprint": "34df3268f4f69cbb6c0e6152720f28bb2465f43579274571f2c26b6a6c80d0a8"
+        },
+        {
+          "item_id": "d37c1c3c8acea14ee05124c8dae4d86cb9fcebb494b393350e12227be5ebb8d7",
+          "path": "app/src/main/java/tv/own/owntv/features/setup/SetupWizard.kt",
+          "fingerprint": "f24b57280d8ae3cf67360734f5a5cf199829f9e65992981d8efe7aeab7bcbb7c"
+        },
+        {
+          "item_id": "d5c7f92201be90a5df2af4d9e264149eea6680c9ffa7f25860e3a4c61d4e8888",
+          "path": ".github/workflows/android.yml",
+          "fingerprint": "858bb506cfe1fed938b61da360287a5fc2abd135aaa8b6f6b5bfa7153ed40cdb"
+        },
+        {
+          "item_id": "d6a5c4b4af3a87cf71e160d13002c197b2653e691d16475e9d1920efe6b62f67",
+          "path": "app/src/main/res/drawable/owntv_icon_monochrome.xml",
+          "fingerprint": "cab085af9db11505754fee170b2d3b27a6007381ffe29735e695b5b7623b8aca"
+        },
+        {
+          "item_id": "da73ebce5e837ba89a3dfeb800dba72571b53deb5e70955c5ef40df251e7cbbe",
+          "path": "app/src/main/res/values-cs/kevbox_brand_strings.xml",
+          "fingerprint": "17c81e44f83fb36ac76d3cb9b279679808aac9a59d8a7dba40e91fa6e57f187c"
+        },
+        {
+          "item_id": "db1daa201362508c2daa84b1980b2e9808e98270c951080d99ad669b5c13ed25",
+          "path": "tools/kevbox/version.sh",
+          "fingerprint": "6e1668dcf8c98c91ab96f476902d5118791fa9cbb1a2ed496a500420d8b2c3f0"
+        },
+        {
+          "item_id": "dd2bc5bd452923fe4c1a97517676045b15650be81cda4e874aae4c161536b560",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/ContentPane.kt",
+          "fingerprint": "4b2af76613928eef5f1e9056172ff7f7c642a617fe1ad89591b62bb5ceb8ba94"
+        },
+        {
+          "item_id": "de0836ee966f434d4dadc0ad54add7d1df1ca431d23e90ffe73284492a27535e",
+          "path": "app/src/main/res/drawable/owntv_splash_pixel.xml",
+          "fingerprint": "eea955268597ab0547c272832e4d9f1309287642b0a69362f74bc5e5474bfbb1"
+        },
+        {
+          "item_id": "e2503b07ae36d0f0f7388028a28ed67fe11ce36d3ce91247d7aabe46e9835a7f",
+          "path": "app/src/main/res/drawable/owntv_mark_play.xml",
+          "fingerprint": "5c0c8111fc6247be2a07f814fa500a946313ce2ad33c9d493821cca2856b735e"
+        },
+        {
+          "item_id": "e317c895eb0d066f4fa454f75277bf4180ed97cc4b583c0806593e3518c8f149",
+          "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+          "fingerprint": "4ab19cb44b833b8f648c1515239c209bf6de0741cef2092e6c824420d61a9f9f"
+        },
+        {
+          "item_id": "e7ea3ff86e1e2aa53029913c0306322ece643be1a6163b0e22df9af488513e45",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_tomato.xml",
+          "fingerprint": "5903a6d4d44804d0389eb10bc81ca8a554dea3a561783013c7cce9424f8c472f"
+        },
+        {
+          "item_id": "ecc1d4912cd6ca85a1d46e54e608f8a8e346775a7296367a87cd8948c3cb2a05",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/StatusScreens.kt",
+          "fingerprint": "1156c0494bd0d273a3a462026b9e2e89f2d9e285ffac15394dc3eee49eec1420"
+        },
+        {
+          "item_id": "efee915edb57f965c42b5d67e96128e4f0dbdb21a8a8cbef6ff1dbee7a3be1dc",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/PlaylistReconciler.kt",
+          "fingerprint": "d60676e16425ff258b0c80cbcec2a3467c6fc60c89a991c8436f0c52dd3ba50f"
+        },
+        {
+          "item_id": "f08c0f0ffdd47301d9d5945dbee2be870794670643dd0fbc54be8fd17a4053ad",
+          "path": "tools/kevbox/rebrand-art.py",
+          "fingerprint": "87ff3a94fef46219cc4f0723f3c1263398e7e4f80f0abedbdadcead1cd756d81"
+        },
+        {
+          "item_id": "f2200b5c12e6a1648efea618665befdb20a047722ca9aa80665d992448beeb66",
+          "path": "tools/kevbox/check-brand.sh",
+          "fingerprint": "a795b8754b7143e1e6fa6db0c22e851b2e23c1d3aa583ae94da39efcd33a50fe"
+        },
+        {
+          "item_id": "f2ad3a2f2d9f0d25aa84d24059894483e976e82f1cf99cdde5dd3f8b0367a4b8",
+          "path": "app/src/main/res/drawable/owntv_splash_static_board.xml",
+          "fingerprint": "cb0560ec34629b9bafddbdfda652c1f4b3349ad5211463057af4685f9576792e"
+        },
+        {
+          "item_id": "f3dfa3fb3e268ebbe17cce7d5561d128b18ce577573a875540da89c5d6759b8b",
+          "path": "tools/kevbox/e2e/fake_xtream.py",
+          "fingerprint": "224dcb0c5b0370e5b874dab6d773ded4b23aa12eac4b26f243eb5d3c6fd63b1e"
+        },
+        {
+          "item_id": "f441f5cd4f0e7f773ac9aa9f7e87a149f019ee66664dd3b624ebe455b32cb1ac",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_sunflower.xml",
+          "fingerprint": "7ed95e3107bf3691e2dacd47c32294f184984bd5524d299602d2041b78973388"
+        },
+        {
+          "item_id": "f596194353a86187e22997c3865f5e2dccb4ea3b840042b8285309d891e799e9",
+          "path": "app/src/main/res/drawable/owntv_splash_eggshell.xml",
+          "fingerprint": "e936f9ee843c378371299a70df07c9e90aed4be89f929aed51633e2ad866d903"
+        },
+        {
+          "item_id": "fb227493713ab2fa5e2c33b18ff4b0e1c8256cd050e6bca111e30ed376ba7ab9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+          "fingerprint": "3bd3c64accf80a2f5a194e7c1a07cace3e45dea95aec9197632ec0c05562429b"
+        },
+        {
+          "item_id": "fcb7df3761d28f880145a035cbc3bbe6158ddfc13f3927e5e349cd673a28d5b9",
+          "path": "tools/kevbox/test-release-checks.sh",
+          "fingerprint": "59e92f3d20073a45af4a77b45f6e75f0596c04cee85904e3327e8a9529ef30be"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "006a9445f141ecbdde0bd74bc5c37cb147cf4824bd046fe57beddc99f0c8691f",
+          "path": "tools/kevbox/check-divergence.sh",
+          "fingerprint": "f45a4f1e814689aa25724d634f8a1ee6df9eb79f048354ef3d629cd08eaeaa77"
+        },
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "2672362eb056f6859f5a519b691f2957ffd02d503a6522f816d6d79f7f803649"
+        },
+        {
+          "item_id": "0a3514cbd582ff57dcdbe1db91c8091225a35d0211dc7680fa72c71adac8172c",
+          "path": "app/src/main/java/tv/own/owntv/player/PlayerHud.kt",
+          "fingerprint": "a51bbf94c32fd655597a5179e94820fd14ce9ac7937578ca5c877142f2e441d9"
+        },
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "b6201dde80e6b55e747008acdc5d8471eb08c741f984e907f07dac90df0cda23"
+        },
+        {
+          "item_id": "0c7ff254c5aa300dde5b72a8625b9ae3718aba3dc6d9ba4199d553f941d0002d",
+          "path": "app/src/main/res/values-pt/kevbox_brand_strings.xml",
+          "fingerprint": "58f69cb02f8c6c08493f0ef30288c9c97e2860d6c6dc861b436ae571b19bacb4"
+        },
+        {
+          "item_id": "0f6f03225684f09a2d1259ea2a152f434c1aa16de885c25b224db0bca1423a11",
+          "path": "app/src/main/java/tv/own/owntv/features/more/MoreScreen.kt",
+          "fingerprint": "203ef7d34159ac3c1cdce8ccfb11352eeec9588582cd4270cdcb174a60d55728"
+        },
+        {
+          "item_id": "11f4b9f18f69d781cbcf8761482b2009a3b6d1a26b360d2f7a8df67a927ab36b",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_petrol.xml",
+          "fingerprint": "8a8e203adb94f292e50b46e1a639a8004a5a895dfc4d60170e945c33758e3a28"
+        },
+        {
+          "item_id": "150a985974fd7380c6b4abe112cd268b96632bc65f87e4e5fac002e56ac8828e",
+          "path": "app/src/main/res/values-en-rGB/kevbox_brand_strings.xml",
+          "fingerprint": "c01ba42c4745d39c1d0afefde828c723c924d386ae0a25fd617b6fd953490499"
+        },
+        {
+          "item_id": "15d5d21cd02c6c99198382e6fbc7fde3146b9527578d6c203cb2125b569fabaf",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/AccountPage.kt",
+          "fingerprint": "8238f2ff87196bf4094c6921e7bdca6e531cd687b6c7a0e70838e766ba4b557d"
+        },
+        {
+          "item_id": "1c82827c1bbd81e7265df540a2a19d6bfc8dc0bff84137c7bb6d871f6d005d47",
+          "path": "tools/kevbox/release-checks.sh",
+          "fingerprint": "996ea695c785c6312ae4b0096afecbbbe7f11615470961b6efa7831073f8fca9"
+        },
+        {
+          "item_id": "1d7e5f14ef311db69bbbd3207572b15d69cd354d986070173c8cb80f308728c1",
+          "path": "app/src/main/res/drawable/owntv_notification.xml",
+          "fingerprint": "8ef4065ea3f85d31d7840fbc5c950a69e469acdfeeca96c9c8c520471f5024a6"
+        },
+        {
+          "item_id": "20232d84cd4ec00ff590b6a63bd9eeda4cee16145425e90b4abc1e74977b6a89",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/LockedEntries.kt",
+          "fingerprint": "d43c21deb145f68b718efbbc8c7f5b963a14864940c8d90213237efc8945c3f5"
+        },
+        {
+          "item_id": "21f5b7ba7deffdffd82de2993f48b1b136c94061cfb7396716505791b579432d",
+          "path": "app/src/main/res/values-pl/kevbox_brand_strings.xml",
+          "fingerprint": "e442ebea36c6999487ea49cc51fc1905075e657bca5cfb489def2f949e2a5192"
+        },
+        {
+          "item_id": "24e7e6b349d872efb44272797b9bd561e944ac5b9e4d8509a925564d00b9b1d0",
+          "path": "app/src/main/res/drawable/owntv_splash_static_pixel.xml",
+          "fingerprint": "c92511830489c8e590d82ac76d5e0f06094ca3bf49d931951bc856f82772d4ea"
+        },
+        {
+          "item_id": "27c5d4271e95f72ec42008b086ffd9fe5f6b0340cd6a202cc4b6de1764032a17",
+          "path": "app/src/main/res/values-zh-rTW/kevbox_brand_strings.xml",
+          "fingerprint": "93199aa5763eac69d3638c75a54e0e5b797d4dd09d8264c0654d73ecbb3e49e7"
+        },
+        {
+          "item_id": "29810a5ea480d4f61ce2dd929ec88183d7852ea4705c0801c20d65eece083b5f",
+          "path": "app/src/main/res/values-tr/kevbox_brand_strings.xml",
+          "fingerprint": "45759eec8cd1ea38ffe84b9e57b55185236a20c1e02640b0cd43d9c03266885d"
+        },
+        {
+          "item_id": "2c0c1c60d7bc131b8eb3402f373b48c0ba3a0a4f10431c0a6c5a27f7e46bf4b1",
+          "path": "app/src/main/res/drawable/owntv_splash_cobalt.xml",
+          "fingerprint": "90d4b3a0466fdcc58657f1484102c39d99cd166b41efa86fed8f8ef138dadacf"
+        },
+        {
+          "item_id": "2e9a7ea7802bfdb8500c06106d8d1476378f53a7cca20da4303b1658dbe14563",
+          "path": "app/src/main/res/values-fr/kevbox_brand_strings.xml",
+          "fingerprint": "310e2d592fae4450bf944a829cfd46c0260abae977cd9c48ee1069d975fc6bde"
+        },
+        {
+          "item_id": "2f5da75a6cb4bc675908fa5df8aeb54182c333ccc34c02094e4679df6d99f3a9",
+          "path": "app/src/main/res/drawable/kevbox_icon_background.xml",
+          "fingerprint": "df5fc51ac7b667386f69d795797d59698353dc044375bf9f36209e59f7124cb1"
+        },
+        {
+          "item_id": "2fcaad777a4cac056470d7f5728833ce5db3793af9d4a1c9d7026969b4af0d62",
+          "path": "app/src/main/res/drawable/owntv_splash_olive.xml",
+          "fingerprint": "a54c0b6549273c41e8f471e8f899af75e50553e5610dcbffe5d110257320efb9"
+        },
+        {
+          "item_id": "35e898131f2db86e6d422997c3869a34ec82294a65b1b0b25ea81383efbbee89",
+          "path": "app/src/main/res/values-pt-rPT/kevbox_brand_strings.xml",
+          "fingerprint": "2a07819bda60a9b21d20cd556441199f66d03bf59fb58f1238307c49e3581f9d"
+        },
+        {
+          "item_id": "39b7c10295b5a08d15252e1926e1e19537d4cc77e7330c4ccb502c303a9ddb90",
+          "path": "app/src/main/res/drawable/owntv_splash_sunflower.xml",
+          "fingerprint": "3908051b90db6f9d8a6fa45da78082d92866fc5a3d946eb4f7bf723e6730ac61"
+        },
+        {
+          "item_id": "3e8993f92b9e45b8e3598e2cadd16b0dbe7f414d329fc552b0dc917d61760d5c",
+          "path": "app/src/main/res/drawable/owntv_splash_board.xml",
+          "fingerprint": "ccaa7d46373cabb1d6a6a0bfd01b95d2285038b8a71c903541a07d038087370e"
+        },
+        {
+          "item_id": "41675d757a1610b710cbf9277d9df424fb4aa721aa32f875c7fb4cfd165d04f2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/expiry/ExpiryMonitor.kt",
+          "fingerprint": "3e933dda605503ef27a57e12a9103d0f25cfb476e09525ca1dcc19995afaa83f"
+        },
+        {
+          "item_id": "41881bcd844544daea38dfa851d8ce27293642d3d08b8e6c60f35d6b818f7074",
+          "path": "app/src/main/res/values-nb/kevbox_brand_strings.xml",
+          "fingerprint": "015f331c019f028cbd1422e4d97c7eb144cffe54104fb8f9d2dcc19787806700"
+        },
+        {
+          "item_id": "4575c0f51518268e426d4fc6638eb63ad6c960d47ae43f876f010faf0f80efaf",
+          "path": "app/src/main/res/values-ml/kevbox_brand_strings.xml",
+          "fingerprint": "b2fdb76e9acc85ca1547f1d7bf9be3f022be2f91a504b176ab3205611756bfed"
+        },
+        {
+          "item_id": "520e7438075203620b9fd2ba87cdb4ee3e40624d21d2b42d4c9477504db45f58",
+          "path": "app/src/main/res/values-da/kevbox_brand_strings.xml",
+          "fingerprint": "a03780c42a9358104e0dc80d3d6c013f28d4a0508e1ef8f96194a1858a314e09"
+        },
+        {
+          "item_id": "588081a7125e5b9d289bf0b5ece5ecae89df3d89445574970198d66048f9ccf5",
+          "path": "app/src/main/res/drawable/owntv_splash_tomato.xml",
+          "fingerprint": "85fbf68a47d300d7b4a38809348aa9d56cd6c26059f9881fdd6ed4ea6b8fa6d3"
+        },
+        {
+          "item_id": "5e03cbb9d7d14ca2e713f1ea7420480b3469f6ecfc092e49e3c08b677bcd8b9e",
+          "path": "app/src/main/res/values-hu/kevbox_brand_strings.xml",
+          "fingerprint": "00ef8ba2558e96039e866abea60aadad0ee630a9deb085d1aab8b834fe85d27a"
+        },
+        {
+          "item_id": "5f719ff6f0263f5d6fa06067b4cc508f16ebd5ff3ae8b6c1faa37c0c7df3b284",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/SessionStore.kt",
+          "fingerprint": "2d4f27f76337ab03320b82b3c127c29ab6d8ff5dbe613c57f1018576b7d5e524"
+        },
+        {
+          "item_id": "668e1bb39af0f14a6117e2e5fa60d51306483520ab48d7e0a891936daea64ef2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt",
+          "fingerprint": "782efffc9e32b80c762da5acc2a73914201e76d7ea7a7d9a57010e09cd97910b"
+        },
+        {
+          "item_id": "676461cedb8c7c226ee724f056efd38e222babdd0c4530ccc6d9d57ef5af6b04",
+          "path": "app/src/main/res/drawable/owntv_splash_static_eggshell.xml",
+          "fingerprint": "315dea8005f31fe23129810caf6b49e00ac80c3fef461495e7cfd6939f4a9a58"
+        },
+        {
+          "item_id": "67e737cc3de0a56edde32c209c98cfd66196f4d78b27a115bd9b454625fab270",
+          "path": "app/src/main/res/values-ar/kevbox_brand_strings.xml",
+          "fingerprint": "28b8190f2097619e86c417faa14d7f15e7d98f67e051f035df9b3abfd12fbd82"
+        },
+        {
+          "item_id": "6a2afad1068963312b61e35583e7ef601796aacbf7a22d09e3a097ac8126cb7c",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxGate.kt",
+          "fingerprint": "738f4b2c343879d77d28ac6434316f80c6ac1ecc09628360820d17705e19c43e"
+        },
+        {
+          "item_id": "6f6d88943ed1fe3ab571eb100d8acc603d2c56460def14d7d03ffadaeeb30721",
+          "path": "app/src/main/res/values-sv/kevbox_brand_strings.xml",
+          "fingerprint": "0bbb8518744474239fcedd8b23ae5831ab09d8afff2456698cb6cfd900b8e81c"
+        },
+        {
+          "item_id": "6f856bc7c1732e0e95b38842f0cef38902d87d789edc12b3d6ea5f92cd9aeeb5",
+          "path": "app/src/main/res/drawable/owntv_splash_static_tomato.xml",
+          "fingerprint": "32ccda8eebb2b7d6b4758ccfd4c1d8463ae6bdf72d0451c40eff893fba27a0e0"
+        },
+        {
+          "item_id": "70c36a70a0efac805a1e361b6311dc92acdfaf5e525670fb8b8a544883cdbadc",
+          "path": "app/src/main/res/drawable/owntv_splash_static_petrol.xml",
+          "fingerprint": "69c02bd30fc695640873596420a9deebdfe426e9b0e75bd024229b40fbf7b28f"
+        },
+        {
+          "item_id": "738fbd154541eedba5894defd67db39a64d8ce1efdb302c41a4523133c93c0a4",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt",
+          "fingerprint": "85033165c957aba2161fcdf3e6f2015e057da6c9690dc249617e8fd9dcde07c2"
+        },
+        {
+          "item_id": "74ace147ea93f7da86f3c19a2a14ffeb8bdc37713a22ab036576cf1319cc11eb",
+          "path": ".github/workflows/automerge-core-bump.yml",
+          "fingerprint": "80127014f2f4df47158e7f8fe616fe0de10006911f324c24c70472011609c8a3"
+        },
+        {
+          "item_id": "74d2bd8ac6e928503fecbfee09d8e8e9dbb115d168746cd935928063eadc85e9",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_cobalt.xml",
+          "fingerprint": "fa9598eaa4368a30ef14a0fed27b82fb9f8f9fcd48f87cb59dce316e2eb7bf99"
+        },
+        {
+          "item_id": "7b6c87212bb9cf80828f602cb0422c1d7277a8a6dec3e60589c0db828211d05d",
+          "path": "app/src/main/res/values-es/kevbox_brand_strings.xml",
+          "fingerprint": "dada440d3139ea250dba25e7d7895a0d5139daa8959cb19308f968d467bd9829"
+        },
+        {
+          "item_id": "7c09cbc81b75eba400cb07bab7706aac0e9f6bc0312645c000b5bc892c23599b",
+          "path": "app/src/main/res/values-ru/kevbox_brand_strings.xml",
+          "fingerprint": "3fa1f4619296644ed03cd5afe9c7b295eb13b5ade44eca1568f1895b97ee3b84"
+        },
+        {
+          "item_id": "7c4b364aafad7e5eea0875a0560d2b2ae7c2bdb0de8357bdec0b3fd8919e800b",
+          "path": "app/src/main/res/values-es-rUS/kevbox_brand_strings.xml",
+          "fingerprint": "c328145b3fb0ed33d411ff2e9bb590ebd057d085d45140137a00b6f34f946665"
+        },
+        {
+          "item_id": "7ce53a48991fc1d5076985784b11fdbe7834f6562e79967d5be9085ba47df6de",
+          "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+          "fingerprint": "9490adbcf6eb1117da9ffe9d836007c5bad34cb311d0f7a5a0683d7597094655"
+        },
+        {
+          "item_id": "7e31c95b45e9ade22ddc3051a2978b6b9af2cc057d427f91eda9c6762d6a7995",
+          "path": "app/src/main/res/values-bn/kevbox_brand_strings.xml",
+          "fingerprint": "9d86af75ea0c2111e86b36adf40fd5438bf4c63c60cfeee3434a314634902ec7"
+        },
+        {
+          "item_id": "804bf8c2d53d493ce6dc56c675efbf70d2122bfdea98fdb6cb4a0b5fb9632bfa",
+          "path": "app/src/main/res/drawable/owntv_splash_olive_cream.xml",
+          "fingerprint": "99fcc21ec0216a37424c937dfae9493e9d94cce4ee83c737555e91e871086d3e"
+        },
+        {
+          "item_id": "85d04f9eabcf5c7b891917e71fdbc6a0eca52cb722e5acb8048dbd97bc869bf5",
+          "path": "app/src/main/res/drawable/owntv_mark_play_small.xml",
+          "fingerprint": "5137936d51b42c4bb6facba6f17299eb59c764dfcab0066134cd88ffcf975bd9"
+        },
+        {
+          "item_id": "8b5aeacd45efbf1196ec88abdf709829751a174c9170102c2963f8d0c679a806",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt",
+          "fingerprint": "50de1a80c7f5efc6fe573085869f716671ae64464ba151baf20745e66d15efeb"
+        },
+        {
+          "item_id": "8daba089c3583fc25c60d6fded5ce851496e5016a1e9765246cf5607adb4e388",
+          "path": "app/src/main/res/values-eu/kevbox_brand_strings.xml",
+          "fingerprint": "cda95b8d50496367bddcff13bdad35c8042290e7af4e23bd332b0ed111998752"
+        },
+        {
+          "item_id": "8ebb8184b41d816fc187c03279a9de16e2d893e1b03a34edc0e288bfaff1b543",
+          "path": "release.sh",
+          "fingerprint": "d6b40da7fa3ff78b79123ab1a43d83d0a6e9ed429099146d5cfc946de1178e1f"
+        },
+        {
+          "item_id": "900ae40dcb3ee194b79aa68c0146a283920197430494a9a73e56f0fd6f24a6a4",
+          "path": "app/src/main/res/values-nl/kevbox_brand_strings.xml",
+          "fingerprint": "295db8e5a8277e1db0eeb7252b0febc0c8406232e86cbc95314b7035bb5f72f1"
+        },
+        {
+          "item_id": "92bf7497889db9c0f174e934d94d5a3ce6439aa7530b5a4658530e6d33976035",
+          "path": "app/src/main/res/values-ja/kevbox_brand_strings.xml",
+          "fingerprint": "f7f61b850f56e6434024f697c7aacd4072b1bb4b249e1198d514d56e8f31ccce"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "1bbe129b308bd332abedd4f4ecb3966e0d1f0a4164be8102c2ef67eed327eb3c"
+        },
+        {
+          "item_id": "95e2beecffdc70b6174c4deaa6e68650dda44cf7816d7ac95ac796c013f8e764",
+          "path": "app/src/main/res/drawable/owntv_splash_static_cobalt.xml",
+          "fingerprint": "3ff65d6416a70cf61e9f18faffa769b6d6e6967d45b8f61d28f4ea648a12b400"
+        },
+        {
+          "item_id": "974e87c92e8629953adc992d6cf5400fb2c053e5efde3036562cfee218e04aa5",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_pixel.xml",
+          "fingerprint": "4a50f7dbe1f412faf73044744bc2c9a8b78750d6c92a214ef272b7ea54d67430"
+        },
+        {
+          "item_id": "98adb9c0f6c303cd6ced911a375a1642eda7f430d08f4ca4d691b42d30c614f4",
+          "path": "app/src/main/res/values-ko/kevbox_brand_strings.xml",
+          "fingerprint": "2c6cd86adcadd6f676ff8d75a4fabb57c0063106a43f680ce2f86b6330fb7748"
+        },
+        {
+          "item_id": "9e5fd477697272d3d3f98eba0a73bd304aad4e74a9415fa4a1cf793fc5a8b778",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt",
+          "fingerprint": "9ed5267c748896f5299f666819d644b1692560d0dd9092ca70d54467e5e846ff"
+        },
+        {
+          "item_id": "9f18b4c30e9c70373e8bba1289c21e5ed2be1075ba6ba08a77d559d7638ebaf0",
+          "path": "app/src/main/res/drawable/owntv_splash_static_sunflower.xml",
+          "fingerprint": "3a9c108b1dcd5b5e5d8f9202fb68b839c66995b6d6054c3f072ec3c5e43b1f9c"
+        },
+        {
+          "item_id": "a2c67b7d6a8446a581216c7a503b97eca0e04778787c023eeb1b212c51c043fe",
+          "path": "app/src/main/res/values-de/kevbox_brand_strings.xml",
+          "fingerprint": "ae3a42ce69039e65863545ad05c837d3a366a3288eb9a5bc0d10d96a4d8b4377"
+        },
+        {
+          "item_id": "a3301aed91cd1ea3caf065b3d19ff0825d6efbccd4be87d8966f7e6c8c9296d8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/access/AccessMonitor.kt",
+          "fingerprint": "de94e634c4c724db3a15a96e70a05ae46aef685f9d79ebad9b55d14965099895"
+        },
+        {
+          "item_id": "a3b8b2a2f0af70357e11e72cf8abd52be8bf6b20630a54cb4a1b7ebe8c16dc15",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/SignInScreen.kt",
+          "fingerprint": "c2e109be3b036496b6ae3a0a24aedcc601500581bb5d07309e73e21c67f96195"
+        },
+        {
+          "item_id": "a5343afc40918ec1b8eda239bca9597eca2af7e50b5e13152e7e46bde88a9dc2",
+          "path": "app/build.gradle.kts",
+          "fingerprint": "f5a8bd093229456de7b05ae475e688c01914fe43f6d51e0d70d365bbbebf7a1b"
+        },
+        {
+          "item_id": "a8246682b32f27d549d61af003a44430be3f096f8e2b4bf8aeadce832d636465",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/ExpiryPopupHost.kt",
+          "fingerprint": "5da12a47be4a97c23e2f6b750a2f95b1ba7a484202480dedda50c7a1ab5a4a81"
+        },
+        {
+          "item_id": "a9be246db667e5cb54154dd809e246d7cf56fb5172e91ad1ef1c4fc82e8b90e0",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/ChoosePlaylist.kt",
+          "fingerprint": "8b8c86f2aa20f88588facd5f04fcecee1b9db03a0e1963f8f1a3765fb2acd205"
+        },
+        {
+          "item_id": "a9d448b2582da82729b96a6af32e73891ce28e7cd9ba7d5784fac7adf39c0ade",
+          "path": "tools/kevbox/rebrand-strings.py",
+          "fingerprint": "d3804fa9531e860dfe77abce3c811183de2c0650b2cae0d81122d2c34447ac3a"
+        },
+        {
+          "item_id": "a9f0587e23d956e145a53f842abfc6186eb54cc1d6abeb5ec6ec07b2f0b92bec",
+          "path": "app/src/main/res/values/kevbox_brand_strings.xml",
+          "fingerprint": "7f58ab037c6cde88f8de7404c7bd7294a8d6f59aee1a32d9b180af9cd3792889"
+        },
+        {
+          "item_id": "ab0931b9eef9304d904ff1c728f79a91bf392b0dde7f7e4df37eced3c447ac09",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_olive_cream.xml",
+          "fingerprint": "cd002b56e1b0252c1fe4909cc3e8f46746b0cf43568c1049f3c4672fa466a303"
+        },
+        {
+          "item_id": "ab6793c6e847893ba1e4c24649cf1397ae8f5e1a2bbbb3d216c99c66de35e13f",
+          "path": "app/src/main/res/values-it/kevbox_brand_strings.xml",
+          "fingerprint": "b45fd74e26ff3ccea63666bb21f36229f402cbcdcbd0c3084c1b31bbd2ea0d38"
+        },
+        {
+          "item_id": "ae0a8d95e462a999024a992a2f5c0185f52df01ffba1a742a563bf19508df73f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+          "fingerprint": "38c3e380f38cae3abdd5511c7c7ad1eff67df33a6f915948c9def2e0acd79f16"
+        },
+        {
+          "item_id": "aee3b1f00d3b8ee155a1c70821fc236c9c1ff7be4dd20f958ed1cf1eb98d7c76",
+          "path": ".gitignore",
+          "fingerprint": "ef443c3da2c818dd9eda13f8c0299a49b84d1c32c4159f6d6201591bd93dc70d"
+        },
+        {
+          "item_id": "afa4a18fa1fab4abac7498af1520dd993101c14bc8ca814d750e1061c310eec8",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_olive.xml",
+          "fingerprint": "530015c4eceae4e6f2a0f5569a70343d3e9e01eec08d005d82546304302a1c37"
+        },
+        {
+          "item_id": "b3577f7090adf779a6c422d84312e0d44097175194efdc48871c5f53f41c604e",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_board.xml",
+          "fingerprint": "195cf1772504955a42d4d4f8abdcf31f7e77e7af1214fabe71f97b0f39a0ae29"
+        },
+        {
+          "item_id": "b4994f701f8a1c0bdc19f924bc82a28beaa3211c62bdee866e731553af22aadd",
+          "path": "app/src/main/res/values-zh-rCN/kevbox_brand_strings.xml",
+          "fingerprint": "96828134d8403b4414f2f09c9b6324145ce654916434f49f363b9559affa3b70"
+        },
+        {
+          "item_id": "b62ca0033f1e240bbe168165bc0e8693dea9490235e95e5f7260078794b60ef9",
+          "path": "app/src/main/res/drawable/owntv_splash_petrol.xml",
+          "fingerprint": "28272986a16af0e4f63d48f82e3a56f3e6c4aa6a0769d93150e11ae6feed95ab"
+        },
+        {
+          "item_id": "b98408c6e83e26ac5718b7700dfd4e5a34142544e7262d606d11f3b2a16babe9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/ReconcilePlanner.kt",
+          "fingerprint": "c477449e6b052a50e789eb8168f11d5680ff63887431774f0c8950c8bcdd824f"
+        },
+        {
+          "item_id": "bbba5fea5f633ca415f0ea20e5fb65758f35aa5b3bfd9f766f56c88b9f20a75a",
+          "path": ".github/workflows/release-notes.yml",
+          "fingerprint": "b864bc6467c578e963f8d85e3576f368ece1e5a85a2f7773fac91cd20e41d6f8"
+        },
+        {
+          "item_id": "bc0026edc028dd04848ad659ab0d77857592179c0011ce8814eb0b1a500ec571",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt",
+          "fingerprint": "948da548eedc3ec5b71f7bef8e88fac218028ee55edbcc4e29c6eb03f9c2a6ea"
+        },
+        {
+          "item_id": "bd5a8b2996f580226152cd983dad80a5bb8d7d23a2a34c2b71f03bcbce604dbe",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_eggshell.xml",
+          "fingerprint": "4cb88ebd2ab7a988ee9ec82aa91b41355589bb4c9ae367d57bae94327384be87"
+        },
+        {
+          "item_id": "bd9770009be53cae20864c14f3f829db7197f8e7478bd2ec5b8d3cc75976fbf1",
+          "path": "app/src/main/res/drawable/owntv_splash_static_olive.xml",
+          "fingerprint": "aa82c5ff769f19fc46e8a13a2dbca112ed01f27d5ad5890f82558fb0cc55a862"
+        },
+        {
+          "item_id": "c49af9b1275e4d91e638dd9e9ad4498cd510b960549bd61b696ac5414d1a37b7",
+          "path": "app/src/main/res/drawable/owntv_splash_static_olive_cream.xml",
+          "fingerprint": "c3bc125f4d59aa8c534e8533c1d20120195efe67abe70efd0dd0d298a031042c"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "485ecb539891a986a54ec7383c896ff5020696f323f770c84cc56a54007b552f"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "c667a3f8f2dab2403df258c694a68cba72de4487ba13b94be4645eb139d3cdb1"
+        },
+        {
+          "item_id": "ccbcea3a4cb1eb9a6cf643aa5f88703c731eec459d6d206294ee1eb2b3901d06",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxViewModel.kt",
+          "fingerprint": "69ef26955725135a9b35a1cd6a26ffdeffb03cd1d18a5456eefb9dae67d89065"
+        },
+        {
+          "item_id": "ceffeb87fe1cec7728023c952a66b5889825a508c3309a8381e18ebba0b0d953",
+          "path": "tools/kevbox/core_res.py",
+          "fingerprint": "1388717eedab77c2872d375bdf598b3c68d4dd954ced5dae725383bf4efce295"
+        },
+        {
+          "item_id": "cf1b4a639f42ddbed230d0556034c87d3fdfafece974b3e7783f9d4290b66a85",
+          "path": "app/src/main/res/values-hi/kevbox_brand_strings.xml",
+          "fingerprint": "5a37194ce9974940f562c133471d87506eb448ebbcdd90faa8d96dcccd2e05ce"
+        },
+        {
+          "item_id": "cf4a243a351868b81a8fe1aa5113a6a441651f98de37934c6e32e93f9333934f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/KevBoxVersion.kt",
+          "fingerprint": "34df3268f4f69cbb6c0e6152720f28bb2465f43579274571f2c26b6a6c80d0a8"
+        },
+        {
+          "item_id": "d37c1c3c8acea14ee05124c8dae4d86cb9fcebb494b393350e12227be5ebb8d7",
+          "path": "app/src/main/java/tv/own/owntv/features/setup/SetupWizard.kt",
+          "fingerprint": "f24b57280d8ae3cf67360734f5a5cf199829f9e65992981d8efe7aeab7bcbb7c"
+        },
+        {
+          "item_id": "d5c7f92201be90a5df2af4d9e264149eea6680c9ffa7f25860e3a4c61d4e8888",
+          "path": ".github/workflows/android.yml",
+          "fingerprint": "858bb506cfe1fed938b61da360287a5fc2abd135aaa8b6f6b5bfa7153ed40cdb"
+        },
+        {
+          "item_id": "d6a5c4b4af3a87cf71e160d13002c197b2653e691d16475e9d1920efe6b62f67",
+          "path": "app/src/main/res/drawable/owntv_icon_monochrome.xml",
+          "fingerprint": "cab085af9db11505754fee170b2d3b27a6007381ffe29735e695b5b7623b8aca"
+        },
+        {
+          "item_id": "da73ebce5e837ba89a3dfeb800dba72571b53deb5e70955c5ef40df251e7cbbe",
+          "path": "app/src/main/res/values-cs/kevbox_brand_strings.xml",
+          "fingerprint": "17c81e44f83fb36ac76d3cb9b279679808aac9a59d8a7dba40e91fa6e57f187c"
+        },
+        {
+          "item_id": "db1daa201362508c2daa84b1980b2e9808e98270c951080d99ad669b5c13ed25",
+          "path": "tools/kevbox/version.sh",
+          "fingerprint": "6e1668dcf8c98c91ab96f476902d5118791fa9cbb1a2ed496a500420d8b2c3f0"
+        },
+        {
+          "item_id": "dd2bc5bd452923fe4c1a97517676045b15650be81cda4e874aae4c161536b560",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/ContentPane.kt",
+          "fingerprint": "4b2af76613928eef5f1e9056172ff7f7c642a617fe1ad89591b62bb5ceb8ba94"
+        },
+        {
+          "item_id": "de0836ee966f434d4dadc0ad54add7d1df1ca431d23e90ffe73284492a27535e",
+          "path": "app/src/main/res/drawable/owntv_splash_pixel.xml",
+          "fingerprint": "eea955268597ab0547c272832e4d9f1309287642b0a69362f74bc5e5474bfbb1"
+        },
+        {
+          "item_id": "e2503b07ae36d0f0f7388028a28ed67fe11ce36d3ce91247d7aabe46e9835a7f",
+          "path": "app/src/main/res/drawable/owntv_mark_play.xml",
+          "fingerprint": "5c0c8111fc6247be2a07f814fa500a946313ce2ad33c9d493821cca2856b735e"
+        },
+        {
+          "item_id": "e317c895eb0d066f4fa454f75277bf4180ed97cc4b583c0806593e3518c8f149",
+          "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+          "fingerprint": "4ab19cb44b833b8f648c1515239c209bf6de0741cef2092e6c824420d61a9f9f"
+        },
+        {
+          "item_id": "e7ea3ff86e1e2aa53029913c0306322ece643be1a6163b0e22df9af488513e45",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_tomato.xml",
+          "fingerprint": "5903a6d4d44804d0389eb10bc81ca8a554dea3a561783013c7cce9424f8c472f"
+        },
+        {
+          "item_id": "ecc1d4912cd6ca85a1d46e54e608f8a8e346775a7296367a87cd8948c3cb2a05",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/StatusScreens.kt",
+          "fingerprint": "1156c0494bd0d273a3a462026b9e2e89f2d9e285ffac15394dc3eee49eec1420"
+        },
+        {
+          "item_id": "efee915edb57f965c42b5d67e96128e4f0dbdb21a8a8cbef6ff1dbee7a3be1dc",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/PlaylistReconciler.kt",
+          "fingerprint": "d60676e16425ff258b0c80cbcec2a3467c6fc60c89a991c8436f0c52dd3ba50f"
+        },
+        {
+          "item_id": "f08c0f0ffdd47301d9d5945dbee2be870794670643dd0fbc54be8fd17a4053ad",
+          "path": "tools/kevbox/rebrand-art.py",
+          "fingerprint": "87ff3a94fef46219cc4f0723f3c1263398e7e4f80f0abedbdadcead1cd756d81"
+        },
+        {
+          "item_id": "f2200b5c12e6a1648efea618665befdb20a047722ca9aa80665d992448beeb66",
+          "path": "tools/kevbox/check-brand.sh",
+          "fingerprint": "a795b8754b7143e1e6fa6db0c22e851b2e23c1d3aa583ae94da39efcd33a50fe"
+        },
+        {
+          "item_id": "f2ad3a2f2d9f0d25aa84d24059894483e976e82f1cf99cdde5dd3f8b0367a4b8",
+          "path": "app/src/main/res/drawable/owntv_splash_static_board.xml",
+          "fingerprint": "cb0560ec34629b9bafddbdfda652c1f4b3349ad5211463057af4685f9576792e"
+        },
+        {
+          "item_id": "f3dfa3fb3e268ebbe17cce7d5561d128b18ce577573a875540da89c5d6759b8b",
+          "path": "tools/kevbox/e2e/fake_xtream.py",
+          "fingerprint": "224dcb0c5b0370e5b874dab6d773ded4b23aa12eac4b26f243eb5d3c6fd63b1e"
+        },
+        {
+          "item_id": "f441f5cd4f0e7f773ac9aa9f7e87a149f019ee66664dd3b624ebe455b32cb1ac",
+          "path": "app/src/main/res/mipmap-anydpi-v26/owntv_icon_sunflower.xml",
+          "fingerprint": "7ed95e3107bf3691e2dacd47c32294f184984bd5524d299602d2041b78973388"
+        },
+        {
+          "item_id": "f596194353a86187e22997c3865f5e2dccb4ea3b840042b8285309d891e799e9",
+          "path": "app/src/main/res/drawable/owntv_splash_eggshell.xml",
+          "fingerprint": "e936f9ee843c378371299a70df07c9e90aed4be89f929aed51633e2ad866d903"
+        },
+        {
+          "item_id": "fb227493713ab2fa5e2c33b18ff4b0e1c8256cd050e6bca111e30ed376ba7ab9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+          "fingerprint": "3bd3c64accf80a2f5a194e7c1a07cace3e45dea95aec9197632ec0c05562429b"
+        },
+        {
+          "item_id": "fcb7df3761d28f880145a035cbc3bbe6158ddfc13f3927e5e349cd673a28d5b9",
+          "path": "tools/kevbox/test-release-checks.sh",
+          "fingerprint": "59e92f3d20073a45af4a77b45f6e75f0596c04cee85904e3327e8a9529ef30be"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 220452
+  }
+}
