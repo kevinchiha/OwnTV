@@ -1,0 +1,213 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 5 finding(s) across 7 selected item(s).",
+  "summary": {
+    "files_reviewed": 7,
+    "comments": 5,
+    "total_tokens": 1863157,
+    "input_tokens": 1829591,
+    "output_tokens": 33566,
+    "cache_read_tokens": 1596847,
+    "cache_write_tokens": 232644,
+    "elapsed": "4m57s"
+  },
+  "tool_calls": {
+    "total": 46,
+    "by_tool": {
+      "code_comment": 3,
+      "code_search": 25,
+      "file_find": 1,
+      "file_read": 13,
+      "file_read_diff": 4
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt",
+      "content": "When `LocalLiveVideoStage` is null, this now renders no video at all. Before this change, `ExoPreviewSurface` drew it here. Anything that composes `GuideVideo` without the shell's provider (previews, a future host, tests) will show a playing state over a blank box. On top of that, the shell provides the stage everywhere, including the TV Guide section (`MainSection.EPG` also uses `EpgScreen`). So the guide's box now goes through the shared window too, which goes against the stated non-goal that the TV Guide section keeps its own video window. Keep the old surface as the fallback, and ideally pick the stage path only in `liveMode`.",
+      "suggestion_code": "        if (playing) {\n            if (videoStage != null) {\n                Box(Modifier.fillMaxSize().liveVideoSite(videoStage, tv.own.owntv.kevbox.live.VideoSite.BOX, r))\n            } else {\n                tv.own.owntv.player.ExoPreviewSurface(engine = previewEngine, modifier = Modifier.fillMaxSize())\n            }\n        }",
+      "existing_code": "        if (playing \u0026\u0026 videoStage != null) {\n            Box(Modifier.fillMaxSize().liveVideoSite(videoStage, tv.own.owntv.kevbox.live.VideoSite.BOX, r))\n        }",
+      "start_line": 138,
+      "end_line": 140,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+      "content": "The `LaunchedEffect(previewEnabled) { if (!previewEnabled) boxChannel = null }` reset was removed, and nothing replaces it, for either the stage or the local fallback. Now, if the preview setting goes off and then back on while Live TV stays open, the old `boxChannel` survives. `inBox()` then treats that channel as already in the box, so the first OK on it opens full screen straight away instead of previewing it. Bring back the reset by clearing through the same accessor.",
+      "suggestion_code": "    val localBoxChannel = remember { mutableStateOf\u003cChannelEntity?\u003e(null) }\n    fun boxChannel(): ChannelEntity? = if (videoStage != null) videoStage.boxChannel else localBoxChannel.value\n    LaunchedEffect(previewEnabled) {\n        if (!previewEnabled) { if (videoStage != null) videoStage.boxChannel = null else localBoxChannel.value = null }\n    }",
+      "existing_code": "    val localBoxChannel = remember { mutableStateOf\u003cChannelEntity?\u003e(null) }\n    fun boxChannel(): ChannelEntity? = if (videoStage != null) videoStage.boxChannel else localBoxChannel.value",
+      "start_line": 233,
+      "end_line": 234,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+      "content": "`backToGrid` applies to every caller of `exitPlayer`, not only a user's Back from full screen. Two callers are affected:\n\n1. **Multiview `onExit`** (`grid.releaseAll(); multiview = null; exitPlayer()`). `playerMode` is still FULLSCREEN and `zapSource` is LIVE_TV, but `openMultiview` already ran `previewEngine.stop()`. The guard still passes, so:\n   - the bridge is armed,\n   - `boxChannel` is set to the old channel,\n   - `revealChannel` moves the cursor,\n   - `onFullscreenExited(keepStream = true)` runs on a stopped engine.\n\n   This goes against the documented \"Back now lands on the Live TV list, with nothing playing\". The player site was already cleared when Multiview opened, so no grace period is pending. `bridgeArmed` therefore stays true until some later site reports.\n2. **`stopForSleep`.** It arms the bridge and keeps the stream, then calls `stopPreview()` right away and clears `boxChannel`. The armed bridge can still cut a full-screen see-through patch at the old player rectangle for up to `GRACE_MS`, over a stream that has stopped.\n\nOnly the plain Back path should be able to take this branch. For example, add `multiview == null` to the condition, and give `exitPlayer` a flag (e.g. `exitPlayer(toGrid = false)`) so the sleep and Multiview callers skip it.",
+      "suggestion_code": "        val backToGrid = keepForGrid \u0026\u0026 multiview == null \u0026\u0026 tv.own.owntv.kevbox.live.isBackToGrid(\n            playerMode, selectedSection, zapSource, liveVm.liveOnExo.value, liveVm.catchupActive.value,\n        )",
+      "existing_code": "        val backToGrid = tv.own.owntv.kevbox.live.isBackToGrid(\n            playerMode, selectedSection, zapSource, liveVm.liveOnExo.value, liveVm.catchupActive.value,\n        )",
+      "start_line": 565,
+      "end_line": 567,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt",
+      "content": "`armBridge()` sets the flag even when the PLAYER site isn't registered (for example, after Multiview removed the player box). In that case no grace period follows that would reset it, so `bridgeArmed` stays true. The next time the PLAYER leaves with no target, the patch can wrongly stay up for the bridge. Only arm the bridge while the player is registered.",
+      "suggestion_code": "    fun armBridge() {\n        if (player != null) bridgeArmed = true\n    }",
+      "existing_code": "    fun armBridge() {\n        bridgeArmed = true\n    }",
+      "start_line": 167,
+      "end_line": 169,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt",
+      "content": "The comment says a move doesn't recompose anything, but it does. Each frame passes a new `Constraints.fixed(w, h)` to `ExoPreviewSurface`, and its root is a `BoxWithConstraints`. That re-runs the subcomposition on every frame of the 320 ms move, because `videoZoom(..., maxWidth, maxHeight)` reads the new constraints. It also resizes the `SurfaceView` every frame. On many TV SoCs, a SurfaceView resize means a SurfaceControl/buffer geometry change each frame. That's the main cost here, and the surface's position can also fall out of step with the UI's Clear patch, so you see jitter or black edges.\n\nOne option is to measure the surface once at the target size (or the full-screen size) and animate it with `graphicsLayer { scaleX/scaleY/translationX/translationY }`. Note that SurfaceView doesn't follow layer transforms on older APIs. Another is to accept the cost but fix the comment and check it on the low-end chips this change targets.",
+      "existing_code": "                // Read here, not in composition, so a move re-lays out the window without recomposing it.\n                val r = stage.current ?: Rect.Zero\n                val w = r.width.roundToInt().coerceAtLeast(0)\n                val h = r.height.roundToInt().coerceAtLeast(0)\n                val placeable = measurable.measure(Constraints.fixed(w, h))",
+      "start_line": 285,
+      "end_line": 289,
+      "category": "performance",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Live video stage and shell integration",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+        "app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt",
+        "app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt"
+      ]
+    },
+    {
+      "label": "EPG guide screen updates",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt"
+      ]
+    },
+    {
+      "label": "Kevbox auto setup tweak",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/ui/AutoSetup.kt"
+      ]
+    }
+  ],
+  "session_id": "fc778194-7b5b-44d1-b1ae-b30285b16e6c",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "fc778194-7b5b-44d1-b1ae-b30285b16e6c",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "quick/seamless-video",
+      "resolved_base": "a970e0a7ed1112cde627a12c099fffe46bf5c9f2",
+      "resolved_head": "997ef432b6ba7bd6caba922e7426c3074dd3a076",
+      "exact_range": "a970e0a7ed1112cde627a12c099fffe46bf5c9f2..997ef432b6ba7bd6caba922e7426c3074dd3a076",
+      "source_artifact_sha256": "6378900bd839dd71f688d4c8143ec83560d3ed6f7a4845a577cd785329add3df"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "f0d837413b96f06fa2a63dafdd3cb9a6ce7472784d26d3edf9048dee47a16012"
+        },
+        {
+          "item_id": "7484574b58b0e3ae8547d88e57c8c05e4dbf9f2e61c794914456a47f8040d984",
+          "path": "app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt",
+          "fingerprint": "bac5ef069ee80b14693131acef29e5e2b26f24d3324849bed5c864df31cc0936"
+        },
+        {
+          "item_id": "7f37e61343ac52f63533abecc2ba5fdb272324a7c2dfeff83f4009747446bfdb",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt",
+          "fingerprint": "07924a5cf04d1173f55248866c8c15be7ca5a8650e2e1de45862fee753484105"
+        },
+        {
+          "item_id": "80316a3733f77b261d2fdfbe9818f1ccbf3c5e078e3e75b43d88a72f7954b090",
+          "path": "app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt",
+          "fingerprint": "262449d5793d89ea58745f53bbad8cf21329594c0f976cffc4505a4ee65cb82e"
+        },
+        {
+          "item_id": "9590fffcff6cf7a8c7e0b5d16dfa9035dcb220590a81ec5402f8e510c77df05f",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt",
+          "fingerprint": "851a5e8e11044094b59fc671f77e960c84a758ffd275db764c28a0e18a47135c"
+        },
+        {
+          "item_id": "ac8f67cb53751eacbd0e4299875f3963338d09358b7dc398de95aa64ab32c0f8",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+          "fingerprint": "f779493280ca82b852970ec04e26f2b779c77dfd67958a6cf3c89109059947c1"
+        },
+        {
+          "item_id": "cc11a7284babf95ebe02ef7ebf001af9864464efe22d45af7a36318b4aaebd0d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/AutoSetup.kt",
+          "fingerprint": "2222baca4945995bf45e02365ea7f65e0e56a6f2028210d0de03458bbe511d30"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "f0d837413b96f06fa2a63dafdd3cb9a6ce7472784d26d3edf9048dee47a16012"
+        },
+        {
+          "item_id": "7484574b58b0e3ae8547d88e57c8c05e4dbf9f2e61c794914456a47f8040d984",
+          "path": "app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt",
+          "fingerprint": "bac5ef069ee80b14693131acef29e5e2b26f24d3324849bed5c864df31cc0936"
+        },
+        {
+          "item_id": "7f37e61343ac52f63533abecc2ba5fdb272324a7c2dfeff83f4009747446bfdb",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt",
+          "fingerprint": "07924a5cf04d1173f55248866c8c15be7ca5a8650e2e1de45862fee753484105"
+        },
+        {
+          "item_id": "80316a3733f77b261d2fdfbe9818f1ccbf3c5e078e3e75b43d88a72f7954b090",
+          "path": "app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt",
+          "fingerprint": "262449d5793d89ea58745f53bbad8cf21329594c0f976cffc4505a4ee65cb82e"
+        },
+        {
+          "item_id": "9590fffcff6cf7a8c7e0b5d16dfa9035dcb220590a81ec5402f8e510c77df05f",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt",
+          "fingerprint": "851a5e8e11044094b59fc671f77e960c84a758ffd275db764c28a0e18a47135c"
+        },
+        {
+          "item_id": "ac8f67cb53751eacbd0e4299875f3963338d09358b7dc398de95aa64ab32c0f8",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+          "fingerprint": "f779493280ca82b852970ec04e26f2b779c77dfd67958a6cf3c89109059947c1"
+        },
+        {
+          "item_id": "cc11a7284babf95ebe02ef7ebf001af9864464efe22d45af7a36318b4aaebd0d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/AutoSetup.kt",
+          "fingerprint": "2222baca4945995bf45e02365ea7f65e0e56a6f2028210d0de03458bbe511d30"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 297159
+  }
+}
