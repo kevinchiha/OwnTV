@@ -54,8 +54,8 @@
     <string name="settings_sources_probe_unknown">KevBox Live यह पता नहीं लगा सका कि यह प्रदाता कितने चैनलों की अनुमति देता है।</string>
     <string name="settings_sources_probe_warning">कई प्रदाता कभी नहीं बताते कि आप एक साथ कितने चैनल देख सकते हैं, इसलिए KevBox Live कुछ चैनल खोलकर और यह देखकर पता लगाता है कि कौन से चलते रहते हैं। अभी जो कुछ चल रहा है वह रुक जाएगा, और इसमें दो मिनट तक लग सकते हैं।</string>
     <string name="settings_surround_forced_description">सराउंड — Dolby/DTS को असली 5.1/7.1 रिसीवर पर भेजता है। अगर आवाज़ बंद हो जाए या अटक जाए, तो KevBox Live फिर भी स्टीरियो पर लौट आता है और आपको बता देता है।</string>
-    <string name="setup_byo_source_description">KevBox Live एक प्लेयर है — अपना Xtream, M3U या Stalker स्रोत जोड़ें।</string>
-    <string name="setup_disclaimer">KevBox Live केवल एक मीडिया प्लेयर है। इसमें कोई चैनल, प्लेलिस्ट या सामग्री शामिल नहीं है। अपने ऐसे Xtream, M3U या Stalker स्रोत जोड़ने की ज़िम्मेदारी आपकी है जिन तक आपकी कानूनी पहुँच है।</string>
+    <string name="setup_byo_source_description">KevBox Live plays the playlist your admin sets up for you.</string>
+    <string name="setup_disclaimer">KevBox Live is a media player. It includes no channels or content of its own. Your playlist is set up by the admin, so there is no source for you to add.</string>
     <string name="setup_line_app_icon">टीवी की होम स्क्रीन पर KevBox Live कैसा दिखता है</string>
     <string name="setup_set_up_owntv">KevBox Live सेट अप करें</string>
     <string name="setup_sync_device_description">वाई-फ़ाई से अपने दूसरे KevBox Live डिवाइस से सब कुछ कॉपी करें</string>

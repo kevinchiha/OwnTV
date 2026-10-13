@@ -114,9 +114,17 @@ fail() {
   failures=$((failures + 1))
 }
 
+# Captured first, with its exit status: read through process substitution, a failing git command
+# would look like an empty diff and pass.
+if ! name_status="$(git -c core.quotePath=false diff --no-renames --name-status upstream/main...HEAD)"; then
+  echo "check-divergence: git diff against upstream/main failed" >&2
+  exit 1
+fi
+
 fork_only=0
 changed=0
 while IFS=$'\t' read -r status path; do
+  [[ -n "$status" ]] || continue
   case "$status" in
     A)
       echo "fork-only $path"
@@ -148,7 +156,7 @@ while IFS=$'\t' read -r status path; do
       fail "$path" "unexpected diff status $status"
       ;;
   esac
-done < <(git -c core.quotePath=false diff --no-renames --name-status upstream/main...HEAD)
+done <<<"$name_status"
 
 echo "check-divergence: $fork_only fork-only, $changed changed upstream file(s), $failures failure(s) against merge base ${base:0:12}"
 [[ "$failures" -eq 0 ]]

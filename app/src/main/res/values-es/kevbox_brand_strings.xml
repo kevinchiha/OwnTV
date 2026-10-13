@@ -55,8 +55,8 @@
     <string name="settings_sources_probe_unknown">KevBox Live no pudo determinar cuántos canales permite este proveedor.</string>
     <string name="settings_sources_probe_warning">Muchos proveedores nunca indican cuántos canales puedes ver a la vez, así que KevBox Live lo averigua abriendo algunos y viendo cuáles resisten. Todo lo que se esté reproduciendo se detendrá, y esto puede tardar hasta dos minutos.</string>
     <string name="settings_surround_forced_description">Sonido envolvente: envía Dolby/DTS a un receptor 5.1/7.1 real. Si se queda en silencio o tartamudea, KevBox Live vuelve al estéreo y te avisa.</string>
-    <string name="setup_byo_source_description">KevBox Live es un reproductor: añade tu propia fuente Xtream, M3U o Stalker.</string>
-    <string name="setup_disclaimer">KevBox Live es únicamente un reproductor multimedia. No incluye canales, listas de reproducción ni contenido. Eres responsable de añadir tus propias fuentes Xtream, M3U o Stalker a las que tengas acceso legal.</string>
+    <string name="setup_byo_source_description">KevBox Live plays the playlist your admin sets up for you.</string>
+    <string name="setup_disclaimer">KevBox Live is a media player. It includes no channels or content of its own. Your playlist is set up by the admin, so there is no source for you to add.</string>
     <string name="setup_line_app_icon">Cómo aparece KevBox Live en la pantalla de inicio de la tele</string>
     <string name="setup_set_up_owntv">Configurar KevBox Live</string>
     <string name="setup_sync_device_description">Copia todo desde tu otro dispositivo KevBox Live por Wi-Fi</string>

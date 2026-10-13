@@ -9,7 +9,12 @@ the same name and type. For every values* folder in Core's res at the pinned ver
 brand-allowlist.txt) is copied into app/src/main/res/<folder>/kevbox_brand_strings.xml with the
 brand swapped. Elements are copied as raw XML, so attributes, placeholders, escapes, every plural
 quantity and every array item stay exactly as Core wrote them. In English folders "an OwnTV"
-becomes "a KevBox Live".
+becomes "a KevBox Live"; in Hungarian folders "az OwnTV" becomes "a KevBox Live" (Hungarian uses
+"az" only before a vowel sound).
+
+A few strings tell the member to bring their own Xtream, M3U or Stalker source, which the locked
+KevBox Live app does not allow. FIXED_TEXT replaces those in every folder where Core defines them,
+whatever their language, with English text saying the admin sets the playlist up.
 
     python3 tools/kevbox/rebrand-strings.py           # regenerate the overrides
     python3 tools/kevbox/rebrand-strings.py --check   # exit 1 if regenerating would change a file
@@ -68,46 +73,65 @@ def _mentions_brand(body: str) -> bool:
     return any(is_text and BRAND in part for is_text, part in _text_parts(body))
 
 
-_ENGLISH_ARTICLE = re.compile(r"\b([Aa])n " + BRAND)
+# Strings whose meaning, not just their brand, is wrong for KevBox Live: Core tells the member to
+# add their own source, but the admin assigns every playlist. Same English text in every locale.
+FIXED_TEXT = {
+    "setup_byo_source_description": "KevBox Live plays the playlist your admin sets up for you.",
+    "setup_disclaimer": (
+        "KevBox Live is a media player. It includes no channels or content of its own. "
+        "Your playlist is set up by the admin, so there is no source for you to add."
+    ),
+}
+
+# Indefinite article before the brand, per language, mapped to the article "KevBox Live" takes.
+# "an OwnTV backup" would read "an KevBox Live backup", and Hungarian "az OwnTV" would read
+# "az KevBox Live"; both languages need the short article before a K.
+_ARTICLES = {
+    "en": re.compile(r"\b([Aa])n " + BRAND),
+    "hu": re.compile(r"\b([Aa])z " + BRAND),
+}
 
 
-def _swap(text: str, english: bool) -> str:
-    if english:
-        # "an OwnTV backup" would read "an KevBox Live backup"; English needs "a" before a K.
-        text = _ENGLISH_ARTICLE.sub(lambda m: f"{m.group(1)} {REPLACEMENT}", text)
+def _swap(text: str, language: str) -> str:
+    article = _ARTICLES.get(language)
+    if article is not None:
+        text = article.sub(lambda m: f"{m.group(1)} {REPLACEMENT}", text)
     return text.replace(BRAND, REPLACEMENT)
 
 
-def _rebrand(body: str, english: bool) -> str:
+def _rebrand(body: str, language: str) -> str:
     return "".join(
-        _swap(part, english) if is_text else part for is_text, part in _text_parts(body)
+        _swap(part, language) if is_text else part for is_text, part in _text_parts(body)
     )
 
 
-def _is_english(folder: Path) -> bool:
-    """values/ is Core's en-US source; values-en-* are its regional English overrides."""
+def _language(folder: Path) -> str:
+    """values/ is Core's en-US source; values-<lang>-* folders name their language first."""
     qualifiers = folder.name.split("-")[1:]
-    return not qualifiers or qualifiers[0] == "en"
+    return qualifiers[0] if qualifiers else "en"
 
 
 def overrides_for_folder(folder: Path, allowlist: set[str]) -> list[tuple[str, str, str]]:
     """Return sorted (name, tag, xml) overrides for one Core values* folder."""
     found: dict[tuple[str, str], str] = {}
-    english = _is_english(folder)
+    language = _language(folder)
     for xml_file in sorted(folder.glob("*.xml")):
         source = _COMMENT.sub("", xml_file.read_text(encoding="utf-8"))
         for match in _ELEMENT.finditer(source):
             body = match.group("body")
-            if body is None or not _mentions_brand(body):
+            if body is None:
                 continue
             name_match = _NAME.search(match.group("attrs"))
             if name_match is None:
                 continue
             name = name_match.group(1)
-            if name in allowlist:
-                continue
             tag = match.group("tag")
-            found[(name, tag)] = f"<{tag}{match.group('attrs')}>{_rebrand(body, english)}</{tag}>"
+            if tag == "string" and name in FIXED_TEXT:
+                found[(name, tag)] = f"<{tag}{match.group('attrs')}>{FIXED_TEXT[name]}</{tag}>"
+                continue
+            if not _mentions_brand(body) or name in allowlist:
+                continue
+            found[(name, tag)] = f"<{tag}{match.group('attrs')}>{_rebrand(body, language)}</{tag}>"
     return [(name, tag, xml) for (name, tag), xml in sorted(found.items())]
 
 

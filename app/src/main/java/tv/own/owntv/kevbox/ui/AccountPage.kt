@@ -22,9 +22,9 @@ import tv.own.owntv.ui.theme.mpx
 import tv.own.owntv.ui.theme.stageText
 
 /**
- * Settings › Account: the signed-in email, then Sign out. Sign out asks first; Cancel (or Back) closes
- * the question with no other effect, Sign out calls [onSignOut]. The rows only: the Settings page that
- * mounts this draws the title and handles Back.
+ * More › Account: the signed-in email, then Sign out. Sign out asks first; Cancel (or Back) closes
+ * the question with no other effect, Sign out calls [onSignOut]. The rows only: [KevBoxAccountMorePage]
+ * mounts this and draws the title.
  */
 @Composable
 fun AccountPage(email: String, onSignOut: () -> Unit, modifier: Modifier = Modifier) {

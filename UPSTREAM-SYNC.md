@@ -33,13 +33,28 @@ how to take a new upstream release, check that nothing KevBox did got lost, and 
    `NUVIO_RELEASE_*` values for `kevboxtv.jks`, the KevBox TV key, and `release.sh` maps them to
    the `KEYSTORE_*` variables `app/build.gradle.kts` reads.
 
-5. `apksigner` comes from the newest `$ANDROID_HOME/build-tools/*` (default
+5. `apksigner` and `aapt2` come from the newest `$ANDROID_HOME/build-tools/*` (default
    `/home/kevin/Android/Sdk`).
+
+## Where the fork starts
+
+`kevbox-live` is not built on an upstream release tag. It branched from upstream `main` at
+`fd74926d` ("Merge pull request #256 from ahXN00/bump/core-1.0.67"), which `git describe` calls
+`v5.1.0-25-gfd74926d`: 25 commits past `v5.1.0`, with Core pinned at `1.0.67` where `v5.1.0` pins
+`1.0.64`. The version rule below counts only release tags, so the first KevBox Live release is
+still labelled `5.1.0.1`, and it carries those 25 upstream commits and the newer Core.
+
+No upstream tag has been merged yet. The first merge will be the first upstream release after
+`fd74926d` (for example `v5.2.0`), and every step below works out the starting point with
+`git merge-base` rather than a tag name, so it holds for that first merge and every later one.
 
 ## Merge steps for each upstream release
 
 Merge upstream's release tag, never `upstream/main`. Upstream's `main` moves ahead of its last
-release every time Core publishes and the pin bump merges itself.
+release every time Core publishes and the pin bump merges itself. Only merge a tag that comes
+after the fork's starting point: `git merge-base --is-ancestor fd74926d vX.Y.Z` must exit 0. A
+tag that fails it (a hotfix such as `v5.1.1` cut from `v5.1.0`) misses some of the 25 commits the
+fork already has; read its changes before deciding to take it.
 
 1. Fetch and update:
 
@@ -126,15 +141,18 @@ rebrand adds new override files and leaves the app's own upstream images alone.
 KevBox Live keeps members away from these screens (AC-33): Add source, Manage sources, source
 edit, add from phone (QR and PIN companion), Local sync, and Backup and restore, local and remote.
 A new upstream release can add a new way in. Before each merge, list what upstream added between
-the release you have and the new one (`vOLD` is the upstream tag `kevbox-live` is on now):
+the upstream commit `kevbox-live` holds now and the new tag. `old` is the newest upstream commit
+the branch shares with that tag: `fd74926d` before the first merge, the last merged tag after it.
 
 ```sh
+old="$(git merge-base kevbox-live vX.Y.Z)"
+
 # New calls into the locked screens, companion modes or deep links
-git diff vOLD vX.Y.Z -- app/src/main/java app/src/main/AndroidManifest.xml \
+git diff "$old" vX.Y.Z -- app/src/main/java app/src/main/AndroidManifest.xml \
   | grep -nE '^\+.*\b(ManageSourcesScreen|AddSourceScreen|AddSourceChooserScreen|RemoteSetupScreen|LocalSyncScreen|SetupLocalSyncScreen|BackupScreen|RemoteBackupRestoreScreen|CompanionController|CompanionMode|LauncherDeepLink|android:scheme|android:host)\b'
 
 # New Settings tabs, More items and setup wizard steps
-git diff vOLD vX.Y.Z -- \
+git diff "$old" vX.Y.Z -- \
   app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt \
   app/src/main/java/tv/own/owntv/features/more/MoreScreen.kt \
   app/src/main/java/tv/own/owntv/features/setup/SetupWizard.kt \
@@ -156,6 +174,21 @@ the code was, and add a row to the table if the file is new to it. A new `Settin
 `MoreItem` or `Step` entry needs a look too: hide it the same way if it leads to a locked screen.
 Leave the locked screens' files in place. Deleting upstream files turns every later merge into a
 conflict.
+
+Two known gaps, checked at every merge:
+
+- **Home-screen cards can open a chooser.** Core puts KevBox Live's Android TV home-screen cards
+  (channels, movies, episodes) on the launcher as implicit `owntv://` links, built in Core's
+  `LauncherDeepLink`. When stock OwnTV is installed on the same TV, both apps answer `owntv://`,
+  so picking a card can show a "which app?" chooser. Core is not forked, so this is accepted. If a
+  new Core starts sending these links to a named app, check that KevBox Live still gets them.
+- **The Pixel app icon must stay unreachable.** With the Pixel icon applied, the in-app mark is
+  the OwnTV dot-matrix TV drawn in code (`PixelMark` in `BrandLockup.kt`), which no resource
+  override can rebrand. Today no member can apply it: every caller of `setAppIcon` (the setup
+  wizard's icon step, the Settings icon picker) and backup restore, which could bring the setting
+  back, are hidden. Keep it so. Check with
+  `grep -rn 'setAppIcon' app/src/main/java --include='*.kt'`, and treat any caller a member can
+  reach as a new route to cut.
 
 ## Regenerating the rebrand
 
@@ -205,13 +238,16 @@ after merging upstream `v5.2.0` is `5.2.0.1`. The version code is
 Before it builds anything, it refuses (exit 1, nothing created) when the tree has uncommitted or
 untracked files, the version breaks the rule above, `A.B.C` is not the newest upstream `vX.Y.Z`
 tag reachable from `HEAD`, `HEAD` is not on `origin/kevbox-live`, the version code is not above
-the latest release on `kevinchiha/OwnTV`, or a secret file is missing or incomplete. Then it
-builds the arm and x86_64 release APKs, checks that both carry the KevBox TV key's signature
+the latest release on `kevinchiha/OwnTV`, a secret file is missing or incomplete, or `apksigner`
+or `aapt2` is missing. Then it deletes any release APK an earlier build left behind, builds the
+arm and x86_64 release APKs, checks that both carry versionName `<version>` and the KevBox TV
+key's signature
 (SHA-256 `9A:E0:71:8C:CC:F9:F6:83:90:93:49:31:D3:FE:0E:52:F4:57:EF:B5:81:D5:AC:C1:14:16:F1:51:2D:BB:1D:6F`),
-and creates release `v<version>` with the assets `KevBoxLive.apk` and `KevBoxLive-x86_64.apk`.
+runs `check-brand.sh` on the arm APK, and creates release `v<version>` with the assets `KevBoxLive.apk` and `KevBoxLive-x86_64.apk`.
 Those names never change: the short link below and Core's updater both rely on them.
 
-`bash tools/kevbox/test-release-checks.sh` tests the refusals against a throwaway repo.
+`bash tools/kevbox/test-release-checks.sh` tests the refusals against a throwaway repo, and
+checks that `check-divergence.sh` fails when its `git diff` fails.
 
 The fork's GitHub workflows publish nothing. `release-notes.yml` and `automerge-core-bump.yml` run
 only on `ahXN00/OwnTV`, and so does the build job of `android.yml`, which on upstream turns a

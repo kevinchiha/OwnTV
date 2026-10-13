@@ -3,7 +3,8 @@
 #
 # Test for the release pre-flight checks in tools/kevbox/release-checks.sh (AC-7's refusals).
 # Builds a throwaway git repo under mktemp -d with tags v5.0.4, v5.1.0 and a later v5.1.0.1, runs
-# every check against it and asserts the exit code of each case. Removes only that directory.
+# every check against it and asserts the exit code of each case. A second throwaway repo checks
+# that tools/kevbox/check-divergence.sh fails when its git diff fails. Removes only that directory.
 #
 #   bash tools/kevbox/test-release-checks.sh
 set -euo pipefail
@@ -78,6 +79,28 @@ expect 1 "unreadable latest tag refused"             check_code_above_latest 5.1
 git_q tag -d v5.0.4
 git_q tag -d v5.1.0
 expect 1 "no upstream tag reachable refused"         check_upstream_base 5.1.0.1
+
+# check-divergence.sh guards every upstream merge, and its failure path is tested here too: a git
+# diff that fails must fail the check, never read as "0 changed". A throwaway repo with one upstream
+# commit and one fork-only file passes; deleting the upstream commit's root tree object then breaks
+# the diff, while merge-base (which reads only commits) still works.
+divergence="$(dirname "$checks")/check-divergence.sh"
+run_divergence() { bash "$divergence" >/dev/null; }
+mkdir "$tmp/divergence"
+cd "$tmp/divergence"
+git_q init -q
+echo "upstream" > upstream.txt
+git_q add upstream.txt
+git_q commit -q -m "upstream"
+git_q remote add upstream https://example.invalid/upstream.git
+git_q update-ref refs/remotes/upstream/main HEAD
+echo "fork" > fork.txt
+git_q add fork.txt
+git_q commit -q -m "fork"
+expect 0 "check-divergence passes a fork-only file"   run_divergence
+upstream_tree="$(git rev-parse 'refs/remotes/upstream/main^{tree}')"
+rm -f -- ".git/objects/${upstream_tree:0:2}/${upstream_tree:2}"
+expect 1 "check-divergence fails when git diff fails" run_divergence
 
 echo "test-release-checks: $passed passed, $failed failed"
 [[ "$failed" -eq 0 ]]
