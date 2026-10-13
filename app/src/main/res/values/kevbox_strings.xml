@@ -25,4 +25,6 @@
     <string name="kevbox_sign_out">Sign out</string>
     <string name="kevbox_sign_out_confirm">Sign out of KevBox Live?</string>
     <string name="kevbox_cancel">Cancel</string>
+    <!-- Live TV grid key hint: OK puts the channel in the preview box (a second OK watches it full screen). -->
+    <string name="kevbox_key_preview">Preview</string>
 </resources>

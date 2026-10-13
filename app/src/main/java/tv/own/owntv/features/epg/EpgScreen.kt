@@ -225,6 +225,15 @@ fun EpgScreen(
         delay(700)
         liveVm.playPreview(ch)
     }
+    // KevBox: with the focus preview off (KevBox Live's default), OK puts a channel in the top box and only
+    // OK on the channel already there opens it full screen (Kevin, 2026-10-14). This is the channel OK put
+    // there; it keeps playing while focus moves on, and resets when the full-screen player takes the video.
+    var boxChannel by remember { mutableStateOf<ChannelEntity?>(null) }
+    LaunchedEffect(previewEnabled) { if (!previewEnabled) boxChannel = null }
+    val okPreviewsFirst = liveMode && !effectivePreview
+    // With the focus preview on, the focused channel is already in the box, so one OK goes full screen.
+    fun inBox(ch: ChannelEntity): Boolean =
+        if (okPreviewsFirst) boxChannel?.id == ch.id else previewArmed && previewChannel?.id == ch.id
 
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -377,7 +386,13 @@ fun EpgScreen(
     // OK on a programme: watch — the archive for one that has been on and can be replayed, else the channel.
     val onOk: (ChannelEntity, EpgProgrammeEntity?) -> Unit = { ch, p ->
         val now = System.currentTimeMillis()
-        if (p != null && p.stopMs <= now && vm.canCatchup(ch, p, now)) playFromStart(ch, p) else watch(ch)
+        // KevBox: in Live TV a channel must be in the top box before OK opens it full screen; the first OK
+        // only previews it there.
+        if (liveMode && previewEnabled && !inBox(ch)) {
+            boxChannel = ch
+            liveVm.onChannelFocused(ch)
+            liveVm.playPreview(ch)
+        } else if (p != null && p.stopMs <= now && vm.canCatchup(ch, p, now)) playFromStart(ch, p) else watch(ch)
     }
 
     /** What [p] on [ch] can do right now — the programme menu, Record ▾ and the buttons on top share it. */
@@ -484,13 +499,15 @@ fun EpgScreen(
         Column(Modifier.fillMaxSize()) {
         // Top (44 → 404): the video, and beside it the programme under the cursor.
         Row(Modifier.padding(start = fx(64), end = fx(64), top = 44.mpx).fillMaxWidth().height(360.mpx)) {
-        val videoChannel = if (effectivePreview) previewChannel ?: topChannel else topChannel
+        // KevBox: the channel OK put in the box stays there (with its video) while focus moves on.
+        val box = boxChannel.takeIf { okPreviewsFirst && previewEnabled }
+        val videoChannel = box ?: if (effectivePreview) previewChannel ?: topChannel else topChannel
         GuideVideo(
             channel = videoChannel,
             channelLine = videoChannel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(" · ") },
             nowTitle = videoChannel?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
             previewEngine = liveVm.previewEngine,
-            showVideo = effectivePreview && previewArmed,
+            showVideo = (effectivePreview && previewArmed) || box != null, // KevBox: `|| box != null`
             modifier = Modifier.width(640.mpx),
         )
         // … and the programme under the cursor, with what it can do.
@@ -506,8 +523,9 @@ fun EpgScreen(
                 )
             }
             // The key hints at the bottom right of the top area, level with the video's bottom edge (owner, 2026-10-01).
-            // KevBox: liveMode, so ◀ reads "Categories" in Live TV.
-            Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus, liveMode = liveMode) }
+            // KevBox: liveMode, so ◀ reads "Categories" in Live TV, and OK reads "Preview" on a channel not yet in the box.
+            val okPreviews = liveMode && previewEnabled && topChannel != null && !inBox(topChannel)
+            Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus, liveMode = liveMode, okPreviews = okPreviews) }
         }
 
         }
@@ -654,6 +672,8 @@ fun EpgScreen(
                                         }
                                     },
                                     onOk = { p -> onOk(channel, p) },
+                                    okOnRow = liveMode, // KevBox: OK on a Live TV row previews, then watches
+
                                     onMenu = { p -> returnTo = null; if (p != null) menuFor = channel to p else channelMenuFor = channel },
                                 )
                             }
@@ -868,6 +888,8 @@ private fun GuideRow(
     onStep: (Int) -> Boolean,
     onOk: (EpgProgrammeEntity?) -> Unit,
     onMenu: (EpgProgrammeEntity?) -> Unit,
+    // KevBox: OK on the row (outside its programmes) goes to onOk(null) instead of into the programmes.
+    okOnRow: Boolean = false,
 ) {
     // Cache peek first, so a row scrolled back into view draws at once; a miss reads this one channel.
     val cacheRevision by vm.cacheRevision.collectAsStateWithLifecycle()
@@ -900,7 +922,9 @@ private fun GuideRow(
                             val repeat = e.nativeKeyEvent.repeatCount
                             if (down && repeat == 0) okDown = true
                             else if (down && okDown) { okDown = false; onMenu(programmeAt(progs, cursorTime)) }
-                            else if (!down && okDown) { okDown = false; if (cellMode) onOk(programmeAt(progs, cursorTime)) else onEnterCell() }
+                            // KevBox: with okOnRow (Live TV), OK on the row itself previews or watches the channel
+                            // live (onOk(null)); ▶ still steps into the programmes.
+                            else if (!down && okDown) { okDown = false; if (cellMode) onOk(programmeAt(progs, cursorTime)) else if (okOnRow) onOk(null) else onEnterCell() }
                             true
                         }
                         Key.Menu -> { if (down) onMenu(programmeAt(progs, cursorTime)); true }
@@ -964,21 +988,32 @@ private fun GuideEmpty(title: String, body: String? = null, action: String? = nu
  * OK Browse · ▲▼ Channels · ◀ Menu · Hold OK Options; inside a row: OK Watch · ◀ ▶ Programs · Back Channels.
  */
 @Composable
-// KevBox: liveMode added (Live TV's ◀ opens the category sidebar).
-private fun GuideKeyHints(cellMode: Boolean, liveMode: Boolean = false) {
+// KevBox: liveMode added (Live TV's ◀ opens the category sidebar), and okPreviews (OK puts the channel in
+// the top box first, so it reads "Preview" until the channel is there).
+private fun GuideKeyHints(cellMode: Boolean, liveMode: Boolean = false, okPreviews: Boolean = false) {
+    // KevBox: OK's word follows the top box in Live TV.
+    val ok = stringResource(R.string.common_ok) to stringResource(if (okPreviews) R.string.kevbox_key_preview else R.string.content_key_watch)
     val hints = if (cellMode) {
         listOf(
-            stringResource(R.string.common_ok) to stringResource(R.string.content_key_watch),
+            ok,
             "◀ ▶" to stringResource(R.string.content_key_programmes),
             stringResource(R.string.common_back) to stringResource(R.string.content_key_channels),
+            stringResource(R.string.content_key_hold_ok) to stringResource(R.string.content_key_options),
+        )
+    } else if (liveMode) {
+        // KevBox: Live TV's row stage. OK previews or watches the channel; ▶ steps into its programmes.
+        listOf(
+            ok,
+            "▲ ▼" to stringResource(R.string.content_key_channels),
+            "◀" to stringResource(R.string.content_category_browser_title),
+            "▶" to stringResource(R.string.content_key_programmes),
             stringResource(R.string.content_key_hold_ok) to stringResource(R.string.content_key_options),
         )
     } else {
         listOf(
             stringResource(R.string.common_ok) to stringResource(R.string.content_key_browse),
             "▲ ▼" to stringResource(R.string.content_key_channels),
-            // KevBox: in Live TV ◀ opens the category sidebar, not the menu.
-            "◀" to stringResource(if (liveMode) R.string.content_category_browser_title else R.string.content_key_menu),
+            "◀" to stringResource(R.string.content_key_menu),
             stringResource(R.string.content_key_hold_ok) to stringResource(R.string.content_key_options),
         )
     }
