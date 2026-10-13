@@ -16,6 +16,8 @@ permissions:
 
 jobs:
   set-notes:
+    # KevBox: never edit releases on the fork; this job is upstream's alone (AC-9).
+    if: github.repository == 'ahXN00/OwnTV'
     runs-on: ubuntu-latest
     steps:
       - name: Check out the release tag

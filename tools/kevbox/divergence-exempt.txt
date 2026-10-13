@@ -1,0 +1,10 @@
+# KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
+# Upstream files that tools/kevbox/check-divergence.sh lets change without a KevBox: marker and
+# without a row in UPSTREAM-SYNC.md's changed-files table, because their format cannot hold a
+# comment. One path or bash glob per line, each with a # reason. UPSTREAM-SYNC.md lists every entry.
+#
+# Binary files belong here too (images, keystores, fonts), each by its own path. This fork changes
+# none today: the rebrand art overrides Core's drawables in new files and leaves the app's own
+# upstream binaries untouched.
+
+tools/i18n/safe_literals.txt  # written by check_hardcoded_strings.py classify-safe, which owns the format and keeps no free comments

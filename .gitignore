@@ -9,6 +9,8 @@ local.properties
 /captures
 .externalNativeBuild
 .cxx
+# KevBox: Python bytecode that tools/kevbox/rebrand-art.py leaves behind when it imports core_res.py.
+tools/kevbox/__pycache__/
 
 # Local tooling / agent state
 .codex-*
