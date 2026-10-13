@@ -158,3 +158,6 @@ review: gate green. important 1: zap then Back then OK opens full screen the slo
 fix list (round 1): review 1 + minor 7; review 2 + ocr exitPlayer + ocr armBridge; review 3; review 4 + minor 8 (window leaves at once unless the bridge is armed); review 5; black strip + ocr per-frame resize + minor 12; minor 11.
 fix round 1: e9304e4a (keepInBox; exitPlayerWith(keepForGrid); armBridge only while PLAYER shows; isBackToGrid + rewound; grace only for the armed bridge; arrivingAt(site) gates chrome and browse; fixed-size window placed by graphicsLayer transform; UPSTREAM-SYNC note rewritten).
 emulator (orchestrator, after fix round 1): black strip gone on grow and shrink; grid shows around the shrinking video from the first frame; stream continuous (clip counter runs through both moves).
+re-review (round 1): all 7 items resolved, gate green. New minor: Back during the grow left the bridge armed; fixed in 5f51ee0b (clear() spends the arm when PLAYER leaves onto a target), checked by the orchestrator, gate green.
+skipped: review minors 6 (dead channel after a failed stream with no fallback), 9 (Back during the grow goes to the grid), 10 (reveal may switch category); ocr medium GuideStage fallback/TV Guide.
+final review: done
