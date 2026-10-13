@@ -1,1 +1,0 @@
-- fix-2: done. Interfaces: KeystoreTokenCipher keeps its public no-arg constructor and adds an internal one taking a KeySlot, so the JVM tests can check key handling without AndroidKeyStore. SupabaseApi answers a TLS failure with Http(0, "") (the blank-URL answer), because ApiResponse has only Http and NoNetwork and the bound interface allows no new variant.
