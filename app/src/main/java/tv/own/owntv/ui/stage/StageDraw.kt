@@ -32,6 +32,7 @@ import tv.own.owntv.ui.theme.LocalStagePalette
 import tv.own.owntv.ui.theme.drawEllipticalGlow
 import tv.own.owntv.ui.theme.gradientWash
 import tv.own.owntv.ui.theme.mpx
+import tv.own.owntv.kevbox.ui.bakedBackground // KevBox: the Stage page background as one baked picture.
 
 /*
  * The CSS the Stage mockup is written in, drawn the same way: `box-shadow` glows and outer rings,
@@ -130,20 +131,22 @@ fun Modifier.stageBackground(accent: Color): Modifier {
             .then(if (bg.accentLight) Modifier.drawBehindLights { _, _ ->
                 light(accent, if (isLight) 0.06f else 0.07f, Offset.Zero, 1200.mpx.toPx(), 700.mpx.toPx(), 0.60f)
             } else Modifier)
-        isLight -> this
-            .gradientWash(true, 0f to Color(0xFFF8FAF9), 0.55f to Color(0xFFF1F5F3), 1f to Color(0xFFEEF1F6))
-            .drawBehindLights { w, h ->
-                light(Color(255, 160, 120), 0.10f, Offset(w * 0.70f, h * 0.18f), 700.mpx.toPx(), 500.mpx.toPx(), 0.60f)
-                light(Color(96, 120, 255), 0.10f, Offset(w, h), 1100.mpx.toPx(), 760.mpx.toPx(), 0.60f)
-                if (bg.accentLight) light(accent, 0.15f, Offset(w * 0.08f, h * 0.04f), 900.mpx.toPx(), 620.mpx.toPx(), 0.62f)
-            }
-        else -> this
-            .gradientWash(true, 0f to Color(0xFF0B1216), 0.55f to Color(0xFF06090B), 1f to Color(0xFF070A10))
-            .drawBehindLights { w, h ->
-                light(Color(255, 160, 120), 0.07f, Offset(w * 0.70f, h * 0.18f), 700.mpx.toPx(), 500.mpx.toPx(), 0.60f)
-                light(Color(96, 120, 255), 0.16f, Offset(w, h), 1100.mpx.toPx(), 760.mpx.toPx(), 0.60f)
-                if (bg.accentLight) light(accent, 0.20f, Offset(w * 0.08f, h * 0.04f), 900.mpx.toPx(), 620.mpx.toPx(), 0.62f)
-            }
+        // KevBox: the wash and its lights are baked into one opaque picture, painted once a frame
+        // instead of three or four passes over the screen (see BakedBackground).
+        isLight -> this.bakedBackground(listOf(true, accent, bg.accentLight)) {
+            drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(0f to Color(0xFFF8FAF9), 0.55f to Color(0xFFF1F5F3), 1f to Color(0xFFEEF1F6)))
+            val w = size.width; val h = size.height
+            light(Color(255, 160, 120), 0.10f, Offset(w * 0.70f, h * 0.18f), 700.mpx.toPx(), 500.mpx.toPx(), 0.60f)
+            light(Color(96, 120, 255), 0.10f, Offset(w, h), 1100.mpx.toPx(), 760.mpx.toPx(), 0.60f)
+            if (bg.accentLight) light(accent, 0.15f, Offset(w * 0.08f, h * 0.04f), 900.mpx.toPx(), 620.mpx.toPx(), 0.62f)
+        }
+        else -> this.bakedBackground(listOf(false, accent, bg.accentLight)) { // KevBox: baked, as above.
+            drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(0f to Color(0xFF0B1216), 0.55f to Color(0xFF06090B), 1f to Color(0xFF070A10)))
+            val w = size.width; val h = size.height
+            light(Color(255, 160, 120), 0.07f, Offset(w * 0.70f, h * 0.18f), 700.mpx.toPx(), 500.mpx.toPx(), 0.60f)
+            light(Color(96, 120, 255), 0.16f, Offset(w, h), 1100.mpx.toPx(), 760.mpx.toPx(), 0.60f)
+            if (bg.accentLight) light(accent, 0.20f, Offset(w * 0.08f, h * 0.04f), 900.mpx.toPx(), 620.mpx.toPx(), 0.62f)
+        }
     }
 }
 
