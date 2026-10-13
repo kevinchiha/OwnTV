@@ -48,14 +48,15 @@ import kotlin.math.roundToInt
  * Live TV's one video window.
  *
  * The ExoPlayer surface sits at the bottom of the shell, under the browse UI, and moves to wherever
- * the video belongs: the grid's top box now, full screen and the mini-player later. The UI above it
- * cuts a see-through patch (a BlendMode.Clear draw) where the video should show. The surface is never
+ * the video belongs: the grid's top box, full screen or the mini-player. The UI above it cuts a
+ * see-through patch (a BlendMode.Clear draw) where the video should show. The surface is never
  * handed over between screens, so the stream never gets a new window: some TV chips stall when it does.
  *
  * Who cuts the patch: a site the window has settled on cuts its own, so its overlays draw above the
- * video and anything composed later (the categories sidebar) covers it. While the window moves, or
- * waits out the grace period after its last site left, LiveVideoPatch cuts it at the window's
- * current rectangle instead.
+ * video and anything composed later (the categories sidebar) covers it. While the window moves,
+ * LiveVideoPatch cuts it at the window's current rectangle instead. Once the last site leaves, the
+ * window waits out the grace period hidden, unless the bridge was armed and the player left (see
+ * patchShows).
  */
 
 /** Where the video window can sit. */
@@ -73,6 +74,15 @@ internal fun pickTarget(box: Boolean, player: Boolean): VideoSite? = when {
 
 /** True once [nowMs] is [GRACE_MS] or more past [lastClearMs]. */
 internal fun graceOver(lastClearMs: Long, nowMs: Long): Boolean = nowMs - lastClearMs >= GRACE_MS
+
+/**
+ * Whether the stage-level patch shows. With a target, it shows until the window settles there. With
+ * none, it shows only when the bridge was armed and the player was the site that left: that carries
+ * Back from full screen to the grid until the box reports. Any other leave hides the video at once:
+ * the mini-player's Close, Audio Mode, or Live TV closed mid-preview.
+ */
+internal fun patchShows(target: VideoSite?, settledOnTarget: Boolean, lastCleared: VideoSite?, bridgeArmed: Boolean): Boolean =
+    if (target != null) !settledOnTarget else bridgeArmed && lastCleared == VideoSite.PLAYER
 
 internal fun lerpCorner(from: Float, to: Float, t: Float): Float = from + (to - from) * t
 
@@ -104,6 +114,12 @@ class LiveVideoStage(durationMs: Int = 320) {
     private var move by mutableStateOf<Move?>(null)
     private var lastClearMs by mutableStateOf<Long?>(null)
 
+    /** The site whose leaving left no target, until a target returns or the grace period ends. */
+    private var lastCleared by mutableStateOf<VideoSite?>(null)
+
+    /** Set by [armBridge]; spent when a target next appears or the grace period ends. */
+    private var bridgeArmed by mutableStateOf(false)
+
     /** The channel in the grid's box, kept here so it outlives the grid while full screen shows. */
     var boxChannel: ChannelEntity? by mutableStateOf(null)
 
@@ -118,6 +134,18 @@ class LiveVideoStage(durationMs: Int = 320) {
 
     /** True while a site wants the video, or within [GRACE_MS] of the last one leaving. */
     val visible: Boolean get() = target != null || current != null
+
+    /** True while [LiveVideoPatch] should cut the patch at [current]: see [patchShows]. */
+    val patchVisible: Boolean
+        get() = current != null && patchShows(target, target?.let(::settledOn) == true, lastCleared, bridgeArmed)
+
+    /**
+     * Keep showing the video at the player's rectangle once the player leaves, until the box reports.
+     * Call it on an exit that hands the stream back to the grid's box, before the player goes.
+     */
+    fun armBridge() {
+        bridgeArmed = true
+    }
 
     /** True while [frame] has work to do: a move, or a grace period to time out. */
     internal val needsFrames: Boolean get() = move != null || (target == null && lastClearMs != null)
@@ -154,6 +182,7 @@ class LiveVideoStage(durationMs: Int = 320) {
             VideoSite.PLAYER -> player = null
         }
         retarget(before, nowMs)
+        if (target == null && before != null) lastCleared = site
     }
 
     /** Advance the move and the grace period to [nowMs]. */
@@ -164,6 +193,8 @@ class LiveVideoStage(durationMs: Int = 320) {
             if (cleared != null && graceOver(cleared, nowMs)) {
                 current = null
                 lastClearMs = null
+                lastCleared = null
+                bridgeArmed = false
             }
             return
         }
@@ -191,6 +222,11 @@ class LiveVideoStage(durationMs: Int = 320) {
             return
         }
         lastClearMs = null
+        if (before == null) {
+            // A target after none: whatever bridged the gap is done.
+            lastCleared = null
+            bridgeArmed = false
+        }
         if (to === before) return
         val from = current
         if (from == null) {
@@ -248,7 +284,7 @@ fun LiveVideoLayer(stage: LiveVideoStage, engine: LivePreviewEngine, keepAwake: 
     }
 }
 
-/** The stage-level see-through patch, cut while the window moves or waits out the grace period. */
+/** The stage-level see-through patch, cut while the window moves or bridges an armed exit. */
 @Composable
 fun LiveVideoPatch(stage: LiveVideoStage) {
     var origin by remember { mutableStateOf(Offset.Zero) }
@@ -257,9 +293,8 @@ fun LiveVideoPatch(stage: LiveVideoStage) {
             .fillMaxSize()
             .onGloballyPositioned { origin = it.positionInWindow() }
             .drawBehind {
+                if (!stage.patchVisible) return@drawBehind
                 val r = stage.current ?: return@drawBehind
-                val settled = stage.target?.let(stage::settledOn) == true
-                if (settled) return@drawBehind
                 drawRoundRect(
                     color = Color.Black,
                     topLeft = r.topLeft - origin,

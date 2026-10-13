@@ -84,6 +84,104 @@ class LiveVideoStageTest {
     }
 
     @Test
+    fun aNewRectangleOnTheSameSiteStartsAMove() {
+        val mini = Rect(1300f, 760f, 1880f, 1086f)
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        assertTrue(stage.settledOn(VideoSite.PLAYER))
+        stage.report(VideoSite.PLAYER, mini, 21f, nowMs = 1_000)
+        assertFalse(stage.settledOn(VideoSite.PLAYER))
+        stage.frame(1_319)
+        assertFalse(stage.settledOn(VideoSite.PLAYER))
+        stage.frame(1_320)
+        assertTrue(stage.settledOn(VideoSite.PLAYER))
+        assertEquals(mini, stage.current)
+        assertEquals(21f, stage.currentCornerPx)
+    }
+
+    @Test
+    fun withNoDurationOneFrameSettles() {
+        val stage = LiveVideoStage(durationMs = 0)
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 100)
+        assertFalse(stage.settledOn(VideoSite.PLAYER))
+        stage.frame(100)
+        assertTrue(stage.settledOn(VideoSite.PLAYER))
+        assertEquals(full, stage.current)
+    }
+
+    @Test
+    fun patchRuleWithNoTarget() {
+        assertTrue(patchShows(null, settledOnTarget = false, lastCleared = VideoSite.PLAYER, bridgeArmed = true))
+        assertFalse(patchShows(null, settledOnTarget = false, lastCleared = VideoSite.PLAYER, bridgeArmed = false))
+        assertFalse(patchShows(null, settledOnTarget = false, lastCleared = VideoSite.BOX, bridgeArmed = true))
+        assertFalse(patchShows(null, settledOnTarget = false, lastCleared = null, bridgeArmed = true))
+    }
+
+    @Test
+    fun patchRuleWithATarget() {
+        assertTrue(patchShows(VideoSite.BOX, settledOnTarget = false, lastCleared = null, bridgeArmed = false))
+        assertFalse(patchShows(VideoSite.BOX, settledOnTarget = true, lastCleared = null, bridgeArmed = true))
+    }
+
+    @Test
+    fun anArmedPlayerExitKeepsThePatch() {
+        val stage = LiveVideoStage()
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.armBridge()
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
+        assertTrue(stage.patchVisible)
+        stage.frame(1_599)
+        assertTrue(stage.patchVisible)
+        stage.frame(1_600)
+        assertFalse(stage.patchVisible)
+    }
+
+    @Test
+    fun aReportFromTheSiteAlreadyThereKeepsTheArm() {
+        val stage = LiveVideoStage()
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.armBridge()
+        stage.report(VideoSite.PLAYER, Rect(0f, 0f, 1920f, 1000f), 0f, nowMs = 500)
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
+        assertTrue(stage.patchVisible)
+    }
+
+    @Test
+    fun anUnarmedPlayerExitHidesAtOnce() {
+        val stage = LiveVideoStage()
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
+        assertTrue(stage.visible)
+        assertFalse(stage.patchVisible)
+    }
+
+    @Test
+    fun aBoxExitHidesAtOnceEvenWhenArmed() {
+        val stage = LiveVideoStage()
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        stage.armBridge()
+        stage.clear(VideoSite.BOX, nowMs = 1_000)
+        assertTrue(stage.visible)
+        assertFalse(stage.patchVisible)
+    }
+
+    @Test
+    fun theArmIsSpentByTheNextReport() {
+        val stage = LiveVideoStage()
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.armBridge()
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 1_100)
+        stage.frame(1_420)
+        assertTrue(stage.settledOn(VideoSite.BOX))
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 2_000)
+        stage.clear(VideoSite.BOX, nowMs = 2_000)
+        stage.clear(VideoSite.PLAYER, nowMs = 2_100)
+        assertFalse(stage.patchVisible)
+    }
+
+    @Test
     fun lerpRectEndsAndMiddle() {
         val from = Rect(0f, 0f, 100f, 50f)
         val to = Rect(100f, 200f, 300f, 450f)

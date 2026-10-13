@@ -106,6 +106,7 @@ import androidx.compose.foundation.border
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextOverflow
+import tv.own.owntv.kevbox.live.liveVideoSite // KevBox: the player box marks where the video window goes.
 
 /** Which layer currently holds focus (drives Back navigation). */
 private enum class ShellLayer { SIDEBAR, RAIL, CONTENT }
@@ -923,6 +924,11 @@ fun OwnTVShell(
     // Its moves take 320 ms, or none with Animations Off.
     val liveVideoStage = remember { tv.own.owntv.kevbox.live.LiveVideoStage() }
     androidx.compose.runtime.SideEffect { liveVideoStage.durationMs = shellAnimationLevel.scale(320) }
+    // KevBox: the window has reached the player's rectangle. Derived, so the shell recomposes when this
+    // flips, not on every frame of a move. Live on mpv never reports, so it only counts with liveOnExo.
+    val livePlayerSettled by remember(liveVideoStage) {
+        androidx.compose.runtime.derivedStateOf { liveVideoStage.settledOn(tv.own.owntv.kevbox.live.VideoSite.PLAYER) }
+    }
 
     CompositionLocalProvider(
         LocalContentScrolled provides contentScrolled,
@@ -1027,12 +1033,17 @@ fun OwnTVShell(
             },
     ) {
       // KevBox: Live TV's video window, first so everything after draws over it. A site that shows the
-      // video cuts a see-through patch in the UI above (kevbox/live/LiveVideoStage.kt).
+      // video cuts a see-through patch in the UI above (kevbox/live/LiveVideoStage.kt). The player's
+      // values, as its own surface had them: awake while it shows live, frame rate only full screen.
+      val livePlayerOnExo = liveOnExo && multiview == null &&
+          (playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.MINI)
       tv.own.owntv.kevbox.live.LiveVideoLayer(
-          stage = liveVideoStage, engine = liveVm.previewEngine, keepAwake = false, autoFrameRate = false,
+          stage = liveVideoStage, engine = liveVm.previewEngine, keepAwake = livePlayerOnExo,
+          autoFrameRate = livePlayerOnExo && playerMode == PlayerMode.FULLSCREEN && autoFrameRate,
       )
       // Browse UI — hidden while the player is fullscreen (stays visible behind the docked mini-player).
-      if (playerMode != PlayerMode.FULLSCREEN) {
+      // KevBox: live on ExoPlayer keeps it until the video has grown into full screen.
+      if (playerMode != PlayerMode.FULLSCREEN || (livePlayerOnExo && !livePlayerSettled)) {
         Column(
             modifier = Modifier.fillMaxSize()
                 // One group with a restorer: leaving for the mini player and coming back lands on the
@@ -1480,7 +1491,7 @@ fun OwnTVShell(
             modifier = Modifier.fillMaxSize(),
         )
       }
-      // KevBox: cuts the video window's patch while it moves or waits out its grace period.
+      // KevBox: cuts the video window's patch while it moves, or bridges an armed exit to the grid.
       tv.own.owntv.kevbox.live.LiveVideoPatch(liveVideoStage)
 
       // Unobtrusive background-sync pill (bottom middle): visible while any catalog sync runs —
@@ -1568,25 +1579,36 @@ fun OwnTVShell(
 
       if (multiview == null && (playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.MINI)) {
         val isFull = playerMode == PlayerMode.FULLSCREEN
+        // KevBox: live on ExoPlayer shows the shell's one video window (LiveVideoLayer) through this box,
+        // so no black background, which would hide it. The box marks the window's place instead.
+        val playerBg = if (liveOnExo) Color.Transparent else Color.Black
+        val playerSite = if (liveOnExo) {
+            Modifier.liveVideoSite(liveVideoStage, tv.own.owntv.kevbox.live.VideoSite.PLAYER, if (isFull) 0.dp else 14.dp)
+        } else {
+            Modifier
+        }
+        // KevBox: the HUD and the full-screen-only prompts wait until the video has grown into place.
+        val playerChromeReady = !liveOnExo || livePlayerSettled
         Box(
             modifier = if (isFull) {
-                Modifier.fillMaxSize().background(Color.Black)
+                Modifier.fillMaxSize().background(playerBg).then(playerSite) // KevBox: see playerSite.
             } else {
                 // Dynamic docked size/position: a screen-width fraction at the chosen corner/edge, so it
                 // scales with the panel + UI zoom (unlike the old fixed 340×191 dp box).
                 Modifier.align(miniPos.alignment).padding(24.dp)
                     .fillMaxWidth(tv.own.owntv.core.player.MiniPlayerSize.fraction(miniSizePct)).aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(14.dp)).background(Color.Black)
+                    .clip(RoundedCornerShape(14.dp)).background(playerBg).then(playerSite) // KevBox: see playerSite.
             },
         ) {
             // "Promote Preview": a Live channel playing on ExoPlayer renders the ExoPlayer surface — in BOTH
             // full-screen AND the docked mini-player (same call site = the surface persists across dock/
             // expand, so playback never blips). Everything else (mpv) renders mpv's surface.
+            // KevBox: the surface is LiveVideoLayer's now, under the browse UI; only its subtitles draw
+            // here, once the window has arrived.
             if (liveOnExo) {
-                tv.own.owntv.player.ExoPreviewSurface(
-                    engine = liveVm.previewEngine, modifier = Modifier.fillMaxSize(),
-                    keepAwake = true, autoFrameRate = isFull && autoFrameRate,
-                )
+                if (playerChromeReady) {
+                    tv.own.owntv.player.ExoSubtitleLayer(engine = liveVm.previewEngine, modifier = Modifier.fillMaxSize())
+                }
             } else {
                 MpvVideoSurface(
                     player = player, modifier = Modifier.fillMaxSize(), autoFrameRate = isFull && autoFrameRate,
@@ -1617,7 +1639,7 @@ fun OwnTVShell(
                     },
                 )
             }
-            if (isFull && !autoFrameRate && !afrPrompted) {
+            if (isFull && playerChromeReady && !autoFrameRate && !afrPrompted) { // KevBox: playerChromeReady.
                 // Frame rate of whichever engine is on screen. On the mpv side this is what the direct
                 // path judders on; on Exo it now survives "Measured stream stats" being off (F14).
                 val activeFps by if (liveOnExo) {
@@ -1657,7 +1679,8 @@ fun OwnTVShell(
                 // position on the other engine) rather than Live TV's compatibility toggle, which would
                 // re-tune the live stream and jump the user to the current programme.
                 val isTunedLive = isLiveChannel && !catchupActive
-                PlayerHud(
+                // KevBox: no controls while the video grows into full screen (playerChromeReady).
+                if (playerChromeReady) PlayerHud(
                     player = if (liveOnExo) liveVm.previewEngine else mpvEngine, // HUD drives the active engine
                     onBack = exitPlayer,
                     onPip = dockPlayer, // PiP/dock works for live on either engine now
@@ -1838,7 +1861,7 @@ fun OwnTVShell(
                 }
                 // N4 — back on a channel whose saved copy was kept: continue from there, or stay live.
                 val timeshiftResumeAt by liveVm.timeshiftResumeAt.collectAsStateWithLifecycle()
-                if (isFull && timeshiftResumeAt != null) {
+                if (isFull && playerChromeReady && timeshiftResumeAt != null) { // KevBox: playerChromeReady.
                     tv.own.owntv.ui.components.TimeshiftResumeDialog(
                         onResume = liveVm::resumeTimeshift,
                         onGoLive = liveVm::dismissTimeshiftResume,
