@@ -237,6 +237,12 @@ fun PlayerHud(
     val buffering by player.buffering.collectAsStateWithLifecycle()
     val error by player.error.collectAsStateWithLifecycle()
     val errorInfo by player.errorInfo.collectAsStateWithLifecycle()
+    // KevBox: a failed channel asks KevBox Live whether the subscription ran out. This is the engine
+    // the shell handed the HUD (the ExoPlayer Live engine or mpv), so Live failures on either count.
+    val kevbox: tv.own.owntv.kevbox.KevBoxViewModel = org.koin.androidx.compose.koinViewModel()
+    val channelShowsExpired by kevbox.channelShowsExpired.collectAsStateWithLifecycle()
+    val failed = error != null
+    LaunchedEffect(player, failed) { if (failed) kevbox.onChannelFailed() }
     val providerBackOff by player.providerBackOff.collectAsStateWithLifecycle()
     val stalledSinceMs by player.stalledSinceMs.collectAsStateWithLifecycle()
     val nav by player.nav.collectAsStateWithLifecycle()
@@ -763,6 +769,11 @@ fun PlayerHud(
         // Status overlay (always shown).
         when {
             error != null -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                // KevBox: an expired subscription says so in place of the error title, reason and detail
+                // lines; Retry and the recording-conflict buttons below stay (AC-28).
+                if (channelShowsExpired) {
+                    Text(stringResource(R.string.kevbox_expired), style = MaterialTheme.typography.titleLarge, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
+                } else {
                 Text(stringResource(R.string.player_playback_error), style = MaterialTheme.typography.titleLarge, color = Color.White)
                 Spacer(Modifier.height(8.dp))
                 error?.let {
@@ -784,6 +795,7 @@ fun PlayerHud(
                         Text(stringResource(R.string.player_raw_error, it), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
                     }
                 }
+                } // KevBox: end of the upstream error text
                 // D9 — while a recording is what took the picture away, this screen has TWO buttons
                 // instead of a lone Retry, because Retry alone cannot work: the provider's only
                 // stream is busy and trying again just fails again.

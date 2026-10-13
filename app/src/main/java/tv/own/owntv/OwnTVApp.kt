@@ -94,7 +94,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         // this value, so the line changes nothing today — it is here so the television names its own
         // repository instead of relying on core to guess it, the same as the phone app does. A
         // default that happens to be right for one app is a trap for every other one.
-        tv.own.owntv.core.CoreBuildInfo.releaseRepo = "ahXN00/OwnTV"
+        // KevBox: the in-app updater asks KevBox Live's own releases, never upstream's (AC-6).
+        tv.own.owntv.core.CoreBuildInfo.releaseRepo = "kevinchiha/OwnTV"
         // First thing after the context exists: a crash from here on leaves a trace on disk that the
         // user can export from Settings, instead of being lost with the process.
         tv.own.owntv.core.util.CrashRecorder.diagnostics = { tv.own.owntv.player.LiveDiagnosticsLog.snapshot() }
@@ -110,9 +111,12 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.ERROR else Level.NONE)
             androidContext(this@OwnTVApp)
-            modules(coreModule, appModule, databaseModule, dataModule, playerModule)
+            modules(coreModule, appModule, databaseModule, dataModule, playerModule, tv.own.owntv.kevbox.di.kevboxModule) // KevBox: fork bindings
         }
         Perf.stamp("koin-started")
+        // KevBox: KevBox Live's checks (playlist, access, expiry, profiles) start once per process, after
+        // Koin and never in the icon-restart process, which returned above.
+        GlobalContext.get().get<tv.own.owntv.kevbox.KevBoxCoordinator>().start()
         // A chosen icon colour ("Later", the first-run pick, a restore) reaches the launcher when the app
         // is next in the background, never while it is on screen.
         tv.own.owntv.core.brand.AppIconSwitcher.start(this, GlobalContext.get().get())
