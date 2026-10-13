@@ -218,6 +218,9 @@ class LiveVideoStage(durationMs: Int = 320) {
         }
         retarget(before, nowMs)
         if (target == null && before != null) lastCleared = site
+        // The bridge only covers a player leaving with no target. Back during the grow leaves the box
+        // there, so the arm is spent and a later player exit hides at once.
+        if (site == VideoSite.PLAYER && target != null) bridgeArmed = false
     }
 
     /**

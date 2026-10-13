@@ -210,6 +210,25 @@ class LiveVideoStageTest {
     }
 
     @Test
+    fun aPlayerLeavingWhileTheBoxIsThereSpendsTheArm() {
+        // Back during the grow: the box is still reported when the player clears.
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 1_000)
+        stage.armBridge()
+        stage.clear(VideoSite.PLAYER, nowMs = 1_100)
+        stage.frame(1_420)
+        assertTrue(stage.settledOn(VideoSite.BOX))
+        // Later, an unarmed player exit with no box hides at once.
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 2_000)
+        stage.frame(2_320)
+        stage.clear(VideoSite.BOX, nowMs = 2_400)
+        stage.clear(VideoSite.PLAYER, nowMs = 2_500)
+        assertFalse(stage.visible)
+        assertFalse(stage.patchVisible)
+    }
+
+    @Test
     fun armingWithNoPlayerDoesNothing() {
         val stage = LiveVideoStage()
         stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
