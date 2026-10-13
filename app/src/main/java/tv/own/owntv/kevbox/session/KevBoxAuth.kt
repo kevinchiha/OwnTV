@@ -35,19 +35,35 @@ class KevBoxAuth(
     /** The signed-in member's email; null when signed out. */
     val email: StateFlow<String?> = _email.asStateFlow()
 
-    // Refresh tokens rotate: two refreshes racing on the same token would burn it.
+    // Every store write takes this lock. Refresh tokens rotate, so two refreshes racing on the same
+    // token would burn it; and a refresh still waiting on the server must not write its session
+    // back over a sign-out or over the next member's sign-in.
     private val refreshLock = Mutex()
 
-    suspend fun signIn(email: String, password: String): SignInResult {
+    /**
+     * Never throws: a Keystore that fails to seal the session (common on cheap TV firmware) reports
+     * Failed. The email goes out trimmed and lowercased, since TV keyboards add spaces and capitals;
+     * the password goes out exactly as typed.
+     */
+    suspend fun signIn(email: String, password: String): SignInResult = try {
+        passwordSignIn(email.trim().lowercase(), password)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        SignInResult.Failed
+    }
+
+    private suspend fun passwordSignIn(email: String, password: String): SignInResult {
         val response = api.passwordGrant(email, password)
         if (response is ApiResponse.NoNetwork) return SignInResult.NoNetwork
         val http = response as ApiResponse.Http
         return when {
             http.code == HTTP_OK -> {
                 val session = parseSession(http.body, previous = null) ?: return SignInResult.Failed
-                store.save(session)
-                _email.value = session.email
-                SignInResult.Success(session.email)
+                val saved = refreshLock.withLock {
+                    trySave(session).also { if (it) _email.value = session.email }
+                }
+                if (saved) SignInResult.Success(session.email) else SignInResult.Failed
             }
             http.code == HTTP_BAD_REQUEST && isWrongCredentials(http.body) ->
                 SignInResult.WrongCredentials
@@ -84,8 +100,11 @@ class KevBoxAuth(
                 // The outcome is ignored on purpose: sign-out must not depend on the server.
             }
         }
-        store.clear()
-        _email.value = null
+        // Under the lock: a refresh in flight finishes first, then this clear wins.
+        refreshLock.withLock {
+            store.clear()
+            _email.value = null
+        }
     }
 
     /** Runs [call] with a fresh access token; one refresh and one retry on a 401. */
@@ -133,7 +152,8 @@ class KevBoxAuth(
             HTTP_OK -> {
                 val renewed = parseSession(response.body, previous = current)
                     ?: return@withLock Fetch.Failed
-                store.save(renewed)
+                // A Keystore failure here reads as a failed fetch, never a crash.
+                if (!trySave(renewed)) return@withLock Fetch.Failed
                 _email.value = renewed.email
                 Fetch.Ok(renewed)
             }
@@ -143,6 +163,18 @@ class KevBoxAuth(
                 if (isRefreshRejected(response.body)) Fetch.SessionRejected else Fetch.Failed
             else -> Fetch.Failed
         }
+    }
+
+    /**
+     * Saves [session]; false when the store throws. Keystore failures arrive as ProviderException,
+     * KeyStoreException, InvalidKeyException and more, so any exception counts. The store seals the
+     * blob before it writes, so a failed save leaves the previous contents in place.
+     */
+    private fun trySave(session: StoredSession): Boolean = try {
+        store.save(session)
+        true
+    } catch (_: Exception) {
+        false
     }
 
     /** A token response, or null when a field is missing. A refresh may omit the user. */

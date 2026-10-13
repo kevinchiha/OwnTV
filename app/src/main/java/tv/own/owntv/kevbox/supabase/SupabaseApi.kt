@@ -3,6 +3,7 @@ package tv.own.owntv.kevbox.supabase
 
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -25,7 +26,9 @@ sealed interface ApiResponse {
  * every call on TV boxes that resolve IPv6 first over a dead route, so this derives its own client
  * with retries back on.
  *
- * A blank or invalid [baseUrl] never reaches the network: every call answers Http(0, "").
+ * A blank or invalid [baseUrl] never reaches the network: every call answers [UNREACHABLE]. A TLS
+ * failure answers the same, not NoNetwork: on a TV it usually means the clock is far off, and
+ * "No internet connection" would send the member to check a network that works.
  * Nothing here logs: tokens, passwords, emails and bodies must stay off logcat.
  */
 class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: String) {
@@ -78,7 +81,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         accessToken: String?,
         method: Request.Builder.() -> Request.Builder,
     ): ApiResponse {
-        val base = root ?: return ApiResponse.Http(0, "")
+        val base = root ?: return UNREACHABLE
         val url = base.newBuilder().addPathSegments(path).apply {
             // Every query value is a constant of this file, so it goes out as written (commas kept).
             query.forEach { (name, value) -> addEncodedQueryParameter(name, value) }
@@ -93,6 +96,8 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
                 client.newCall(request).execute().use { response ->
                     ApiResponse.Http(response.code, response.body.string())
                 }
+            } catch (_: SSLException) {
+                UNREACHABLE
             } catch (_: IOException) {
                 // Connection refused, unknown host, timeout, reset: all mean no usable network.
                 ApiResponse.NoNetwork
@@ -101,6 +106,8 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     }
 
     private companion object {
+        /** No HTTP exchange happened, and no network outage explains it. Callers read it as failed. */
+        val UNREACHABLE = ApiResponse.Http(0, "")
         const val TIMEOUT_SECONDS = 15L
         const val TOKEN_PATH = "auth/v1/token"
         const val LOGOUT_PATH = "auth/v1/logout"

@@ -1,7 +1,7 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.supabase
 
-/** One row of the member_playlist view: the IPTV line the admin set up for this member. */
+/** One row of the member_playlist table: the IPTV line the admin set up for this member. */
 data class PlaylistRow(
     val clientNumber: String,
     val name: String,

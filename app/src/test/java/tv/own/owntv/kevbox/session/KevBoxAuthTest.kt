@@ -1,8 +1,19 @@
 package tv.own.owntv.kevbox.session
 
 import android.content.SharedPreferences
+import java.io.IOException
+import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.security.KeyStoreException
+import java.security.ProviderException
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLHandshakeException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -27,26 +38,40 @@ class KevBoxAuthTest {
 
     // --- fakes ---------------------------------------------------------------------------------
 
-    private class Canned(val code: Int, val body: String)
+    /**
+     * One canned answer. [error] is thrown instead of answering; [arrived] counts down when the
+     * request reaches the server and [hold] keeps the answer back until the test releases it.
+     */
+    private class Canned(
+        val code: Int,
+        val body: String,
+        val error: IOException? = null,
+        val arrived: CountDownLatch? = null,
+        val hold: CountDownLatch? = null,
+    )
 
     /** Answers each request from a per-path queue; a queue entry of null throws as no network. */
     private class FakeServer : Interceptor {
-        val requests = mutableListOf<Request>()
-        val bodies = mutableListOf<String>()
+        val requests: MutableList<Request> = Collections.synchronizedList(mutableListOf())
+        val bodies: MutableList<String> = Collections.synchronizedList(mutableListOf())
         private val queues = mutableMapOf<String, ArrayDeque<Canned?>>()
 
-        fun on(path: String, vararg responses: Canned?) {
+        fun on(path: String, vararg responses: Canned?) = synchronized(this) {
             queues.getOrPut(path) { ArrayDeque() }.addAll(responses)
         }
 
-        fun calls(path: String) = requests.count { it.url.encodedPath == path }
+        fun calls(path: String) = synchronized(requests) { requests.count { it.url.encodedPath == path } }
 
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
-            requests += request
-            bodies += request.body?.let { body -> Buffer().also { body.writeTo(it) }.readUtf8() } ?: ""
-            val next = queues[request.url.encodedPath]?.removeFirstOrNull()
-                ?: throw UnknownHostException("no canned response")
+            val next = synchronized(this) {
+                requests += request
+                bodies += request.body?.let { body -> Buffer().also { body.writeTo(it) }.readUtf8() } ?: ""
+                queues[request.url.encodedPath]?.removeFirstOrNull()
+            } ?: throw UnknownHostException("no canned response")
+            next.arrived?.countDown()
+            next.hold?.await(5, TimeUnit.SECONDS)
+            next.error?.let { throw it }
             return Response.Builder()
                 .request(request)
                 .protocol(Protocol.HTTP_1_1)
@@ -103,6 +128,12 @@ class KevBoxAuthTest {
                 commit()
             }
         }
+    }
+
+    /** A Keystore that cannot seal: every encrypt throws, as on cheap TV firmware. */
+    private class FailingCipher(private val error: () -> Exception) : TokenCipher {
+        override fun encrypt(plain: ByteArray): ByteArray = throw error()
+        override fun decrypt(sealed: ByteArray): ByteArray? = null
     }
 
     // --- harness -------------------------------------------------------------------------------
@@ -179,6 +210,46 @@ class KevBoxAuthTest {
         val requestsBefore = server.requests.size
         assertEquals(SignInResult.Failed, auth("").signIn("m@example.com", "pw"))
         assertEquals(requestsBefore, server.requests.size)
+        assertNull(store.load())
+    }
+
+    @Test
+    fun `a Keystore failure while saving returns Failed and saves nothing`() = runBlocking {
+        server.on(TOKEN, Canned(200, tokenBody("a1", "r1")), Canned(200, tokenBody("a1", "r1")))
+        val errors = ArrayDeque(listOf<Exception>(ProviderException("keystore"), KeyStoreException("keystore")))
+        val failing = PrefsSessionStore(prefs, FailingCipher { errors.removeFirst() })
+        val auth = KevBoxAuth(api(), failing) { clock }
+
+        assertEquals(SignInResult.Failed, auth.signIn("member@example.com", "secret"))
+        assertEquals(SignInResult.Failed, auth.signIn("member@example.com", "secret"))
+        assertTrue(prefs.values.isEmpty())
+        assertNull(auth.email.value)
+    }
+
+    @Test
+    fun `sign-in sends the email trimmed and lowercased, the password as typed`() = runBlocking {
+        server.on(TOKEN, Canned(200, tokenBody("a1", "r1")))
+
+        auth().signIn("  Member@Example.COM ", " Pass Word ")
+
+        val sent = JSONObject(server.bodies.single())
+        assertEquals("member@example.com", sent.getString("email"))
+        assertEquals(" Pass Word ", sent.getString("password"))
+    }
+
+    @Test
+    fun `an SSLException maps to Failed, an unknown host or timeout to NoNetwork`() = runBlocking {
+        server.on(
+            TOKEN,
+            Canned(0, "", error = SSLHandshakeException("certificate not yet valid")),
+            null,
+            Canned(0, "", error = SocketTimeoutException("timeout")),
+        )
+        val auth = auth()
+
+        assertEquals(SignInResult.Failed, auth.signIn("m@example.com", "pw"))
+        assertEquals(SignInResult.NoNetwork, auth.signIn("m@example.com", "pw"))
+        assertEquals(SignInResult.NoNetwork, auth.signIn("m@example.com", "pw"))
         assertNull(store.load())
     }
 
@@ -360,6 +431,31 @@ class KevBoxAuthTest {
         offline.signOut() // no canned logout: the call fails as no network
         assertNull(store.load())
         assertNull(offline.email.value)
+    }
+
+    @Test
+    fun `a refresh that finishes after signOut does not write a session back`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        val refreshArrived = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        val logoutArrived = CountDownLatch(1)
+        server.on(PLAYLIST, Canned(401, """{"message":"JWT expired"}"""), Canned(200, rowsBody))
+        server.on(REFRESH_PATH, Canned(200, tokenBody("a2", "r2"), arrived = refreshArrived, hold = releaseRefresh))
+        server.on(LOGOUT, Canned(204, "", arrived = logoutArrived))
+        val auth = auth()
+
+        val read = async(Dispatchers.Default) { auth.playlists() }
+        assertTrue(refreshArrived.await(5, TimeUnit.SECONDS))
+        val signOut = async(Dispatchers.Default) { auth.signOut() }
+        assertTrue(logoutArrived.await(5, TimeUnit.SECONDS))
+        // Sign-out waits for the refresh in flight instead of clearing under it.
+        assertNull(withTimeoutOrNull(200) { signOut.await() })
+        releaseRefresh.countDown()
+        read.await()
+        signOut.await()
+
+        assertNull(store.load())
+        assertNull(auth.email.value)
     }
 
     @Test
