@@ -7,6 +7,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tv.own.owntv.core.nav.MainSection
+import tv.own.owntv.features.shell.PlayerMode
 
 class LiveVideoStageTest {
 
@@ -180,6 +182,33 @@ class LiveVideoStageTest {
         stage.clear(VideoSite.PLAYER, nowMs = 2_100)
         assertFalse(stage.patchVisible)
     }
+
+    @Test
+    fun backToGridWhenAllFourHold() = assertTrue(
+        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false),
+    )
+
+    @Test
+    fun notBackToGridFromTheMiniPlayerOrAudioMode() {
+        for (mode in listOf(PlayerMode.NONE, PlayerMode.MINI, PlayerMode.AUDIO)) {
+            assertFalse(isBackToGrid(mode, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false))
+        }
+    }
+
+    @Test
+    fun notBackToGridOutsideLiveTv() {
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SEARCH, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.MOVIES, liveOnExo = true, catchupActive = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, null, liveOnExo = true, catchupActive = false))
+    }
+
+    @Test
+    fun notBackToGridOnMpv() =
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = false, catchupActive = false))
+
+    @Test
+    fun notBackToGridDuringCatchup() =
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = true))
 
     @Test
     fun lerpRectEndsAndMiddle() {

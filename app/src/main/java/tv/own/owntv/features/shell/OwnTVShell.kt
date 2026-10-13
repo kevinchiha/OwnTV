@@ -554,7 +554,20 @@ fun OwnTVShell(
     }
     // The mini-player's own expand button always maximizes.
     val expandPlayer = { resumeVideo(); restoreFocus = false; playerMode = PlayerMode.FULLSCREEN }
+    // KevBox: Live TV's one video window (kevbox/live/LiveVideoStage.kt), as long-lived as the shell.
+    // Its moves take 320 ms, or none with Animations Off. Made here, above exitPlayer, which uses it.
+    val liveVideoStage = remember { tv.own.owntv.kevbox.live.LiveVideoStage() }
+    androidx.compose.runtime.SideEffect { liveVideoStage.durationMs = shellAnimationLevel.scale(320) }
     val exitPlayer = {
+        // KevBox: read before anything below changes it. Back from a Live TV channel opened in the grid
+        // keeps the stream and shrinks the video into the grid's box; the bridge carries the picture
+        // until the box reports, so it is armed before the player box goes.
+        val backToGrid = tv.own.owntv.kevbox.live.isBackToGrid(
+            playerMode, selectedSection, zapSource, liveVm.liveOnExo.value, liveVm.catchupActive.value,
+        )
+        val openedChannel = liveVideoStage.boxChannel
+        val playingChannel = liveVm.previewChannel.value
+        if (backToGrid) liveVideoStage.armBridge()
         // Flush the resume position BEFORE the stream is torn down — stop() drops the loaded item's
         // identity, after which neither view model can tell the position was theirs. Both calls are
         // no-ops unless the player is on that section's item.
@@ -565,7 +578,16 @@ fun OwnTVShell(
         showChannelList = false
         showHistoryList = false
         liveVm.hideCategoryBrowser()
-        liveVm.onFullscreenExited() // no longer full-screen on ExoPlayer → let the preview re-take the engine
+        if (backToGrid) {
+            // KevBox: the box takes the channel now playing, sound on; after CH+/CH− the grid's cursor
+            // moves to its row.
+            liveVideoStage.boxChannel = playingChannel
+            liveVm.onFullscreenExited(keepStream = true)
+            if (playingChannel != null && playingChannel.id != openedChannel?.id) liveVm.revealChannel(playingChannel)
+        } else {
+            liveVideoStage.boxChannel = null // KevBox: any other exit empties the grid's box, as before
+            liveVm.onFullscreenExited() // no longer full-screen on ExoPlayer → let the preview re-take the engine
+        }
         player.stop()
         subtitleController.clear() // leaving the player drops the OpenSubtitles item context
         if (selectedSection != MainSection.LIVE_TV) liveVm.clearLiveOnExo()
@@ -612,6 +634,7 @@ fun OwnTVShell(
         }
         if (playerMode != PlayerMode.NONE) exitPlayer()
         liveVm.stopPreview()
+        liveVideoStage.boxChannel = null // KevBox: the stream Back kept for the grid's box stops too
     }
     DisposableEffect(sleepTimer) {
         sleepTimer.stopPlayback = { stopForSleep() }
@@ -851,6 +874,9 @@ fun OwnTVShell(
     LaunchedEffect(selectedSection, playerMode) {
         if (selectedSection != MainSection.LIVE_TV && selectedSection != MainSection.EPG && playerMode == PlayerMode.NONE) liveVm.stopPreview()
         if (selectedSection != MainSection.HOME || playerMode != PlayerMode.NONE) homeVm.stopPreview()
+        // KevBox: the grid's box channel lives on the video stage, not the grid, so leaving Live TV
+        // empties it here, as leaving used to forget it.
+        if (selectedSection != MainSection.LIVE_TV && playerMode == PlayerMode.NONE) liveVideoStage.boxChannel = null
     }
 
     LaunchedEffect(selectedSection, playerMode, activeProfileId, activePlaylistId) {
@@ -920,10 +946,6 @@ fun OwnTVShell(
         else -> null
     }
 
-    // KevBox: Live TV's one video window (kevbox/live/LiveVideoStage.kt), as long-lived as the shell.
-    // Its moves take 320 ms, or none with Animations Off.
-    val liveVideoStage = remember { tv.own.owntv.kevbox.live.LiveVideoStage() }
-    androidx.compose.runtime.SideEffect { liveVideoStage.durationMs = shellAnimationLevel.scale(320) }
     // KevBox: the window has reached the player's rectangle. Derived, so the shell recomposes when this
     // flips, not on every frame of a move. Live on mpv never reports, so it only counts with liveOnExo.
     val livePlayerSettled by remember(liveVideoStage) {
@@ -1119,6 +1141,10 @@ fun OwnTVShell(
                 // KevBox: the stored List/Guide choice is no longer read; Live TV is always the grid.
                 val guidePlayChannel: (ChannelEntity, List<ChannelEntity>) -> Unit = { ch, _ ->
                     restoreFocus = false
+                    // KevBox: the box channel full screen opens from. Back compares it with the channel then
+                    // playing, to move the grid's cursor after CH+/CH−. Set here too because with the focus
+                    // preview on, one OK opens full screen without the grid writing it.
+                    if (selectedSection == MainSection.LIVE_TV) liveVideoStage.boxChannel = ch
                     liveVm.watchFromGuide(ch)
                     zapSource = MainSection.LIVE_TV
                     homeVm.stopPreview()

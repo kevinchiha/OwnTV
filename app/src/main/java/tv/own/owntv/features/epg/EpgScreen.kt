@@ -227,13 +227,16 @@ fun EpgScreen(
     }
     // KevBox: with the focus preview off (KevBox Live's default), OK puts a channel in the top box and only
     // OK on the channel already there opens it full screen (Kevin, 2026-10-14). This is the channel OK put
-    // there; it keeps playing while focus moves on, and resets when the full-screen player takes the video.
-    var boxChannel by remember { mutableStateOf<ChannelEntity?>(null) }
-    LaunchedEffect(previewEnabled) { if (!previewEnabled) boxChannel = null }
+    // there; it keeps playing while focus moves on. KevBox: it lives on the shell's video stage
+    // (kevbox/live/LiveVideoStage.kt), so it outlasts full screen and Back brings it back to the box.
+    val videoStage = tv.own.owntv.kevbox.live.LocalLiveVideoStage.current
+    val localBoxChannel = remember { mutableStateOf<ChannelEntity?>(null) }
+    fun boxChannel(): ChannelEntity? = if (videoStage != null) videoStage.boxChannel else localBoxChannel.value
+    fun putInBox(ch: ChannelEntity) { if (videoStage != null) videoStage.boxChannel = ch else localBoxChannel.value = ch }
     val okPreviewsFirst = liveMode && !effectivePreview
     // With the focus preview on, the focused channel is already in the box, so one OK goes full screen.
     fun inBox(ch: ChannelEntity): Boolean =
-        if (okPreviewsFirst) boxChannel?.id == ch.id else previewArmed && previewChannel?.id == ch.id
+        if (okPreviewsFirst) boxChannel()?.id == ch.id else previewArmed && previewChannel?.id == ch.id
 
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -389,7 +392,7 @@ fun EpgScreen(
         // KevBox: in Live TV a channel must be in the top box before OK opens it full screen; the first OK
         // only previews it there.
         if (liveMode && previewEnabled && !inBox(ch)) {
-            boxChannel = ch
+            putInBox(ch) // KevBox: on the video stage
             liveVm.onChannelFocused(ch)
             liveVm.playPreview(ch)
         } else if (p != null && p.stopMs <= now && vm.canCatchup(ch, p, now)) playFromStart(ch, p) else watch(ch)
@@ -500,7 +503,7 @@ fun EpgScreen(
         // Top (44 → 404): the video, and beside it the programme under the cursor.
         Row(Modifier.padding(start = fx(64), end = fx(64), top = 44.mpx).fillMaxWidth().height(360.mpx)) {
         // KevBox: the channel OK put in the box stays there (with its video) while focus moves on.
-        val box = boxChannel.takeIf { okPreviewsFirst && previewEnabled }
+        val box = boxChannel().takeIf { okPreviewsFirst && previewEnabled }
         val videoChannel = box ?: if (effectivePreview) previewChannel ?: topChannel else topChannel
         GuideVideo(
             channel = videoChannel,

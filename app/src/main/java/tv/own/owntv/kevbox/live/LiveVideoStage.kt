@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.flow.collectLatest
 import tv.own.owntv.core.database.entity.ChannelEntity
+import tv.own.owntv.core.nav.MainSection
+import tv.own.owntv.features.shell.PlayerMode
 import tv.own.owntv.player.ExoPreviewSurface
 import tv.own.owntv.player.LivePreviewEngine
 import kotlin.math.roundToInt
@@ -93,6 +95,21 @@ internal fun lerpRect(from: Rect, to: Rect, t: Float): Rect = Rect(
     bottom = lerpCorner(from.bottom, to.bottom, t),
 )
 
+/**
+ * True when leaving the player hands the stream back to the Live TV grid's box: full screen, opened
+ * from Live TV with Live TV on screen, the live channel on ExoPlayer, and no catch-up archive. Only
+ * then does Back keep the stream and shrink the video into the box; every other exit stops it.
+ */
+internal fun isBackToGrid(
+    playerMode: PlayerMode,
+    section: MainSection,
+    zapSource: MainSection?,
+    liveOnExo: Boolean,
+    catchupActive: Boolean,
+): Boolean = playerMode == PlayerMode.FULLSCREEN &&
+    section == MainSection.LIVE_TV && zapSource == MainSection.LIVE_TV &&
+    liveOnExo && !catchupActive
+
 /** The clock reports and frames share: Choreographer frame times are on the System.nanoTime base. */
 internal fun stageNowMs(): Long = System.nanoTime() / 1_000_000L
 
@@ -120,7 +137,11 @@ class LiveVideoStage(durationMs: Int = 320) {
     /** Set by [armBridge]; spent when a target next appears or the grace period ends. */
     private var bridgeArmed by mutableStateOf(false)
 
-    /** The channel in the grid's box, kept here so it outlives the grid while full screen shows. */
+    /**
+     * The channel in the grid's box, kept here so it outlives the grid while full screen shows. The
+     * grid writes it on OK; the shell sets it to the playing channel on Back to the grid and clears it
+     * on any other exit, or when Live TV closes.
+     */
     var boxChannel: ChannelEntity? by mutableStateOf(null)
 
     /** The window's rectangle now, in window pixels; null while there is no window. */
