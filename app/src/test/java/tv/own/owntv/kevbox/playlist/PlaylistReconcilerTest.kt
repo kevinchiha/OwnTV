@@ -4,7 +4,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -27,6 +34,10 @@ class PlaylistReconcilerTest {
         val calls = mutableListOf<String>()
         var nextId = 1L
         var createDelayMs = 0L
+        val failDelete = mutableSetOf<Long>()
+
+        /** Moves on every link change, as Room's invalidation does for profile_source. */
+        val linkVersion = MutableStateFlow(0)
 
         fun calls(prefix: String) = calls.count { it.startsWith(prefix) }
 
@@ -34,7 +45,17 @@ class PlaylistReconcilerTest {
         fun addProfileLikeCore(id: Long) {
             profiles += id
             sources.values.forEach { it.links += id }
+            linkVersion.value += 1
         }
+
+        /** Core's ProfileManager.create, second half: the links land after the profile row. */
+        fun linkEverySourceTo(profileId: Long) {
+            sources.values.forEach { it.links += profileId }
+            linkVersion.value += 1
+        }
+
+        override fun observeLinkedSourceIds(profileId: Long): Flow<List<Long>> =
+            linkVersion.map { sources.filterValues { profileId in it.links }.keys.sorted() }.distinctUntilChanged()
 
         override suspend fun fields(sourceId: Long) = sources[sourceId]?.fields
 
@@ -47,6 +68,7 @@ class PlaylistReconcilerTest {
             if (createDelayMs > 0) delay(createDelayMs)
             val id = nextId++
             sources[id] = FakeSource(row.toFields(), profileIds.toMutableSet())
+            linkVersion.value += 1
             calls += "create $id"
             return id
         }
@@ -58,11 +80,13 @@ class PlaylistReconcilerTest {
 
         override suspend fun link(sourceId: Long, profileIds: List<Long>) {
             sources.getValue(sourceId).links += profileIds
+            linkVersion.value += 1
             calls += "link $sourceId"
         }
 
         override suspend fun unlinkEverywhere(sourceId: Long) {
             sources.getValue(sourceId).links.clear()
+            linkVersion.value += 1
             calls += "unlink $sourceId"
         }
 
@@ -75,6 +99,7 @@ class PlaylistReconcilerTest {
         }
 
         override suspend fun delete(sourceId: Long) {
+            if (sourceId in failDelete) throw IllegalStateException("database is locked")
             sources.remove(sourceId)
             favourites.remove(sourceId)
             calls += "delete $sourceId"
@@ -201,6 +226,7 @@ class PlaylistReconcilerTest {
         val original = row("1")
         reconciler.apply(listOf(original))
         val id = mapped("1")!!.sourceId
+        assertEquals(id, reconciler.visibleSourceId.value)
         listOf(
             original.copy(name = "Renamed"),
             original.copy(serverUrl = "http://moved.example"),
@@ -211,7 +237,9 @@ class PlaylistReconcilerTest {
             reconciler.apply(listOf(changed))
             assertEquals(id, mapped("1")!!.sourceId)
             assertEquals(changed.toFields(), core.sources.getValue(id).fields)
+            // The expiry check hears about the edit; the ID, which stops playback, stays put.
             assertTrue(reconciler.visibleSourceChanges.value > before)
+            assertEquals(id, reconciler.visibleSourceId.value)
         }
         assertEquals(1, core.calls("create"))
         assertEquals(4, core.calls("update"))
@@ -310,7 +338,7 @@ class PlaylistReconcilerTest {
     fun `the store records pendingCreate before Core creates the source`() = runBlocking {
         reconciler.apply(listOf(row("1")))
         val beforeCreate = store.writes.first()
-        assertEquals("1", beforeCreate.pendingCreate)
+        assertEquals("1", PendingCreate.parse(beforeCreate.pendingCreate!!).clientNumber)
         assertNull(beforeCreate.sources["1"])
     }
 
@@ -365,16 +393,143 @@ class PlaylistReconcilerTest {
     }
 
     @Test
-    fun `the visible-source counter moves on create, switch and re-pick, not on a no-op fetch`() = runBlocking {
+    fun `the visible-source counter moves on create and switch, not on a no-op fetch or a re-pick`() = runBlocking {
         reconciler.apply(listOf(row("1"), row("2")))
         assertEquals(0, reconciler.visibleSourceChanges.value)
+        assertNull(reconciler.visibleSourceId.value)
         reconciler.choose("1")
         assertEquals(1, reconciler.visibleSourceChanges.value)
+        val first = reconciler.visibleSourceId.value
         reconciler.apply(listOf(row("1"), row("2")))
         assertEquals(1, reconciler.visibleSourceChanges.value)
         reconciler.choose("2")
         assertEquals(2, reconciler.visibleSourceChanges.value)
+        val second = reconciler.visibleSourceId.value
+        assertTrue(second != first)
         reconciler.choose("2")
-        assertEquals(3, reconciler.visibleSourceChanges.value)
+        assertEquals(2, reconciler.visibleSourceChanges.value)
+        assertEquals(second, reconciler.visibleSourceId.value)
+    }
+
+    @Test
+    fun `an admin credential change updates in place and does not stop playback, a switch to another row does`() = runBlocking {
+        reconciler.apply(listOf(row("1"), row("2")))
+        reconciler.choose("1")
+        val first = reconciler.visibleSourceId.value!!
+        val switches = reconciler.visibleSourceSwitches.value
+
+        reconciler.apply(listOf(row("1").copy(password = "new"), row("2")))
+        assertEquals(first, reconciler.visibleSourceId.value)
+        assertEquals(switches, reconciler.visibleSourceSwitches.value)
+
+        reconciler.choose("2")
+        assertEquals(mapped("2")!!.sourceId, reconciler.visibleSourceId.value)
+        assertTrue(reconciler.visibleSourceId.value != first)
+        assertEquals(switches + 1, reconciler.visibleSourceSwitches.value)
+    }
+
+    @Test
+    fun `on a cold start, a first fetch that moves off the stored pick counts as a switch`() = runBlocking {
+        // The stored pick plays before this run's first fetch; the admin moved the TV to row 2 while it was off.
+        core.nextId = 6
+        core.sources[5] = FakeSource(row("1").toFields(), mutableSetOf(10, 11))
+        store.state = ManagedState(pick = "1", sources = mapOf("1" to ManagedSource(5, hidden = false)))
+        assertNull(reconciler.visibleSourceId.value)
+
+        reconciler.apply(listOf(row("2")))
+
+        assertTrue(mapped("1")!!.hidden)
+        assertEquals(mapped("2")!!.sourceId, reconciler.visibleSourceId.value)
+        assertEquals(1, reconciler.visibleSourceSwitches.value)
+    }
+
+    @Test
+    fun `on a cold start, a first fetch that keeps the stored pick, even edited, is no switch`() = runBlocking {
+        core.sources[5] = FakeSource(row("1").toFields(), mutableSetOf(10, 11))
+        store.state = ManagedState(pick = "1", sources = mapOf("1" to ManagedSource(5, hidden = false)))
+
+        reconciler.apply(listOf(row("1").copy(password = "new")))
+
+        assertEquals(5L, reconciler.visibleSourceId.value)
+        assertEquals(0, reconciler.visibleSourceSwitches.value)
+    }
+
+    @Test
+    fun `the same server URL with a trailing slash, other case or spaces is no change`() = runBlocking {
+        reconciler.apply(listOf(row("1")))
+        core.calls.clear()
+        val before = reconciler.visibleSourceChanges.value
+
+        reconciler.apply(listOf(row("1").copy(serverUrl = " HTTP://S1.example/ ")))
+
+        assertEquals(0, core.calls("update"))
+        assertEquals(0, core.calls("resync"))
+        assertEquals(before, reconciler.visibleSourceChanges.value)
+    }
+
+    @Test
+    fun `a hidden source linked to a new profile after its profile emission is unlinked`() = runBlocking {
+        reconciler.apply(listOf(row("1"), row("2")))
+        reconciler.choose("1")
+        reconciler.choose("2")
+        val hiddenId = mapped("1")!!.sourceId
+        val visibleId = mapped("2")!!.sourceId
+        val profiles = MutableStateFlow(listOf(10L, 11L))
+        val watching = launch { reconciler.watchProfiles(profiles) }
+        yield()
+
+        // Core inserts profile 12 and Room emits it before ProfileManager.create links any source.
+        core.profiles += 12
+        profiles.value = listOf(10L, 11L, 12L)
+        yield()
+        assertTrue(core.sources.getValue(hiddenId).links.isEmpty())
+
+        // Then Core's loop links every source, the hidden one too.
+        core.linkEverySourceTo(12)
+        withTimeout(5_000) { while (core.sources.getValue(hiddenId).links.isNotEmpty()) yield() }
+
+        assertTrue(core.sources.getValue(hiddenId).links.isEmpty())
+        assertTrue(12L in core.sources.getValue(visibleId).links)
+        watching.cancel()
+    }
+
+    @Test
+    fun `wipe keeps entries it failed to delete, hidden, and the next wipe deletes them`() = runBlocking {
+        reconciler.apply(listOf(row("1"), row("2")))
+        reconciler.choose("1")
+        reconciler.choose("2")
+        val stuck = mapped("2")!!.sourceId
+        val gone = mapped("1")!!.sourceId
+        core.failDelete += stuck
+
+        reconciler.wipe()
+
+        assertNull(core.sources[gone])
+        assertNotNull(core.sources[stuck])
+        assertTrue(core.sources.getValue(stuck).links.isEmpty())
+        assertEquals(ManagedState(pick = null, sources = mapOf("2" to ManagedSource(stuck, hidden = true))), store.state)
+
+        core.failDelete.clear()
+        reconciler.wipe()
+        assertTrue(core.sources.isEmpty())
+        assertEquals(ManagedState(pick = null, sources = emptyMap()), store.state)
+    }
+
+    @Test
+    fun `a cold start that signs out at once still deletes a Create the process died in`() = runBlocking {
+        // The last run wrote pendingCreate, then died inside Core's create.
+        core.createDelayMs = 0
+        val line = row("1")
+        val crashed = PlaylistReconciler(core, store)
+        crashed.apply(listOf(line))
+        val orphan = mapped("1")!!.sourceId
+        store.state = store.writes.first() // the state on disk at the crash: pending, no mapping
+
+        // A new process: no rows in memory.
+        val cold = PlaylistReconciler(core, store)
+        cold.wipe()
+
+        assertNull(core.sources[orphan])
+        assertEquals(ManagedState(pick = null, sources = emptyMap()), store.state)
     }
 }

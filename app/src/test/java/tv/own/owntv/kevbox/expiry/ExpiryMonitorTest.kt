@@ -1,7 +1,10 @@
 package tv.own.owntv.kevbox.expiry
 
 import java.time.LocalDate
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -214,5 +217,42 @@ class ExpiryMonitorTest {
         m.checkAtStart(9)
         assertFalse(m.channelShowsExpired.value)
         assertNull(m.popup.value)
+    }
+
+    @Test
+    fun `a result in flight across a reset is dropped`() = runBlocking {
+        val answer = CompletableDeferred<SourceTestResult?>()
+        val m = ExpiryMonitor(
+            test = { answer.await() },
+            now = { 1_000_000_000_000L },
+            today = { LocalDate.of(2026, 10, 13) },
+            prefs = MemoryExpiryPrefs(),
+        )
+        val checking = launch { m.checkAtStart(7) }
+        yield()
+
+        m.reset() // sign-out while the provider answers about the old member's line
+        answer.complete(SourceTestResult.Expired(null))
+        checking.join()
+
+        assertNull(m.popup.value)
+        assertFalse(m.channelShowsExpired.value)
+    }
+
+    @Test
+    fun `a credential change keeps a dismissed Expired popup away and makes the next tick test again`() = runBlocking {
+        val h = Harness()
+        h.next = SourceTestResult.Expired(null)
+        val m = h.monitor()
+        m.checkAtStart(7)
+        m.dismissPopup()
+
+        m.onCredentialsChanged()
+        m.tick(7, playing = true)
+        assertEquals(1, h.tested.size)
+        m.tick(7, playing = false)
+        assertEquals(2, h.tested.size)
+        assertNull(m.popup.value)
+        assertTrue(m.channelShowsExpired.value)
     }
 }

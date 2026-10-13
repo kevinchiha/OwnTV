@@ -28,16 +28,16 @@ import tv.own.owntv.ui.theme.stageAccent
  * first, then the lock, then the playlist screens (AC-10). [content] is composed only while the
  * gate is Open, with the expiry popup over it.
  *
- * [onStopPlayback] runs whenever the gate leaves Open and whenever the visible source changes
- * while it stays Open: a hidden line may belong to another TV now, so nothing keeps streaming it
- * (AC-30). [onExit] is Back on the first-run playlist choice, which leaves without a pick (AC-16).
+ * [onStopPlayback] runs whenever the gate leaves Open and whenever the visible source switches
+ * while it stays Open, the first fetch after a cold start included: a hidden line may belong to another TV now, so nothing keeps streaming it
+ * (AC-30). An admin edit of the line keeps its ID and keeps playing (AC-19, AC-36). [onExit] is Back on the first-run playlist choice, which leaves without a pick (AC-16).
  */
 @Composable
 fun KevBoxGate(onExit: () -> Unit, onStopPlayback: () -> Unit, content: @Composable () -> Unit) {
     val vm: KevBoxViewModel = koinViewModel()
     val gate by vm.gate.collectAsStateWithLifecycle()
     val playlistKnown by vm.playlistKnown.collectAsStateWithLifecycle()
-    val sourceChanges by vm.visibleSourceChanges.collectAsStateWithLifecycle()
+    val switches by vm.visibleSourceSwitches.collectAsStateWithLifecycle()
     val stop by rememberUpdatedState(onStopPlayback)
 
     val open = gate == GateState.Open
@@ -47,10 +47,12 @@ fun KevBoxGate(onExit: () -> Unit, onStopPlayback: () -> Unit, content: @Composa
         if (lastOpen[0] && !open) stop()
         lastOpen[0] = open
     }
-    val lastChanges = remember { intArrayOf(sourceChanges) }
-    LaunchedEffect(sourceChanges) {
-        if (sourceChanges != lastChanges[0] && open) stop()
-        lastChanges[0] = sourceChanges
+    // The reconciler counts switches from the stored pick, so the first fetch of a cold start that
+    // moves this TV off the line it was playing stops that stream too.
+    val lastSwitches = remember { intArrayOf(switches) }
+    LaunchedEffect(switches) {
+        if (open && switches != lastSwitches[0]) stop()
+        lastSwitches[0] = switches
     }
 
     when (val state = gate) {

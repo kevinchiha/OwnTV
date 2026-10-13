@@ -62,8 +62,10 @@ val kevboxModule = module {
             expiry = get(),
             access = get(),
             profileDao = get(),
-            // Core's shared "something is playing" signal: every engine attaches to it, the Live
-            // preview and the Multiview tiles included, which the mpv player's isPlaying misses.
+            // Core's shared "something is playing" signal. OwnTVShell attaches the full-screen
+            // player's engine (mpv, or the Live engine when a channel plays on it) and, during
+            // Multiview, the tile with the sound. The Live list's small preview pane is never
+            // attached, so an expiry check can run while only that preview plays.
             playbackActive = get<tv.own.owntv.player.PlaybackSession>().active,
             scope = get(),
             now = System::currentTimeMillis,

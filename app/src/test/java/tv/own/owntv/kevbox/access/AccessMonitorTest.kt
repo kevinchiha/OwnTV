@@ -1,6 +1,9 @@
 package tv.own.owntv.kevbox.access
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -58,6 +61,22 @@ class AccessMonitorTest {
         val prefs = MemoryVerdictPrefs(AccessVerdict.LOCKED)
         val monitor = AccessMonitor(fetch = { Fetch.Failed }, prefs = prefs)
         monitor.reset()
+        assertFalse(monitor.locked.value)
+        assertNull(prefs.last)
+    }
+
+    @Test
+    fun `a verdict in flight across a reset is dropped`() = runBlocking {
+        val prefs = MemoryVerdictPrefs()
+        val answer = CompletableDeferred<Fetch<AccessVerdict>>()
+        val monitor = AccessMonitor(fetch = { answer.await() }, prefs = prefs)
+        val checking = launch { monitor.check() }
+        yield()
+
+        monitor.reset() // sign-out while the server answers for the old member
+        answer.complete(Fetch.Ok(AccessVerdict.LOCKED))
+        checking.join()
+
         assertFalse(monitor.locked.value)
         assertNull(prefs.last)
     }

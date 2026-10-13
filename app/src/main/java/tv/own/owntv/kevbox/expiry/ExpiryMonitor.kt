@@ -84,7 +84,15 @@ class ExpiryMonitor(
     private var lastTestAtMs: Long? = null
 
     /** The member pressed OK on the Expired popup during this app start. */
+    @Volatile
     private var expiredDismissed = false
+
+    /**
+     * Goes up on [reset] and [onCredentialsChanged]. A test started under an older value reports on
+     * a line or a member that is gone, so its answer is dropped.
+     */
+    @Volatile
+    private var generation = 0
 
     suspend fun checkAtStart(sourceId: Long?) {
         if (sourceId == null) return
@@ -118,8 +126,9 @@ class ExpiryMonitor(
         _popup.value = null
     }
 
-    /** Sign-out, or the visible source or its credentials changed: forget everything about the old line. */
+    /** Sign-out, or the visible source changed: forget everything about the old line. */
     fun reset() {
+        generation += 1
         lastDecisive = null
         lastTestSourceId = null
         lastTestAtMs = null
@@ -128,8 +137,23 @@ class ExpiryMonitor(
         _channelShowsExpired.value = false
     }
 
+    /**
+     * The admin changed the visible line's credentials in place: the last answer described the old
+     * login, so the next [tick] tests again. The popup, the player message and a dismissed Expired
+     * stay as they are until that test answers, so an edit never brings a dismissed popup back.
+     */
+    fun onCredentialsChanged() {
+        generation += 1
+        lastDecisive = null
+        lastTestSourceId = null
+        lastTestAtMs = null
+    }
+
     private suspend fun runTest(sourceId: Long) {
+        val startedIn = generation
         val result = test(sourceId)
+        // A reset landed while the provider answered: this result is about the old line or member.
+        if (generation != startedIn) return
         val at = now()
         lastTestSourceId = sourceId
         lastTestAtMs = at

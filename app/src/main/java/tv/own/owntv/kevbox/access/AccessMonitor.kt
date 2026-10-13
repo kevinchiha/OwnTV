@@ -44,15 +44,21 @@ class AccessMonitor(
     private val _locked = MutableStateFlow(prefs.last == AccessVerdict.LOCKED)
     val locked: StateFlow<Boolean> = _locked.asStateFlow()
 
+    /** Goes up on [reset]: a verdict fetched for the member before it belongs to nobody now. */
+    @Volatile
+    private var generation = 0
+
     suspend fun check() {
+        val startedIn = generation
         val result = fetch()
-        if (result !is Fetch.Ok) return
+        if (result !is Fetch.Ok || generation != startedIn) return
         prefs.last = result.value
         _locked.value = result.value == AccessVerdict.LOCKED
     }
 
     /** Sign-out: forget the saved verdict and unlock. */
     fun reset() {
+        generation += 1
         prefs.last = null
         _locked.value = false
     }

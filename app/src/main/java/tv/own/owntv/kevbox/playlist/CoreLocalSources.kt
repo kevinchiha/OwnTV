@@ -2,6 +2,9 @@
 package tv.own.owntv.kevbox.playlist
 
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import tv.own.owntv.core.database.dao.ProfileDao
 import tv.own.owntv.core.database.dao.SourceDao
@@ -49,8 +52,13 @@ class CoreLocalSources(
 
     override suspend fun findByLogin(serverUrl: String, username: String): Long? =
         sourceDao.getAllOnce().firstOrNull {
-            it.type == SourceType.XTREAM && it.url == serverUrl && it.username == username
+            it.type == SourceType.XTREAM && sameServerUrl(it.url, serverUrl) && it.username == username
         }?.id
+
+    // Room re-runs observeForProfile on every write to sources or profile_source; only a change in
+    // which sources the profile has matters here.
+    override fun observeLinkedSourceIds(profileId: Long): Flow<List<Long>> =
+        sourceDao.observeForProfile(profileId).map { list -> list.map { it.id }.sorted() }.distinctUntilChanged()
 
     override suspend fun profileIds(): List<Long> = profileDao.getAllOnce().map { it.id }
 

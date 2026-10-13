@@ -44,10 +44,13 @@ sealed interface GateState {
  * - Expiry: a check at start once a visible source is known, and again whenever the visible source
  *   changes; [ExpiryMonitor.tick] on every timer tick (the monitor keeps its own 6-hour rule) and
  *   when [playbackActive] turns false, so a check never takes a connection slot mid-stream (AC-26).
- * - Profiles: every emission of [ProfileDao.observeAll] goes to the reconciler (AC-24).
+ *   An admin edit of the visible line only marks the last answer stale: its recheck goes through
+ *   the tick, so it waits while something plays.
+ * - Profiles: [ProfileDao.observeAll] goes to [PlaylistReconciler.watchProfiles] (AC-24).
  *
  * Each check is single flight: a trigger that arrives while one runs waits for that one instead of
- * starting a second fetch. The timers wake every [tickMs] through [sleep] and compare [now] with the
+ * starting a second fetch, unless the member changed since that one started: a flight started before
+ * a sign-out or sign-in drops its answer, and a trigger after either starts a fresh one. The timers wake every [tickMs] through [sleep] and compare [now] with the
  * time each check last started, so a test drives them with a fake clock and a fake sleep.
  */
 class KevBoxCoordinator(
@@ -82,31 +85,53 @@ class KevBoxCoordinator(
             gateOf(auth.email.value != null, access.locked.value, reconciler.screen.value, storedPick.value),
         )
 
-    private val playlistFlight = SingleFlight(scope) { runPlaylistCheck() }
-    private val verdictFlight = SingleFlight(scope) { access.check() }
+    private val playlistFlight = SingleFlight(scope) { startedIn -> runPlaylistCheck(startedIn) }
+    private val verdictFlight = SingleFlight(scope) { _ -> access.check() }
 
     @Volatile private var lastPlaylistAt: Long? = null
     @Volatile private var lastVerdictAt: Long? = null
     @Volatile private var started = false
+
+    /** Goes up on every sign-out and successful sign-in: the member a check started for. */
+    @Volatile private var session = 0
 
     /** Once, from OwnTVApp, after Koin. Later calls do nothing. */
     fun start() {
         if (started) return
         started = true
         scope.launch {
-            storedPick.value = reconciler.currentSourceId() != null
+            // A store or Core read that throws must not keep the timers from starting.
+            quietly { storedPick.value = reconciler.currentSourceId() != null }
             timerLoop()
         }
         scope.launch {
-            profileDao.observeAll().collect { profiles -> quietly { reconciler.onProfilesChanged(profiles.map { it.id }) } }
+            quietly { reconciler.watchProfiles(profileDao.observeAll().map { profiles -> profiles.map { it.id } }) }
         }
         scope.launch {
-            var seen: Int? = null
-            reconciler.visibleSourceChanges.collect { count ->
-                // The first value is this run's starting point, not a change.
-                if (seen != null) expiry.reset()
-                seen = count
-                quietly { expiry.checkAtStart(reconciler.currentSourceId()) }
+            var first = true
+            var seenId: Long? = null
+            reconciler.visibleSourceChanges.collect {
+                if (first) {
+                    // The first value is this run's starting point, not a change: the stored pick,
+                    // which the reconciler's own ID only learns at the first fetch.
+                    first = false
+                    var start: Long? = null
+                    quietly { start = reconciler.currentSourceId() }
+                    seenId = start
+                    quietly { expiry.checkAtStart(start) }
+                    return@collect
+                }
+                val id = reconciler.visibleSourceId.value
+                if (id != seenId) {
+                    // Another line: its own answers, its own popups. The gate stops the old stream.
+                    expiry.reset()
+                    quietly { expiry.checkAtStart(reconciler.currentSourceId()) }
+                } else {
+                    // The same line with new credentials: test again, but never mid-stream.
+                    expiry.onCredentialsChanged()
+                    quietly { expiry.tick(reconciler.currentSourceId(), playing = playbackActive.value) }
+                }
+                seenId = id
             }
         }
         scope.launch {
@@ -125,9 +150,11 @@ class KevBoxCoordinator(
     }
 
     suspend fun signIn(email: String, password: String): SignInResult {
-        reconciler.reopen()
         val result = auth.signIn(email, password)
         if (result is SignInResult.Success) {
+            // Only now: a fetch still out for the member before must find the reconciler shut.
+            session += 1
+            reconciler.reopen()
             scope.launch { verdictCheck() }
             playlistCheck()
         }
@@ -139,9 +166,11 @@ class KevBoxCoordinator(
     }
 
     /** Sign-out and a refused refresh: this TV forgets the member and every line (AC-13, AC-14). */
+    /** Each step runs even when one before it threw, so the TV always ends signed out. */
     suspend fun signOut() {
-        auth.signOut()
-        reconciler.wipe()
+        session += 1
+        quietly { auth.signOut() }
+        quietly { reconciler.wipe() }
         expiry.reset()
         access.reset()
         storedPick.value = false
@@ -154,16 +183,20 @@ class KevBoxCoordinator(
 
     private suspend fun playlistCheck() {
         lastPlaylistAt = now()
-        playlistFlight.run()
+        playlistFlight.run(session)
     }
 
     private suspend fun verdictCheck() {
         lastVerdictAt = now()
-        verdictFlight.run()
+        verdictFlight.run(session)
     }
 
-    private suspend fun runPlaylistCheck() {
-        when (val result = auth.playlists()) {
+    private suspend fun runPlaylistCheck(startedIn: Int) {
+        val result = auth.playlists()
+        // The member signed out (and maybe another signed in) while this fetch was out: its rows and
+        // its refusal both belong to someone else now.
+        if (session != startedIn) return
+        when (result) {
             is Fetch.Ok -> reconciler.apply(result.value)
             Fetch.SessionRejected -> signOut()
             // A failed call is never "no rows": the store, the pick and playback stay as they are.
@@ -206,22 +239,30 @@ class KevBoxCoordinator(
         }
     }
 
-    /** Joins a running [block] instead of starting a second one. */
-    private class SingleFlight(private val scope: CoroutineScope, private val block: suspend () -> Unit) {
+    /**
+     * Joins a running [block] started for the same session instead of starting a second one. A
+     * running block from an older session is left to finish on its own and drop its answer.
+     */
+    private class SingleFlight(private val scope: CoroutineScope, private val block: suspend (session: Int) -> Unit) {
         private val lock = Mutex()
         private var running: Deferred<Unit>? = null
+        private var runningSession = 0
 
-        suspend fun run() {
+        suspend fun run(session: Int) {
             val job = lock.withLock {
-                running?.takeIf { it.isActive } ?: scope.async { guarded() }.also { running = it }
+                running?.takeIf { it.isActive && runningSession == session }
+                    ?: scope.async { guarded(session) }.also {
+                        running = it
+                        runningSession = session
+                    }
             }
             job.await()
         }
 
         // A check that throws (a Core call failing mid-reconcile) must not end the timers.
-        private suspend fun guarded() {
+        private suspend fun guarded(session: Int) {
             try {
-                block()
+                block(session)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

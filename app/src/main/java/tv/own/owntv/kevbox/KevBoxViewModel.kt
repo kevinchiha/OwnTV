@@ -3,6 +3,7 @@ package tv.own.owntv.kevbox
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,8 +36,8 @@ class KevBoxViewModel(
     /** False until this run's first good playlist fetch (see [KevBoxCoordinator.playlistKnown]). */
     val playlistKnown: StateFlow<Boolean> = coordinator.playlistKnown
 
-    /** Goes up whenever the visible source changes, so the gate can stop the old line's stream. */
-    val visibleSourceChanges: StateFlow<Int> = reconciler.visibleSourceChanges
+    /** Moves when the visible line switches, the first fetch of a cold start included: the gate stops the old stream. */
+    val visibleSourceSwitches: StateFlow<Int> = reconciler.visibleSourceSwitches
 
     private val _signIn = MutableStateFlow(SignInUiState())
     val signIn: StateFlow<SignInUiState> = _signIn.asStateFlow()
@@ -57,17 +58,31 @@ class KevBoxViewModel(
     }
 
     // Choose and sign out finish even when the screen that asked goes away mid-way: a half-done
-    // switch or a half-done wipe would leave the TV in neither state.
+    // switch or a half-done wipe would leave the TV in neither state. A Room or Core call that
+    // throws is caught: the app stays up, and the next playlist check finishes a half-done choose.
     fun choose(clientNumber: String) {
-        viewModelScope.launch { withContext(NonCancellable) { coordinator.choose(clientNumber) } }
+        viewModelScope.launch { survive { coordinator.choose(clientNumber) } }
     }
 
     fun dismissPopup() = expiry.dismissPopup()
 
     fun onChannelFailed() = coordinator.onChannelFailed()
 
+    /** [KevBoxCoordinator.signOut] runs every step past a failing one, so the gate still reaches SignedOut. */
     fun signOut() {
-        viewModelScope.launch { withContext(NonCancellable) { coordinator.signOut() } }
+        viewModelScope.launch { survive { coordinator.signOut() } }
+    }
+
+    private suspend fun survive(block: suspend () -> Unit) {
+        withContext(NonCancellable) {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Nothing to show: the gate keeps reflecting whatever state the TV reached.
+            }
+        }
     }
 
     companion object {
