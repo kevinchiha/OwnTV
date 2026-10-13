@@ -434,6 +434,10 @@ fun EpgScreen(
 
     DisposableEffect(onEntryHook) {
         onEntryHook?.invoke {
+            // KevBox: in Live TV ▶ from the main menu opens the category sidebar, never the grid: the sidebar
+            // is the one way between the menu and the channels, both ways (Kevin, 2026-10-13). It also keeps
+            // an empty category reachable, where the grid has no row to land on.
+            if (liveMode) { sheetOpen = true; return@invoke true }
             state.channels.isNotEmpty() &&
                 runCatching { rowFocus(focusedRow.coerceIn(0, state.channels.size - 1)).requestFocus() }.getOrDefault(false)
         }
@@ -456,10 +460,14 @@ fun EpgScreen(
     // the new channels arrived, and on ▶ it lost to the sidebar closing. So this waits until the sidebar
     // is gone and, after a category change, until the channel list is a new one, then focuses the row
     // and checks over a few frames that the grid kept it.
-    LaunchedEffect(sidebarExit, sheetOpen, state.loading, state.channels) {
+    LaunchedEffect(sidebarExit, sheetOpen, state) {
         val exit = sidebarExit ?: return@LaunchedEffect
-        if (sheetOpen || state.loading || state.channels.isEmpty()) return@LaunchedEffect
-        if (exit.oldChannels != null && state.channels === exit.oldChannels) return@LaunchedEffect
+        if (sheetOpen || state.loading) return@LaunchedEffect
+        // A category change waits for a load after it: a new state, as two empty lists can be one object.
+        if (exit.oldState != null && state === exit.oldState) return@LaunchedEffect
+        // An empty category has no row to land on: the sidebar opens again, on it, instead of focus
+        // falling to the main menu with no way back to the categories.
+        if (state.channels.isEmpty()) { sidebarExit = null; sheetOpen = true; return@LaunchedEffect }
         val i = exit.row.coerceIn(0, state.channels.size - 1)
         focusedRow = i
         repeat(10) {
@@ -474,7 +482,15 @@ fun EpgScreen(
     }
 
     LaunchedEffect(sheetOpen) {
-        if (sheetOpen) { withFrameNanos { }; runCatching { sheetFocus.requestFocus() } } else sheetHadFocus = false
+        if (!sheetOpen) { sheetHadFocus = false; return@LaunchedEffect }
+        // KevBox: asks again until the sidebar has focus. Opened from the main menu, the first request comes
+        // in from outside the shell's content, whose focus restorer sends it to the grid row last focused;
+        // from there the next request is a move inside the content and lands.
+        repeat(if (liveMode) 6 else 1) {
+            withFrameNanos { }
+            if (sheetHadFocus) return@LaunchedEffect
+            runCatching { sheetFocus.requestFocus() }
+        }
     }
     LaunchedEffect(searchOpen) { if (searchOpen) { withFrameNanos { }; runCatching { searchFocus.requestFocus() } } }
 
@@ -715,7 +731,7 @@ fun EpgScreen(
                     // KevBox: in Live TV, focus waits for the new category's channels (the sidebarExit effect).
                     val key = railItems.getOrNull(idx)?.key
                     if (liveMode && key != null) {
-                        sidebarExit = SidebarExit(row = 0, oldChannels = state.channels.takeIf { key != (categoryKey ?: LiveKey.All) })
+                        sidebarExit = SidebarExit(row = 0, oldState = state.takeIf { key != (categoryKey ?: LiveKey.All) })
                         selected = null
                     }
                     key?.let { if (liveMode) liveVm.select(it) else vm.setCategoryFilter(it) }
@@ -725,8 +741,12 @@ fun EpgScreen(
                     if (!liveMode) focusGrid(0)
                 },
                 onLongSelect = {},
-                // KevBox: in Live TV, ▶ hands focus to the grid through sidebarExit, which outlasts the close.
-                onNavigateRight = { sheetOpen = false; if (liveMode) sidebarExit = SidebarExit(row = focusedRow, oldChannels = null) else focusGrid() },
+                // KevBox: in Live TV, ▶ hands focus to the grid through sidebarExit, which outlasts the close;
+                // over an empty grid it does nothing, as there is no channel to go to.
+                onNavigateRight = {
+                    if (!liveMode) { sheetOpen = false; focusGrid() }
+                    else if (state.channels.isNotEmpty()) { sheetOpen = false; sidebarExit = SidebarExit(row = focusedRow, oldState = null) }
+                },
                 focusRequester = sheetFocus,
                 // KevBox: in Live TV the sidebar keeps LiveCategories' own heading ("Categories · Live TV");
                 // "Guide category · Same list as Live TV" only makes sense on the TV Guide page.
@@ -1025,7 +1045,7 @@ private fun GuideKeyHints(cellMode: Boolean, liveMode: Boolean = false, okPrevie
 
 /**
  * KevBox: where focus goes when the Live TV category sidebar closes towards the grid: [row], once the
- * channel list is no longer [oldChannels] (the list on screen when a different category was picked;
- * null when the category stays the same).
+ * guide state is no longer [oldState] (the state on screen when a different category was picked; null
+ * when the category stays the same). An empty result reopens the sidebar instead.
  */
-private class SidebarExit(val row: Int, val oldChannels: List<ChannelEntity>?)
+private class SidebarExit(val row: Int, val oldState: EpgUiState?)

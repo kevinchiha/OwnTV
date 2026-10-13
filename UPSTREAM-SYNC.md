@@ -109,7 +109,7 @@ keep one file per row, with its full path.
 | `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.LiveVideoLayer(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVideoSite(liveVideoStage' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerChromeReady) PlayerHud(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.isBackToGrid(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'exitPlayerWith(false)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVm.keepInBox(playingChannel)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt` | `grep -n 'liveVideoSite(videoStage' app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt` |
 | `app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt` | `grep -n 'if (subOn && subtitles)' app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt && grep -n 'fun ExoSubtitleLayer' app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt` |
-| `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'class SidebarExit' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'okOnRow = liveMode' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'LocalLiveVideoStage.current' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
+| `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'class SidebarExit(val row: Int, val oldState' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'if (liveMode) { sheetOpen = true; return@invoke true }' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'okOnRow = liveMode' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'LocalLiveVideoStage.current' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
 | `app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` | `grep -n 'fun onFullscreenExited(keepStream: Boolean' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt && grep -n 'fun keepInBox(channel: ChannelEntity)' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` | `grep -n 'KevBox: every channel shows' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt && grep -n 'KevBox: reload when a playlist finishes a sync' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt && grep -n 'stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` |
@@ -213,9 +213,14 @@ Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
   link, a More page) is a route to cut.
 - Live TV is always the guide grid (`OwnTVShell` ignores the stored List/Guide choice). The grid
   has no control line; Back or ◀ on it opens the category sidebar, and Back or ◀ there moves to the
-  main menu. ▶ or OK on a category moves to the grid through `SidebarExit`, which waits for the
-  sidebar to close and the new channels to load: upstream's direct `focusGrid()` let focus fall to
-  the main menu. The sidebar draws a 92% layer of the glass colour under its glass. OK on a
+  main menu. ▶ from the main menu opens the sidebar, never the grid (the screen's rail entry hook),
+  so the sidebar is the only way between the menu and the channels, both ways. The sidebar asks for
+  focus over a few frames: from the menu, the shell content's `focusRestorer` turns the first request
+  into the grid row last focused. ▶ or OK on a category moves to the grid through `SidebarExit`,
+  which waits for the sidebar to close and for a new guide state after a category change: upstream's
+  direct `focusGrid()` let focus fall to the main menu. A category that loads empty reopens the
+  sidebar on it, and ▶ over an empty grid does nothing, so an empty category never strands focus.
+  The sidebar draws a 92% layer of the glass colour under its glass. OK on a
   channel that is not in the top video box previews it there (`boxChannel`, held on the video
   stage below); only OK on the channel already in the box opens it full screen, on its row
   (`GuideRow`'s `okOnRow`) and inside its programmes alike, and ▶ steps into the programmes. If upstream
