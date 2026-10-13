@@ -119,6 +119,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         GlobalContext.get().get<tv.own.owntv.kevbox.KevBoxCoordinator>().start()
         // KevBox: the playlist's own TV guide is added and downloaded without asking (no onboarding).
         GlobalContext.get().get<tv.own.owntv.kevbox.epg.GuideFeeds>().start()
+        // KevBox: an in-app update installs with its profile, so it starts compiled (UpdateProfileAttacher).
+        GlobalContext.get().get<tv.own.owntv.kevbox.release.UpdateProfileAttacher>().start()
         // A chosen icon colour ("Later", the first-run pick, a restore) reaches the launcher when the app
         // is next in the background, never while it is on screen.
         tv.own.owntv.core.brand.AppIconSwitcher.start(this, GlobalContext.get().get())

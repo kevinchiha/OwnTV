@@ -863,6 +863,20 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt	source_id
 1	json	app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt	sources
 1	json	app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt	state
+1	url	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	$base-api28.dm
+1	url	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	$base.dm
+2	file-path	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	.apk
+1	assertion	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	HTTP ${resp.code}
+1	log	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	KevBoxUpdateProfile
+1	log	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	no profile for this update: ${it.message}
+1	assertion	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	no profile inside
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	owntv-update.dm
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	primary.prof
+1	log	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	profile added to update session $sessionId
+1	log	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	profile not added: ${it.message}
+1	assertion	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	size ${bytes.size}
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	update-profile
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	update.dm
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	access_token
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	client_number
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	email

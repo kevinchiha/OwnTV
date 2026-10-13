@@ -28,7 +28,7 @@
 # names, so https://github.com/kevinchiha/OwnTV/releases/latest/download/KevBoxLive.apk always
 # works), checks both carry versionName <version>, checks both signatures against the KevBox TV
 # key's SHA-256 (AC-4), runs tools/kevbox/check-brand.sh on the arm APK (AC-3), and only then
-# creates GitHub release v<version> on kevinchiha/OwnTV with those two assets.
+# creates GitHub release v<version> on kevinchiha/OwnTV with those two APKs and their compile profiles (.dm).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -114,6 +114,9 @@ built_x86="app/build/outputs/apk/x86_64/release/app-x86_64-release.apk"
 # KevBox: delete every earlier release APK first. Gradle leaves the last build's APK in place when
 # signing is not set up (it then writes only an -unsigned APK), and the copy below would ship it.
 rm -f -- "$built_arm" "$built_x86" "$arm_apk" "$x86_apk"
+# KevBox: the profiles too (see dex_metadata below), so an old one can never ship beside a new APK.
+rm -rf -- app/build/outputs/apk/standard/release/baselineProfiles app/build/outputs/apk/x86_64/release/baselineProfiles
+rm -f -- "$out_dir"/*.dm
 
 echo "release: building KevBox Live $version (code $version_code)"
 (
@@ -135,6 +138,27 @@ echo "release: building KevBox Live $version (code $version_code)"
 mkdir -p "$out_dir"
 cp "$built_arm" "$arm_apk"
 cp "$built_x86" "$x86_apk"
+
+# KevBox: each APK's compile profile (a .dm file Gradle writes beside it), published next to the APK.
+# UpdateProfileAttacher adds it to the in-app update's install, so an update starts compiled instead
+# of slow. <apk>.dm is for Android 12 and later, <apk>-api28.dm for Android 9 to 11.
+dex_metadata() { # <gradle apk dir> <published apk path>
+  local dir="$1" base="${2%.apk}"
+  python3 - "$dir" "$base" <<'PY' || die "no compile profiles in $1/output-metadata.json; nothing was published"
+import json, shutil, sys
+d, base = sys.argv[1], sys.argv[2]
+meta = json.load(open(f"{d}/output-metadata.json"))
+found = 0
+for entry in meta.get("baselineProfiles", []):
+    name = {31: ".dm", 28: "-api28.dm"}.get(entry["minApi"])
+    if name:
+        shutil.copy(f"{d}/{entry['baselineProfiles'][0]}", base + name)
+        found += 1
+sys.exit(0 if found == 2 else 1)
+PY
+}
+dex_metadata app/build/outputs/apk/standard/release "$arm_apk"
+dex_metadata app/build/outputs/apk/x86_64/release "$x86_apk"
 
 # --- Version check: both APKs say the version this release is tagged with. ---
 
@@ -168,5 +192,5 @@ bash tools/kevbox/check-brand.sh "$arm_apk" \
 # --- Publish. ---
 
 gh release create "v$version" --repo "$release_repo" --target "$(git rev-parse HEAD)" \
-  --title "KevBox Live $version" --notes "$notes" "$arm_apk" "$x86_apk"
+  --title "KevBox Live $version" --notes "$notes" "$arm_apk" "$x86_apk" "$out_dir"/*.dm
 echo "release: published v$version on $release_repo"

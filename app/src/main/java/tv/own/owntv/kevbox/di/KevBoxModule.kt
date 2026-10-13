@@ -41,6 +41,7 @@ val kevboxModule = module {
     single<LocalSources> { CoreLocalSources(get(), get(), get(), get(), get(), get()) }
     single<ManagedSourceStore> { PrefsManagedSourceStore(androidContext().prefs(PrefsManagedSourceStore.PREFS_NAME)) }
     single { PlaylistReconciler(get(), get()) }
+    single { tv.own.owntv.kevbox.release.UpdateProfileAttacher(androidContext(), get(), get(), scope = get()) }
 
     single {
         val sourceDao = get<SourceDao>()
