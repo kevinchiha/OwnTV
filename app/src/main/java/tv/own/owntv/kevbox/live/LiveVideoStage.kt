@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,6 +25,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -231,6 +233,13 @@ fun LiveVideoLayer(stage: LiveVideoStage, engine: LivePreviewEngine, keepAwake: 
                 layout(constraints.maxWidth, constraints.maxHeight) {
                     placeable.place((r.left - origin.x).roundToInt(), (r.top - origin.y).roundToInt())
                 }
+            }.graphicsLayer {
+                // Round the surface's hole like the site's corners: with Glass on, nothing opaque covers
+                // the corner slivers above, so an unclipped surface shows square corners. Read in the
+                // layer phase, so a move still recomposes nothing. No alpha and no offscreen
+                // compositing, so the hole still reaches the window.
+                shape = RoundedCornerShape(stage.currentCornerPx)
+                clip = true
             },
             keepAwake = keepAwake,
             autoFrameRate = autoFrameRate,
