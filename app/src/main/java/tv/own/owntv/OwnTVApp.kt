@@ -117,6 +117,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         // KevBox: KevBox Live's checks (playlist, access, expiry, profiles) start once per process, after
         // Koin and never in the icon-restart process, which returned above.
         GlobalContext.get().get<tv.own.owntv.kevbox.KevBoxCoordinator>().start()
+        // KevBox: the playlist's own TV guide is added and downloaded without asking (no onboarding).
+        GlobalContext.get().get<tv.own.owntv.kevbox.epg.GuideFeeds>().start()
         // A chosen icon colour ("Later", the first-run pick, a restore) reaches the launcher when the app
         // is next in the background, never while it is on screen.
         tv.own.owntv.core.brand.AppIconSwitcher.start(this, GlobalContext.get().get())

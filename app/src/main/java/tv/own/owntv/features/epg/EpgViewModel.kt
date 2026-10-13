@@ -455,6 +455,14 @@ class EpgViewModel(
             .drop(if (epgActivity.active.value.isEmpty()) 1 else 0)
             .onEach { load() }
             .launchIn(viewModelScope)
+        // KevBox: reload when a playlist finishes a sync, so the grid fills with channels as soon as they
+        // arrive after sign-in, not only once the guide feed has downloaded.
+        sourceDao.observeAll()
+            .map { sources -> sources.map { it.id to it.lastSyncAt } }
+            .distinctUntilChanged()
+            .drop(1)
+            .onEach { load() }
+            .launchIn(viewModelScope)
     }
 
     /** The Guide's current sort, for the header button. */
@@ -893,8 +901,10 @@ class EpgViewModel(
         // Respect customizations: hidden channels stay out of the guide, renames show.
         val cust = customize.observe(pid, MediaType.LIVE).first()
         val q = _query.value.trim()
-        val rawChannels = if (settings.guideShowEmpty.first()) channelDao.channelsForGuide(playlistIds, q, MAX_CHANNELS)
-            else channelDao.channelsWithGuide(ids, q, MAX_CHANNELS)
+        // KevBox: every channel shows, guide data or not. The grid is KevBox Live's only channel list, so a
+        // channel the guide feed misses would otherwise be unreachable (upstream's default hides it, and
+        // the Order menu that could show it is gone). Was: guideShowEmpty ? channelsForGuide : channelsWithGuide.
+        val rawChannels = channelDao.channelsForGuide(playlistIds, q, MAX_CHANNELS)
         val favoriteIds = favoriteDao.observeFavoriteIds(pid, MediaType.LIVE).first().toSet()
         val sortGuideMode = settings.sortGuide.first()
         // Hidden categories keep their channels out of the guide too (parity with Live TV), and a

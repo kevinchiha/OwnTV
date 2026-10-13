@@ -103,8 +103,15 @@ keep one file per row, with its full path.
 | File | Proof the change survived |
 | --- | --- |
 | `app/build.gradle.kts` | `grep -n 'tv.kevbox.live' app/build.gradle.kts` |
-| `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt` |
-| `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt` |
+| `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -c 'KevBoxAutoSetup(' app/src/main/java/tv/own/owntv/MainActivity.kt` (the count must be 2) |
+| `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` |
+| `app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` | `grep -n 'LiveOnly.browseSections' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` |
+| `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` |
+| `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
+| `app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` | `grep -n 'KevBox: every channel shows' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt && grep -n 'KevBox: reload when a playlist finishes a sync' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` |
+| `app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` |
+| `app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` |
+| `app/src/main/java/tv/own/owntv/features/settings/SettingsStage.kt` | `grep -n 'passwordShownAtStart' app/src/main/java/tv/own/owntv/features/settings/SettingsStage.kt` |
 | `app/src/main/java/tv/own/owntv/player/PlayerHud.kt` | `grep -n 'kevbox.onChannelFailed()' app/src/main/java/tv/own/owntv/player/PlayerHud.kt` |
 | `app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt` | `grep -n 'KevBoxChoosePlaylistSettingsScreen' app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt` |
 | `app/src/main/java/tv/own/owntv/features/shell/components/ContentPane.kt` | `grep -n 'KevBox: no "add source" action' app/src/main/java/tv/own/owntv/features/shell/components/ContentPane.kt` |
@@ -189,6 +196,27 @@ Two known gaps, checked at every merge:
   back, are hidden. Keep it so. Check with
   `grep -rn 'setAppIcon' app/src/main/java --include='*.kt'`, and treat any caller a member can
   reach as a new route to cut.
+
+### Live TV only
+
+Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
+
+- The left menu shows Search, Live TV and More. `ShellViewModel.visibleSections` returns
+  `LiveOnly.browseSections` instead of Core's `NavVisibility`, and `selectSection` turns any other
+  browse section (Home, Movies, Series, Downloads, TV Guide) into Live TV. The playlist is added
+  with `syncMovies = false, syncSeries = false`, so no movie or series catalogue downloads. The
+  movie and series screens stay in the tree, unreachable, like the locked source screens. A new
+  upstream route into them that does not go through `selectSection` (a new `MainSection`, a deep
+  link, a More page) is a route to cut.
+- Live TV is always the guide grid (`OwnTVShell` ignores the stored List/Guide choice). The grid
+  has no control line; Back or ◀ on it opens the category sidebar, and Back or ◀ there moves to the
+  main menu. If upstream reworks `EpgScreen`'s control line, its sheet or `GuideRow`'s ◀ handling,
+  check those three keys again on a TV.
+- The playlist's own guide feed is added and downloaded by `kevbox/epg/GuideFeeds.kt`, which
+  stands in for the onboarding's "sync the guide?" question. If Core starts adding the Xtream
+  feed by itself (its `ImportFinalizer` only does so for Stalker portals today), drop GuideFeeds.
+- Provider category names show verbatim (`LiveOnly.categoryName`), channel names still go through
+  `ProviderTags`.
 
 ## Regenerating the rebrand
 

@@ -455,19 +455,20 @@ open class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxSize(),
                             )
                             // First run (no profile yet) → full onboarding.
-                            profile < 0L -> Onboarding(
+                            // KevBox: no onboarding. Signing in was the setup; the profile is made
+                            // without asking and the new-install look (dark, KevBox blue, preview off) set.
+                            profile < 0L -> tv.own.owntv.kevbox.ui.KevBoxAutoSetup(
                                 firstRun = true,
                                 onDone = { profileId -> gateSession.authenticateProfile(profileId) },
-                                onCancel = {},
                                 modifier = Modifier.fillMaxSize(),
                             )
                             // A loaded list that does not contain the persisted active id is also
                             // recovery/onboarding, never permission to enter OwnTVShell. This covers
                             // both an empty restore window and a stale id left by an interrupted restore.
-                            !activeProfileKnown -> Onboarding(
+                            // KevBox: the same silent profile, without touching the look.
+                            !activeProfileKnown -> tv.own.owntv.kevbox.ui.KevBoxAutoSetup(
                                 firstRun = false,
                                 onDone = { profileId -> gateSession.authenticateProfile(profileId) },
-                                onCancel = {},
                                 modifier = Modifier.fillMaxSize(),
                             )
                             // Run 2+ (or a single locked profile): "Who's watching?" — choose a profile or add one.

@@ -37,7 +37,8 @@ enum class SignInError { WRONG_CREDENTIALS, NO_NETWORK, FAILED }
 data class SignInUiState(val busy: Boolean = false, val error: SignInError? = null)
 
 /**
- * The first screen of KevBox Live: email, password (masked) and Sign in, in the setup wizard's frame.
+ * The first screen of KevBox Live: email, password (shown as typed, ▶ hides it) and Sign in, in the
+ * setup wizard's frame. Signing in is the whole setup: no onboarding follows ([KevBoxAutoSetup]).
  * Focus starts on the email row. While [SignInUiState.busy] the buttons are disabled. An error shows
  * under the fields; a network or server failure adds Retry, which sends the text again. The typed text
  * stays after any error. Both values live in `remember`, never in saved instance state, so the
@@ -73,6 +74,9 @@ fun SignInScreen(state: SignInUiState, onSubmit: (email: String, password: Strin
             StageFieldRow(
                 OwnTVIcon.PENCIL, passwordLabel, password, { password = it }, SettingHelp(passwordLabel, fieldHelp),
                 password = true,
+                // Shown while typing (Kevin, 2026-10-14): a member types it once with a remote and should
+                // see what went in. ▶ still hides it.
+                passwordShownAtStart = true,
             )
             val error = state.error
             if (error != null) {

@@ -377,7 +377,8 @@ fun SearchScreen(
                             val ch = e.row.channel
                             val name = ProviderTags.parse(ch.name)
                             val line = listOfNotNull(
-                                e.row.categoryName?.takeIf { it.isNotBlank() }?.let { ProviderTags.parse(it).name },
+                                // KevBox: the category as the provider names it ("FR| FRANCE HD"), as in the guide's sidebar.
+                                e.row.categoryName?.takeIf { it.isNotBlank() }?.let { tv.own.owntv.kevbox.live.LiveOnly.categoryName(it).name },
                                 ch.number?.toString(),
                                 nowPlaying[ch.id],
                             ).joinToString(sep)

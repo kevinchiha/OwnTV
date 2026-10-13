@@ -1094,7 +1094,7 @@ fun OwnTVShell(
             ) {
                 // Live TV's view (List / Guide, G14), and how a guide — the TV Guide or Live TV's Guide view —
                 // starts a channel or an archive programme: through LiveViewModel, the one live path.
-                val liveView by liveVm.liveView.collectAsStateWithLifecycle()
+                // KevBox: the stored List/Guide choice is no longer read; Live TV is always the grid.
                 val guidePlayChannel: (ChannelEntity, List<ChannelEntity>) -> Unit = { ch, _ ->
                     restoreFocus = false
                     liveVm.watchFromGuide(ch)
@@ -1262,9 +1262,8 @@ fun OwnTVShell(
                             },
                             onGoToChannel = { ch ->
                                 restoreFocus = false
-                                if (liveView == tv.own.owntv.core.settings.SettingsRepository.LiveView.GUIDE) {
-                                    liveVm.setLiveView(tv.own.owntv.core.settings.SettingsRepository.LiveView.LIST)
-                                }
+                                // KevBox: no switch to the list view. Live TV is always the grid, which
+                                // opens on the channel's category and row itself (EpgScreen's reveal).
                                 liveVm.revealChannel(ch)
                                 searchReturn = MainSection.LIVE_TV
                                 onSelectSection(MainSection.LIVE_TV)
@@ -1286,13 +1285,17 @@ fun OwnTVShell(
                             modifier = Modifier.fillMaxSize(),
                         )
 
-                        selectedSection == MainSection.LIVE_TV && liveView == tv.own.owntv.core.settings.SettingsRepository.LiveView.GUIDE -> EpgScreen(
+                        // KevBox: Live TV is always the grid, whatever the stored List/Guide choice says; the
+                        // LiveScreen branch below is never reached for it.
+                        selectedSection == MainSection.LIVE_TV -> EpgScreen(
                             onPlayChannel = guidePlayChannel,
                             onPlayCatchup = guidePlayCatchup,
                             onAddEpg = { openEpgAdd = true; onSelectSection(MainSection.SETTINGS) },
                             previewEnabled = playerMode == PlayerMode.NONE,
                             liveMode = true,
                             onEntryHook = { guideEntry = it },
+                            // KevBox: Back or ◀ on the category sidebar goes on to the main menu.
+                            onOpenMenu = focusRail,
                             onListView = { liveVm.setLiveView(tv.own.owntv.core.settings.SettingsRepository.LiveView.LIST) },
                             restoreFocus = restoreFocus,
                             onRestored = { restoreFocus = false },

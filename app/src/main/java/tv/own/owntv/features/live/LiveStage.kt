@@ -414,7 +414,9 @@ internal fun liveCategoryEntries(railItems: List<LiveRailItem>, railCounts: Map<
     val recentLabel = stringResource(R.string.content_category_recently_watched)
     val entries = railItems.map { item ->
         val label = if (item.key == tv.own.owntv.core.live.LiveKey.History) recentLabel else item.displayLabel()
-        val parsed = if (item.key is tv.own.owntv.core.live.LiveKey.Folder || item.key is tv.own.owntv.core.live.LiveKey.Custom) ProviderTags.parse(label) else null
+        // KevBox: provider categories keep the provider's exact name ("FR| FRANCE HD"), with no prefix
+        // cut off and no RAW/HD badges, so they read as they do in the provider's own lists.
+        val parsed = if (item.key is tv.own.owntv.core.live.LiveKey.Folder || item.key is tv.own.owntv.core.live.LiveKey.Custom) tv.own.owntv.kevbox.live.LiveOnly.categoryName(label) else null
         LiveCategoryEntry(
             item = item,
             label = parsed?.name ?: label,

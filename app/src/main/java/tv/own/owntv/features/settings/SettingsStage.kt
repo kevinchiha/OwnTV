@@ -918,11 +918,13 @@ fun StageFieldRow(
     backLabel: String? = null,
     /** "▶ Start Import" on a form whose button sits in the panel; a password row's ▶ shows the text instead. */
     submitHint: Pair<String, String>? = null,
+    // KevBox: a password row that starts with the text showing (KevBox sign-in); ▶ still hides it.
+    passwordShownAtStart: Boolean = false,
 ) {
     val a = stageAccent
     val panel = LocalSettingsPanel.current
     var editing by remember { mutableStateOf(false) }
-    var shown by remember { mutableStateOf(false) }
+    var shown by remember { mutableStateOf(passwordShownAtStart) } // KevBox: was mutableStateOf(false)
     val rowFocus = remember { FocusRequester() }
     val fieldFocus = remember { FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current

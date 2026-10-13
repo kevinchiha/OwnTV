@@ -12,6 +12,7 @@ import tv.own.owntv.core.repository.SourceTester
 import tv.own.owntv.kevbox.KevBoxCoordinator
 import tv.own.owntv.kevbox.KevBoxViewModel
 import tv.own.owntv.kevbox.access.AccessMonitor
+import tv.own.owntv.kevbox.epg.GuideFeeds
 import tv.own.owntv.kevbox.access.PrefsVerdictPrefs
 import tv.own.owntv.kevbox.expiry.ExpiryMonitor
 import tv.own.owntv.kevbox.expiry.PrefsExpiryPrefs
@@ -36,7 +37,8 @@ val kevboxModule = module {
     }
     single { KevBoxAuth(get(), get(), now = System::currentTimeMillis) }
 
-    single<LocalSources> { CoreLocalSources(get(), get(), get(), get(), get()) }
+    single { GuideFeeds(get(), get(), get(), get(), get(), scope = get()) }
+    single<LocalSources> { CoreLocalSources(get(), get(), get(), get(), get(), get()) }
     single<ManagedSourceStore> { PrefsManagedSourceStore(androidContext().prefs(PrefsManagedSourceStore.PREFS_NAME)) }
     single { PlaylistReconciler(get(), get()) }
 

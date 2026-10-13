@@ -14,6 +14,7 @@ import tv.own.owntv.core.model.SourceType
 import tv.own.owntv.core.repository.SourceRepository
 import tv.own.owntv.core.sync.SyncContentTypes
 import tv.own.owntv.core.sync.work.CatalogSyncScheduler
+import tv.own.owntv.kevbox.epg.GuideFeeds
 import tv.own.owntv.kevbox.supabase.PlaylistRow
 
 /**
@@ -31,6 +32,9 @@ import tv.own.owntv.kevbox.supabase.PlaylistRow
  * [create], [link] and [unlinkEverywhere] refresh the Android TV launcher rows of the profiles they
  * touch, as upstream does after adding or editing a source, so a hidden line's channels leave the
  * home screen and a new one's appear.
+ *
+ * [delete] and [unlinkEverywhere] also take the line's guide feed out of the EPG list ([GuideFeeds]
+ * adds it back when a hidden line returns and syncs).
  */
 class CoreLocalSources(
     private val sourceRepository: SourceRepository,
@@ -38,6 +42,7 @@ class CoreLocalSources(
     private val profileDao: ProfileDao,
     private val catalogSyncScheduler: CatalogSyncScheduler,
     private val launcherIntegrationRepository: LauncherIntegrationRepository,
+    private val guideFeeds: GuideFeeds,
 ) : LocalSources {
 
     override suspend fun fields(sourceId: Long): SourceFields? {
@@ -70,6 +75,9 @@ class CoreLocalSources(
             serverUrl = row.serverUrl,
             username = row.username,
             password = row.password,
+            // Live TV only: the app has no Movies or Series pages, so their catalogues never download.
+            syncMovies = false,
+            syncSeries = false,
         )
         profileIds.drop(1).forEach { sourceDao.link(ProfileSourceCrossRef(profileId = it, sourceId = source.id)) }
         refreshLauncher(profileIds)
@@ -79,7 +87,11 @@ class CoreLocalSources(
     override suspend fun update(sourceId: Long, row: PlaylistRow) {
         val existing = sourceDao.getById(sourceId) ?: return
         sourceRepository.updateSource(
-            existing.copy(name = row.name, url = row.serverUrl, username = row.username, password = row.password),
+            // Live TV only, for a source made before the app dropped Movies and Series too.
+            existing.copy(
+                name = row.name, url = row.serverUrl, username = row.username, password = row.password,
+                syncMovies = false, syncSeries = false,
+            ),
         )
     }
 
@@ -92,6 +104,7 @@ class CoreLocalSources(
         val linked = sourceDao.profileIdsForSource(sourceId)
         linked.forEach { sourceDao.unlink(profileId = it, sourceId = sourceId) }
         refreshLauncher(linked)
+        sourceDao.getById(sourceId)?.let { guideFeeds.removeFor(it) }
     }
 
     override suspend fun resync(sourceId: Long) {
@@ -113,6 +126,7 @@ class CoreLocalSources(
         val linked = sourceDao.profileIdsForSource(sourceId)
         // Same as upstream's delete: finish the cascade even if the caller is cancelled midway.
         withContext(NonCancellable) {
+            guideFeeds.removeFor(source)
             sourceRepository.deleteSource(source)
             refreshLauncher(linked)
         }

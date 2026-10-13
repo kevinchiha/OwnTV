@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent // KevBox: ◀ on the grid opens the category sidebar
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
@@ -173,6 +174,9 @@ fun EpgScreen(
     onListView: () -> Unit = {},
     /** How ▶ from the rail enters the guide: at the grid row focus was on (the rail's entry hook, as Home's). */
     onEntryHook: (((() -> Boolean)?) -> Unit)? = null,
+    // KevBox: moves focus to the app's main menu (the rail). Live TV's category sidebar hands Back and ◀
+    // to it, since the sidebar is the stop between the grid and the menu.
+    onOpenMenu: () -> Unit = {},
 ) {
     val vm: EpgViewModel = koinViewModel()
     // Live TV's view model: its preview player (no second decoder), its category list and playlist marks.
@@ -202,6 +206,8 @@ fun EpgScreen(
     val previewChannel by liveVm.previewChannel.collectAsStateWithLifecycle()
     val previewArmed by liveVm.previewArmed.collectAsStateWithLifecycle()
     val guidePreview by vm.guidePreview.collectAsStateWithLifecycle()
+    // KevBox: true while the playlist's first sync runs (see the grid's empty states).
+    val firstSync = tv.own.owntv.kevbox.live.rememberPlaylistFirstSync()
 
     // Live TV's Guide view shows Live TV's own category; the TV Guide keeps its own choice.
     val categoryKey: LiveKey? = if (liveMode) liveSelected.takeUnless { it == LiveKey.All } else categoryFilter
@@ -311,6 +317,20 @@ fun EpgScreen(
         onRestored()
     }
 
+    // KevBox: Search's "Go to channel" lands here, Live TV having no list view. LiveViewModel.revealChannel
+    // has already picked the channel's category; once the grid shows that category with the channel in
+    // it, focus its row.
+    val reveal by liveVm.reveal.collectAsStateWithLifecycle()
+    LaunchedEffect(reveal, liveSelected, state.loading, state.channels) {
+        val r = reveal ?: return@LaunchedEffect
+        if (!liveMode || state.loading || liveSelected != r.key) return@LaunchedEffect
+        val idx = state.channels.indexOfFirst { it.id == r.id }.takeIf { it >= 0 } ?: return@LaunchedEffect
+        focusedRow = idx
+        delay(80)
+        focusGrid(idx)
+        liveVm.revealDone()
+    }
+
     // --- Overlays --------------------------------------------------------------------------------------
     var menuFor by remember { mutableStateOf<Pair<ChannelEntity, EpgProgrammeEntity>?>(null) }
     var channelMenuFor by remember { mutableStateOf<ChannelEntity?>(null) }
@@ -401,7 +421,14 @@ fun EpgScreen(
         onDispose { onEntryHook?.invoke(null) }
     }
 
-    BackHandler(enabled = sheetOpen) { sheetOpen = false; runCatching { categoryTool.requestFocus() } }
+    // KevBox: in Live TV the sidebar sits between the grid and the main menu: Back on it goes on to the
+    // menu (and Back there to the exit prompt). The TV Guide page keeps upstream's return to its button.
+    BackHandler(enabled = sheetOpen) {
+        sheetOpen = false
+        if (liveMode) onOpenMenu() else runCatching { categoryTool.requestFocus() }
+    }
+    // KevBox: Back on the grid's channel rows (not inside a row's programmes) opens the category sidebar.
+    BackHandler(enabled = liveMode && gridHasFocus && !inCellMode && !sheetOpen) { sheetOpen = true }
     LaunchedEffect(sheetOpen) {
         if (sheetOpen) { withFrameNanos { }; runCatching { sheetFocus.requestFocus() } } else sheetHadFocus = false
     }
@@ -453,7 +480,7 @@ fun EpgScreen(
                 )
             }
             // The key hints at the bottom right of the top area, level with the video's bottom edge (owner, 2026-10-01).
-            Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus) }
+            Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus, liveMode = liveMode) }
         }
 
         }
@@ -461,7 +488,9 @@ fun EpgScreen(
         // The control line (452): one row, every header button of the old guide kept.
         val viewTime = timeAt(scrollPx + timelinePx * 3f / 8f)
         val viewDay = localMidnight(viewTime)
-        Row(
+        // KevBox: Live TV has no control line (title, day, Now, category, order, search, List view,
+        // Auto-match EPG); the category list is the sidebar Back and ◀ open. The TV Guide page keeps it.
+        if (!liveMode) Row(
             Modifier.padding(start = fx(68), end = fx(64), top = 48.mpx).fillMaxWidth().height(48.mpx),
             horizontalArrangement = Arrangement.spacedBy(8.mpx),
             verticalAlignment = Alignment.CenterVertically,
@@ -523,8 +552,12 @@ fun EpgScreen(
         Box(Modifier.fillMaxWidth().weight(1f).padding(top = 18.mpx)) {
             when {
                 state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { OwnTVSpinner(sizeDp = 44) }
+                // KevBox: while the playlist is added and its channels download for the first time, a
+                // spinner, never "No EPG added" or "Add a playlist": the app adds both by itself.
+                liveMode && firstSync && state.channels.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { OwnTVSpinner(sizeDp = 44) }
                 // No EPG feed added yet → a guide it can't fill. Point the user to EPG Sources.
-                !state.hasEpgSources && state.channels.isEmpty() -> GuideEmpty(
+                // KevBox: never in Live TV, where the playlist's own guide is added without asking.
+                !liveMode && !state.hasEpgSources && state.channels.isEmpty() -> GuideEmpty(
                     title = stringResource(R.string.content_epg_empty),
                     body = stringResource(R.string.content_epg_add_description),
                     action = stringResource(R.string.content_epg_add), onAction = onAddEpg,
@@ -545,6 +578,14 @@ fun EpgScreen(
                                 .padding(start = fx(48), end = fx(64), top = 48.mpx)
                                 .fillMaxSize()
                                 .onFocusChanged { gridHasFocus = it.hasFocus }
+                                // KevBox: ◀ on a channel row (a row passes it on outside its programmes)
+                                // opens the category sidebar, as Back does, instead of jumping to the menu.
+                                .onKeyEvent { e ->
+                                    if (liveMode && !inCellMode && e.key == Key.DirectionLeft) {
+                                        if (e.type == KeyEventType.KeyDown) sheetOpen = true
+                                        true
+                                    } else false
+                                }
                                 .focusProperties { onEnter = { runCatching { rowFocus(focusedRow.coerceIn(0, state.channels.size - 1)).requestFocus() } } }
                                 .focusGroup(),
                             verticalArrangement = Arrangement.spacedBy(GuideGridDefaults.RowGap),
@@ -630,12 +671,22 @@ fun EpgScreen(
                 onLongSelect = {},
                 onNavigateRight = { sheetOpen = false; focusGrid() },
                 focusRequester = sheetFocus,
-                sheetTitle = stringResource(R.string.content_epg_guide_category),
-                sheetHint = stringResource(R.string.content_epg_category_hint),
+                // KevBox: in Live TV the sidebar keeps LiveCategories' own heading ("Categories · Live TV");
+                // "Guide category · Same list as Live TV" only makes sense on the TV Guide page.
+                sheetTitle = if (liveMode) stringResource(R.string.content_category_browser_title) else stringResource(R.string.content_epg_guide_category),
+                sheetHint = if (liveMode) stringResource(R.string.common_nav_live_tv) else stringResource(R.string.content_epg_category_hint),
                 modifier = Modifier
                     .padding(start = fx(24), top = 24.mpx, bottom = 24.mpx)
                     .width(fx(450))
                     .fillMaxHeight()
+                    // KevBox: ◀ that nothing in the sidebar used (the search field keeps it for its cursor)
+                    // goes on to the main menu, as Back does.
+                    .onKeyEvent { e ->
+                        if (liveMode && e.key == Key.DirectionLeft) {
+                            if (e.type == KeyEventType.KeyDown) { sheetOpen = false; onOpenMenu() }
+                            true
+                        } else false
+                    }
                     .onFocusChanged {
                         // Closes when focus leaves it — not on the "unfocused" report every node gets when it attaches.
                         if (it.hasFocus) sheetHadFocus = true else if (sheetHadFocus && sheetOpen) sheetOpen = false
@@ -869,7 +920,7 @@ private fun GuideEmpty(title: String, body: String? = null, action: String? = nu
  * OK Browse · ▲▼ Channels · ◀ Menu · Hold OK Options; inside a row: OK Watch · ◀ ▶ Programs · Back Channels.
  */
 @Composable
-private fun GuideKeyHints(cellMode: Boolean) {
+private fun GuideKeyHints(cellMode: Boolean, liveMode: Boolean = false) {
     val hints = if (cellMode) {
         listOf(
             stringResource(R.string.common_ok) to stringResource(R.string.content_key_watch),
@@ -881,7 +932,8 @@ private fun GuideKeyHints(cellMode: Boolean) {
         listOf(
             stringResource(R.string.common_ok) to stringResource(R.string.content_key_browse),
             "▲ ▼" to stringResource(R.string.content_key_channels),
-            "◀" to stringResource(R.string.content_key_menu),
+            // KevBox: in Live TV ◀ opens the category sidebar, not the menu.
+            "◀" to stringResource(if (liveMode) R.string.content_category_browser_title else R.string.content_key_menu),
             stringResource(R.string.content_key_hold_ok) to stringResource(R.string.content_key_options),
         )
     }
