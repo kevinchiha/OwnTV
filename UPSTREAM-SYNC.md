@@ -212,7 +212,10 @@ Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
   has no control line; Back or ◀ on it opens the category sidebar, and Back or ◀ there moves to the
   main menu. ▶ or OK on a category moves to the grid through `SidebarExit`, which waits for the
   sidebar to close and the new channels to load: upstream's direct `focusGrid()` let focus fall to
-  the main menu. The sidebar draws a 92% layer of the glass colour under its glass. If upstream
+  the main menu. The sidebar draws a 92% layer of the glass colour under its glass. OK on a
+  channel that is not in the top video box previews it there (`boxChannel`); only OK on the channel
+  already in the box opens it full screen, on its row (`GuideRow`'s `okOnRow`) and inside its
+  programmes alike, and ▶ steps into the programmes. If upstream
   reworks `EpgScreen`'s control line, its sheet or `GuideRow`'s ◀ handling, check all of these keys
   again on a TV.
 - The playlist's own guide feed is added and downloaded by `kevbox/epg/GuideFeeds.kt`, which
