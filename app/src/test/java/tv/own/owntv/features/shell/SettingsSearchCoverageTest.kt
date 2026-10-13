@@ -174,7 +174,9 @@ class SettingsSearchCoverageTest {
         fun normalize(res: String) = res.removePrefix("settings_").removePrefix("quick_")
         val present = Regex("""R\.string\.([a-z_0-9]+)""").findAll(index).map { normalize(it.groupValues[1]) }.toSet()
         // Backup and Local sync are More pages, not Settings (see notSearchable).
-        val skipped = setOf("BackupScreen.kt", "LocalSyncScreen.kt", "RemoteBackupRestoreScreen.kt", "VideoPlayerSettingsScreen.kt")
+        // KevBox: ManageSourcesScreen.kt is skipped too. KevBox Live hides source management (AC-33),
+        // so the Playlists row and its search entry are gone and the screen is unreachable on purpose.
+        val skipped = setOf("BackupScreen.kt", "LocalSyncScreen.kt", "RemoteBackupRestoreScreen.kt", "VideoPlayerSettingsScreen.kt", "ManageSourcesScreen.kt")
         val screens = File("src/main/java/tv/own/owntv/features/settings").listFiles { f ->
             f.name.endsWith("Screen.kt") && f.name !in skipped
         }.orEmpty()
