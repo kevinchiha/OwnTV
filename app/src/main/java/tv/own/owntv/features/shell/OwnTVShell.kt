@@ -1073,9 +1073,14 @@ fun OwnTVShell(
       )
       // Browse UI — hidden while the player is fullscreen (stays visible behind the docked mini-player).
       // KevBox: live on ExoPlayer keeps it until the video has grown into full screen.
-      if (playerMode != PlayerMode.FULLSCREEN || (livePlayerOnExo && !livePlayerSettled)) {
+      val browseShown = playerMode != PlayerMode.FULLSCREEN || (livePlayerOnExo && !livePlayerSettled)
+      // KevBox: Live TV keeps its grid composed behind full screen, laid out but not placed: not drawn,
+      // and out of D-pad focus search. Upstream drops it, and Back then rebuilt the whole grid before the
+      // video could shrink into its box: about a second on Kevin's TV (2026-10-13).
+      if (browseShown || selectedSection == MainSection.LIVE_TV) {
         Column(
             modifier = Modifier.fillMaxSize()
+                .then(if (browseShown) Modifier else tv.own.owntv.kevbox.ui.KeptHidden)
                 // One group with a restorer: leaving for the mini player and coming back lands on the
                 // exact control that was focused, without every screen having to remember its own.
                 .focusRequester(shellContentFocus)

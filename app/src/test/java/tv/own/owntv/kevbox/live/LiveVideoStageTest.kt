@@ -60,6 +60,7 @@ class LiveVideoStageTest {
         stage.armBridge()
         stage.clear(VideoSite.PLAYER, nowMs = 1_000)
         stage.report(VideoSite.BOX, box, 28f, nowMs = 1_300)
+        stage.frame(1_300)
         assertTrue(stage.visible)
         assertTrue(stage.arrivingAt(VideoSite.BOX))
         stage.frame(1_620)
@@ -87,6 +88,7 @@ class LiveVideoStageTest {
         stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
         stage.clear(VideoSite.PLAYER, nowMs = 1_000)
         stage.report(VideoSite.PLAYER, mini, 21f, nowMs = 1_000)
+        stage.frame(1_000)
         assertTrue(stage.visible)
         assertEquals(full, stage.current)
         assertFalse(stage.settledOn(VideoSite.PLAYER))
@@ -117,6 +119,7 @@ class LiveVideoStageTest {
         stage.report(VideoSite.PLAYER, full, 0f, nowMs = 1_000)
         assertEquals(VideoSite.PLAYER, stage.target)
         assertFalse(stage.settledOn(VideoSite.PLAYER))
+        stage.frame(1_000)
         stage.frame(1_160)
         val mid = stage.current!!
         assertTrue(mid.width > box.width && mid.width < full.width)
@@ -127,6 +130,23 @@ class LiveVideoStageTest {
     }
 
     @Test
+    fun aMoveStartsAtItsFirstFrameNotWhenItWasAskedFor() {
+        // The TV draws the frame after OK ~350 ms late; the move must still play in full from there.
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 1_000)
+        stage.frame(1_350)
+        assertEquals(box, stage.current)
+        stage.frame(1_510)
+        val mid = stage.current!!
+        assertTrue(mid.width > box.width && mid.width < full.width)
+        stage.frame(1_669)
+        assertFalse(stage.settledOn(VideoSite.PLAYER))
+        stage.frame(1_670)
+        assertTrue(stage.settledOn(VideoSite.PLAYER))
+    }
+
+    @Test
     fun aNewRectangleOnTheSameSiteStartsAMove() {
         val mini = Rect(1300f, 760f, 1880f, 1086f)
         val stage = LiveVideoStage(durationMs = 320)
@@ -134,6 +154,7 @@ class LiveVideoStageTest {
         assertTrue(stage.settledOn(VideoSite.PLAYER))
         stage.report(VideoSite.PLAYER, mini, 21f, nowMs = 1_000)
         assertFalse(stage.settledOn(VideoSite.PLAYER))
+        stage.frame(1_000)
         stage.frame(1_319)
         assertFalse(stage.settledOn(VideoSite.PLAYER))
         stage.frame(1_320)
@@ -248,6 +269,7 @@ class LiveVideoStageTest {
         // Full screen is up but the player has not reported yet: the window sits in the box.
         assertTrue(stage.arrivingAt(VideoSite.PLAYER))
         stage.report(VideoSite.PLAYER, full, 0f, nowMs = 1_000)
+        stage.frame(1_000)
         stage.frame(1_319)
         assertTrue(stage.arrivingAt(VideoSite.PLAYER))
         stage.frame(1_320)
@@ -271,6 +293,7 @@ class LiveVideoStageTest {
         stage.armBridge()
         stage.clear(VideoSite.PLAYER, nowMs = 1_000)
         stage.report(VideoSite.BOX, box, 28f, nowMs = 1_100)
+        stage.frame(1_100)
         stage.frame(1_420)
         assertTrue(stage.settledOn(VideoSite.BOX))
         stage.report(VideoSite.PLAYER, full, 0f, nowMs = 2_000)

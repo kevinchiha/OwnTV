@@ -904,7 +904,15 @@ class EpgViewModel(
         // KevBox: every channel shows, guide data or not. The grid is KevBox Live's only channel list, so a
         // channel the guide feed misses would otherwise be unreachable (upstream's default hides it, and
         // the Order menu that could show it is gone). Was: guideShowEmpty ? channelsForGuide : channelsWithGuide.
-        val rawChannels = channelDao.channelsForGuide(playlistIds, q, MAX_CHANNELS)
+        // KevBox: one provider category (and no search) reads that category's channels alone. Reading the
+        // whole playlist and filtering it here cost a full read on every category change, and a playlist
+        // past MAX_CHANNELS lost its later categories outright (Kevin's: AFR| CANAL+ loaded empty).
+        val filter = _categoryFilter.value
+        val rawChannels = if (filter is tv.own.owntv.core.live.LiveKey.Folder && q.isEmpty()) {
+            channelDao.channelsAfterCategory(filter.id, Int.MIN_VALUE, Long.MIN_VALUE, MAX_CHANNELS).filter { it.sourceId in playlistIds }
+        } else {
+            channelDao.channelsForGuide(playlistIds, q, MAX_CHANNELS)
+        }
         val favoriteIds = favoriteDao.observeFavoriteIds(pid, MediaType.LIVE).first().toSet()
         val sortGuideMode = settings.sortGuide.first()
         // Hidden categories keep their channels out of the guide too (parity with Live TV), and a
@@ -919,7 +927,7 @@ class EpgViewModel(
             isKidsProfile,
         )
     }
-        val filter = _categoryFilter.value
+        // KevBox: `filter` is read once, above, so the query and the filter below agree.
         // A provider folder keeps out the channels the user moved from it into a custom category.
         val folderKey = (filter as? tv.own.owntv.core.live.LiveKey.Folder)
             ?.let { categoryDao.getById(it.id) }?.let(CustomizeKeys::category)
@@ -1097,7 +1105,8 @@ class EpgViewModel(
         // How far back the Guide may extend for catch-up (must stay within EpgRepository's retention).
         private const val CATCHUP_LOOKBACK_CAP_MS = 7L * 24 * 60 * 60 * 1000
         // Generous safety bound only (rows load lazily, so this is about the channel list itself).
-        private const val MAX_CHANNELS = 20_000
+        // KevBox: 40,000, was 20,000: Kevin's playlist has more live channels than that (2026-10-13).
+        private const val MAX_CHANNELS = 40_000
         // Cap the candidate set the bulk matcher scans against (keeps the O(channels×candidates) scan bounded).
         // Bound values sent to a single `IN (...)`. SQLite's parameter ceiling is 999 on older
         // Android; core chunks its own bulk lookups at the same size.

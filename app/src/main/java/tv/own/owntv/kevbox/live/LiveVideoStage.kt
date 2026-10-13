@@ -121,7 +121,12 @@ class LiveVideoStage(durationMs: Int = 320) {
 
     private class Site(val bounds: Rect, val cornerPx: Float)
 
-    private class Move(val fromRect: Rect, val fromCorner: Float, val startMs: Long)
+    /**
+     * A move's clock starts at its first frame ([startMs] null until then), not when it was asked for:
+     * on Kevin's TV the frame after OK or Back comes ~350 ms late while the player is built or taken
+     * down, and a clock started at the request had the 320 ms move over before it was ever drawn.
+     */
+    private class Move(val fromRect: Rect, val fromCorner: Float, val startMs: Long? = null)
 
     /** The length of a move. The shell sets it from the Animations setting each composition. */
     var durationMs: Int by mutableIntStateOf(durationMs)
@@ -240,8 +245,14 @@ class LiveVideoStage(durationMs: Int = 320) {
             }
             return
         }
-        val m = move ?: return
-        val t = if (durationMs <= 0) 1f else ((nowMs - m.startMs).toFloat() / durationMs).coerceIn(0f, 1f)
+        var m = move ?: return
+        if (m.startMs == null && durationMs > 0) {
+            // The move's first frame: it starts now, from where the window is.
+            m = Move(m.fromRect, m.fromCorner, nowMs)
+            move = m
+        }
+        val start = m.startMs ?: nowMs
+        val t = if (durationMs <= 0) 1f else ((nowMs - start).toFloat() / durationMs).coerceIn(0f, 1f)
         if (t >= 1f) {
             current = to.bounds
             currentCornerPx = to.cornerPx
@@ -279,7 +290,7 @@ class LiveVideoStage(durationMs: Int = 320) {
         } else if (from == to.bounds && currentCornerPx == to.cornerPx) {
             move = null
         } else {
-            move = Move(from, currentCornerPx, nowMs)
+            move = Move(from, currentCornerPx)
         }
     }
 }
