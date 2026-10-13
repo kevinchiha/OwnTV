@@ -69,8 +69,7 @@ import tv.own.owntv.features.home.ChannelPlate
 import tv.own.owntv.features.home.OnNowCard
 import tv.own.owntv.features.home.timeLeftText
 import tv.own.owntv.features.shell.components.ClearHistoryDialog
-import tv.own.owntv.features.shell.components.GITHUB_REPO
-import tv.own.owntv.features.shell.components.TELEGRAM_LINK
+// KevBox: GITHUB_REPO and TELEGRAM_LINK imports removed with the About page's links.
 import tv.own.owntv.features.shell.components.playbackDisplayName
 import tv.own.owntv.features.update.UpdateDialog
 import tv.own.owntv.player.PlaybackErrorLog
@@ -215,7 +214,8 @@ private data class SettingsGroupCard(val icon: OwnTVIcon, val nameRes: Int, val 
 private val SettingsCards = listOf(
     SettingsGroupCard(OwnTVIcon.SPARKLE, R.string.settings_group_quick, R.string.settings_group_summary_quick, null),
     SettingsGroupCard(OwnTVIcon.PERSON, R.string.settings_group_profile, R.string.settings_card_profile, 3),
-    SettingsGroupCard(OwnTVIcon.LIST, R.string.settings_group_sources, R.string.settings_card_sources, 8),
+    // KevBox: 7, not 8: the Playlists row is hidden (Choose playlist shows only with two or more playlists).
+    SettingsGroupCard(OwnTVIcon.LIST, R.string.settings_group_sources, R.string.settings_card_sources, 7),
     SettingsGroupCard(OwnTVIcon.PALETTE, R.string.settings_group_appearance, R.string.settings_card_appearance, 9),
     SettingsGroupCard(OwnTVIcon.GRID, R.string.settings_group_layout, R.string.settings_card_layout, 10),
     SettingsGroupCard(OwnTVIcon.MOVIES, R.string.settings_group_content_metadata, R.string.settings_card_content, 3),
@@ -224,7 +224,8 @@ private val SettingsCards = listOf(
     SettingsGroupCard(OwnTVIcon.HEADPHONES, R.string.settings_group_sound_subtitles, R.string.settings_card_sound, 11),
     SettingsGroupCard(OwnTVIcon.LIVE_TV, R.string.settings_live_tv, R.string.settings_card_live, 12),
     SettingsGroupCard(OwnTVIcon.REC, R.string.settings_group_watching_recording, R.string.settings_card_watching, 11),
-    SettingsGroupCard(OwnTVIcon.INFO, R.string.settings_group_app, R.string.settings_card_app, 10),
+    // KevBox: 8, not 10: the App icon and Accent-colored logo rows are hidden.
+    SettingsGroupCard(OwnTVIcon.INFO, R.string.settings_group_app, R.string.settings_card_app, 8),
 )
 
 /** The card last opened, so Back from its group lands on it again rather than on the search field. */
@@ -675,31 +676,10 @@ internal fun AboutPage(vm: MoreCountsViewModel, entry: FocusRequester, onOpenLan
         }
         Text(stringResource(R.string.more_about_description), style = stageText(18, 500).copy(lineHeight = 29.mpxSp), color = stageTone(Color(0xFFD3DCD8), StageColors.Body),
             modifier = Modifier.padding(top = 26.mpx).widthIn(max = 860.mpx))
-        Text(stringResource(R.string.settings_contributions), style = stageText(16, 500), color = StageColors.Dim,
-            modifier = Modifier.padding(top = 10.mpx, bottom = 24.mpx).widthIn(max = 860.mpx))
-        StageTile(Modifier.width(640.mpx)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(20.mpx), verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(R.drawable.telegram_qr),
-                    contentDescription = stringResource(R.string.settings_telegram_qr),
-                    modifier = Modifier.size(150.mpx).clip(RoundedCornerShape(14.mpx)).background(Color.White),
-                )
-                Column {
-                    Text(stringResource(R.string.settings_join_telegram), style = stageText(22, 800), color = StageColors.Text)
-                    Text(TELEGRAM_LINK, style = stageText(17, 500), color = accent, modifier = Modifier.padding(top = 4.mpx))
-                    Text(stringResource(R.string.more_about_scan), style = stageText(15.5f, 500), color = StageColors.Muted, modifier = Modifier.padding(top = 8.mpx))
-                }
-            }
-        }
+        // KevBox: the GitHub contributions line, the Telegram card (QR, link, scan hint) and the GitHub
+        // repository chip are gone. KevBox Live members get help from the admin, not from upstream's
+        // community, so the About page points nowhere outside the app (AC-35).
         Row(Modifier.padding(top = 22.mpx), horizontalArrangement = Arrangement.spacedBy(10.mpx)) {
-            // The link is for reading: a TV has no browser to open it in.
-            Row(
-                Modifier.height(44.mpx).background(StageColors.ControlFill, RoundedCornerShape(15.mpx)).padding(horizontal = 16.mpx),
-                horizontalArrangement = Arrangement.spacedBy(9.mpx), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OwnTVIcon(OwnTVIcon.NETWORK, StageColors.Text, Modifier.size(18.mpx))
-                Text(GITHUB_REPO, style = stageText(16, 700), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
             val languages = SupportedLocales.all.count { it.packaged }
             StageTool(pluralStringResource(R.plurals.more_about_languages, languages, languages), onClick = onOpenLanguage, icon = OwnTVIcon.LIST, boxed = true, modifier = Modifier.focusRequester(entry))
             StageTool(stringResource(R.string.settings_check_updates), onClick = { showUpdate = true }, icon = OwnTVIcon.REFRESH, boxed = true, modifier = Modifier.focusRequester(updateFocus))
