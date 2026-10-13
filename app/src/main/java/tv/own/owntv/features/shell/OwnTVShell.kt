@@ -383,7 +383,10 @@ fun OwnTVShell(
     val showCategoryBrowser by liveVm.showCategoryBrowser.collectAsStateWithLifecycle()
     val browserRailItems by liveVm.railItems.collectAsStateWithLifecycle()
     val browserRailCounts by liveVm.railCounts.collectAsStateWithLifecycle()
-    val previewChannel by liveVm.previewChannel.collectAsStateWithLifecycle()
+    // KevBox: the focused channel reaches the shell only while a player is up: every use below is the
+    // player's, and reading it here re-ran the whole shell on every ▲ ▼ in the Live TV grid.
+    val previewChannelState = liveVm.previewChannel.collectAsStateWithLifecycle()
+    val previewChannel by remember { androidx.compose.runtime.derivedStateOf { if (playerMode != PlayerMode.NONE) previewChannelState.value else null } }
     val playerRecording by liveVm.playerRecording.collectAsStateWithLifecycle()
     val overlayProgrammes by liveVm.nowProgrammes.collectAsStateWithLifecycle()
     val overlayFavoriteIds by liveVm.favoriteIds.collectAsStateWithLifecycle()

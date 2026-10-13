@@ -26,6 +26,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf // KevBox: isSelectedRow
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -204,7 +205,9 @@ fun EpgScreen(
     val liveSelected by liveVm.selectedKey.collectAsStateWithLifecycle()
     val playlistMarks by liveVm.playlistMarks.collectAsStateWithLifecycle()
     val livePreviewSetting by liveVm.livePreviewEnabled.collectAsStateWithLifecycle()
-    val previewChannel by liveVm.previewChannel.collectAsStateWithLifecycle()
+    // KevBox: read below only where the focus preview is on. Read here, it re-ran the whole screen on
+    // every ▲ ▼, since each focus move sets the preview channel even with the preview off.
+    val previewChannelState = liveVm.previewChannel.collectAsStateWithLifecycle()
     val previewArmed by liveVm.previewArmed.collectAsStateWithLifecycle()
     val guidePreview by vm.guidePreview.collectAsStateWithLifecycle()
     // KevBox: true while the playlist's first sync runs (see the grid's empty states).
@@ -219,9 +222,9 @@ fun EpgScreen(
     val effectivePreview = previewEnabled && livePreviewSetting && guidePreview
     // Switching the Guide's own preview off stops what is already playing, not only the next channel.
     LaunchedEffect(guidePreview) { if (!guidePreview && previewEnabled) liveVm.stopPreview() }
-    LaunchedEffect(previewChannel?.id, effectivePreview, previewArmed) {
+    LaunchedEffect(if (effectivePreview) previewChannelState.value?.id else null, effectivePreview, previewArmed) { // KevBox: see previewChannelState
         if (!effectivePreview || !previewArmed) return@LaunchedEffect
-        val ch = previewChannel ?: return@LaunchedEffect
+        val ch = previewChannelState.value ?: return@LaunchedEffect
         delay(700)
         liveVm.playPreview(ch)
     }
@@ -236,7 +239,7 @@ fun EpgScreen(
     val okPreviewsFirst = liveMode && !effectivePreview
     // With the focus preview on, the focused channel is already in the box, so one OK goes full screen.
     fun inBox(ch: ChannelEntity): Boolean =
-        if (okPreviewsFirst) boxChannel()?.id == ch.id else previewArmed && previewChannel?.id == ch.id
+        if (okPreviewsFirst) boxChannel()?.id == ch.id else previewArmed && previewChannelState.value?.id == ch.id // KevBox: see previewChannelState
 
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -520,7 +523,7 @@ fun EpgScreen(
         Row(Modifier.padding(start = fx(64), end = fx(64), top = 44.mpx).fillMaxWidth().height(360.mpx)) {
         // KevBox: the channel OK put in the box stays there (with its video) while focus moves on.
         val box = boxChannel().takeIf { okPreviewsFirst && previewEnabled }
-        val videoChannel = box ?: if (effectivePreview) previewChannel ?: topChannel else topChannel
+        val videoChannel = box ?: if (effectivePreview) previewChannelState.value ?: topChannel else topChannel // KevBox: see previewChannelState
         GuideVideo(
             channel = videoChannel,
             channelLine = videoChannel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(" · ") },
@@ -656,6 +659,9 @@ fun EpgScreen(
                             contentPadding = PaddingValues(bottom = 24.mpx),
                         ) {
                             itemsIndexed(state.channels, key = { _, ch -> ch.id }) { index, channel ->
+                                // KevBox: each row reads only whether it is the selected one, so a ▲ ▼ re-runs the
+                                // two rows that changed instead of every row on screen.
+                                val isSelectedRow by remember(index) { derivedStateOf { gridHasFocus && index == focusedRow } }
                                 GuideRow(
                                     vm = vm,
                                     channel = channel,
@@ -668,7 +674,7 @@ fun EpgScreen(
                                     now = liveNow,
                                     scrollPx = scrollPx,
                                     focusRequester = rowFocus(index),
-                                    selectedRow = gridHasFocus && index == focusedRow,
+                                    selectedRow = isSelectedRow, // KevBox: see isSelectedRow
                                     cursorTime = cursorTime,
                                     cellMode = inCellMode,
                                     onEnterCell = { cursorTime = System.currentTimeMillis(); inCellMode = true },

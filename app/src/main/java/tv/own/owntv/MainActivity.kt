@@ -239,6 +239,7 @@ open class MainActivity : ComponentActivity() {
             return
         }
         Perf.stamp("db-probed") // main thread was blocked here: everything above is pre-composition
+        tv.own.owntv.kevbox.ui.QuietAccessibility.install(this) // KevBox: no screen copy for key-only services.
         setContent {
             // First composition pass — splits "process start → Compose is running" from
             // "Compose is running → the destination's data arrived".

@@ -412,27 +412,40 @@ internal data class LiveCategoryEntry(
 @Composable
 internal fun liveCategoryEntries(railItems: List<LiveRailItem>, railCounts: Map<tv.own.owntv.core.live.LiveKey, Int>): Pair<List<LiveCategoryEntry>, String> {
     val recentLabel = stringResource(R.string.content_category_recently_watched)
-    val entries = railItems.map { item ->
-        val label = if (item.key == tv.own.owntv.core.live.LiveKey.History) recentLabel else item.displayLabel()
-        // KevBox: provider categories keep the provider's exact name ("FR| FRANCE HD"), with no prefix
-        // cut off and no RAW/HD badges, so they read as they do in the provider's own lists.
-        val parsed = if (item.key is tv.own.owntv.core.live.LiveKey.Folder || item.key is tv.own.owntv.core.live.LiveKey.Custom) tv.own.owntv.kevbox.live.LiveOnly.categoryName(label) else null
-        LiveCategoryEntry(
-            item = item,
-            label = parsed?.name ?: label,
-            name = parsed,
-            icon = when (item.key) {
-                tv.own.owntv.core.live.LiveKey.Favorites -> OwnTVIcon.FAVORITE
-                tv.own.owntv.core.live.LiveKey.History -> OwnTVIcon.HISTORY
-                tv.own.owntv.core.live.LiveKey.Catchup -> OwnTVIcon.REWIND
-                tv.own.owntv.core.live.LiveKey.All -> OwnTVIcon.LIVE_TV
-                else -> null
-            },
-            count = railCounts[item.key],
-            mark = null,
-        )
+    // KevBox: the list is built once per change of its inputs, not on every recomposition: the grid
+    // asked for it on every ▲ ▼, which parsed every category name each time (12,000 label calls over 24
+    // presses on Kevin's playlist). The fixed labels are resolved here, outside the remember, exactly
+    // as displayLabel() resolves them.
+    val favoritesLabel = stringResource(R.string.content_category_favorites)
+    val catchupLabel = stringResource(R.string.content_catchup)
+    val allLabel = stringResource(R.string.content_category_all_channels)
+    val entries = remember(railItems, railCounts, recentLabel, favoritesLabel, catchupLabel, allLabel) {
+        railItems.map { item ->
+            val label = if (item.key == tv.own.owntv.core.live.LiveKey.History) recentLabel else item.title ?: when (item.key) {
+                tv.own.owntv.core.live.LiveKey.Favorites -> favoritesLabel
+                tv.own.owntv.core.live.LiveKey.Catchup -> catchupLabel
+                else -> allLabel
+            }
+            // KevBox: provider categories keep the provider's exact name ("FR| FRANCE HD"), with no prefix
+            // cut off and no RAW/HD badges, so they read as they do in the provider's own lists.
+            val parsed = if (item.key is tv.own.owntv.core.live.LiveKey.Folder || item.key is tv.own.owntv.core.live.LiveKey.Custom) tv.own.owntv.kevbox.live.LiveOnly.categoryName(label) else null
+            LiveCategoryEntry(
+                item = item,
+                label = parsed?.name ?: label,
+                name = parsed,
+                icon = when (item.key) {
+                    tv.own.owntv.core.live.LiveKey.Favorites -> OwnTVIcon.FAVORITE
+                    tv.own.owntv.core.live.LiveKey.History -> OwnTVIcon.HISTORY
+                    tv.own.owntv.core.live.LiveKey.Catchup -> OwnTVIcon.REWIND
+                    tv.own.owntv.core.live.LiveKey.All -> OwnTVIcon.LIVE_TV
+                    else -> null
+                },
+                count = railCounts[item.key],
+                mark = null,
+            )
+        }
     }
-    val groupCountry = ProviderTags.sharedCountry(entries.mapNotNull { it.name })
+    val groupCountry = remember(entries) { ProviderTags.sharedCountry(entries.mapNotNull { it.name }) } // KevBox: once per list
     val heading = (if (groupCountry != null) stringResource(R.string.content_live_groups_country, groupCountry) else stringResource(R.string.content_live_groups))
         .uppercase(androidx.compose.ui.text.intl.Locale.current.platformLocale)
     return entries to heading

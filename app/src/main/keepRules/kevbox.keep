@@ -1,0 +1,8 @@
+# KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
+#
+# QuietAccessibility (kevbox/ui/QuietAccessibility.kt) finds Compose's accessibility delegate and its
+# cached list of enabled services by name. Keep both names, or R8 renames them and it does nothing.
+-keepnames class androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat
+-keepclassmembernames class androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat {
+    java.util.List _enabledServices;
+}
