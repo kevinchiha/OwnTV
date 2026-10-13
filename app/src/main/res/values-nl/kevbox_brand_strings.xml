@@ -54,8 +54,8 @@
     <string name="settings_sources_probe_unknown">KevBox Live kon niet achterhalen hoeveel kanalen deze provider toestaat.</string>
     <string name="settings_sources_probe_warning">Veel providers zeggen nooit hoeveel kanalen je tegelijk mag kijken, dus KevBox Live zoekt het uit door er een paar te openen en te kijken welke blijven werken. Alles wat nu speelt, stopt en dit kan tot twee minuten duren.</string>
     <string name="settings_surround_forced_description">Surround — stuur Dolby/DTS naar een echte 5.1/7.1-receiver. Als het stil wordt of hapert, valt KevBox Live alsnog terug op stereo en meldt je dat.</string>
-    <string name="setup_byo_source_description">KevBox Live is een speler — voeg je eigen Xtream-, M3U- of Stalker-bron toe.</string>
-    <string name="setup_disclaimer">KevBox Live is uitsluitend een mediaspeler. De app bevat geen zenders, afspeellijsten of content. Je bent zelf verantwoordelijk voor het toevoegen van je eigen legaal toegankelijke Xtream-, M3U- of Stalker-bronnen.</string>
+    <string name="setup_byo_source_description">KevBox Live plays the playlist your admin sets up for you.</string>
+    <string name="setup_disclaimer">KevBox Live is a media player. It includes no channels or content of its own. Your playlist is set up by the admin, so there is no source for you to add.</string>
     <string name="setup_line_app_icon">Hoe KevBox Live op het startscherm van de tv verschijnt</string>
     <string name="setup_set_up_owntv">KevBox Live configureren</string>
     <string name="setup_sync_device_description">Kopieer alles van je andere KevBox Live-apparaat via wifi</string>

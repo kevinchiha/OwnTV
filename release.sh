@@ -22,11 +22,13 @@
 #         KEVBOX_SUPABASE_ANON_KEY); the keystore exists; the Supabase URL starts with https:// and
 #         the anon key is not blank. The files are sourced inside subshells and never printed.
 #
-# Then it builds the standard (arm) and x86_64 release APKs, copies them to
-# build/kevbox-release/KevBoxLive.apk and build/kevbox-release/KevBoxLive-x86_64.apk (fixed names,
-# so https://github.com/kevinchiha/OwnTV/releases/latest/download/KevBoxLive.apk always works),
-# checks both signatures against the KevBox TV key's SHA-256 (AC-4), and only then creates GitHub
-# release v<version> on kevinchiha/OwnTV with those two assets.
+# Then it deletes any release APK an earlier build left in Gradle's output folders (so a stale
+# APK can never ship under a new tag), builds the standard (arm) and x86_64 release APKs, copies
+# them to build/kevbox-release/KevBoxLive.apk and build/kevbox-release/KevBoxLive-x86_64.apk (fixed
+# names, so https://github.com/kevinchiha/OwnTV/releases/latest/download/KevBoxLive.apk always
+# works), checks both carry versionName <version>, checks both signatures against the KevBox TV
+# key's SHA-256 (AC-4), runs tools/kevbox/check-brand.sh on the arm APK (AC-3), and only then
+# creates GitHub release v<version> on kevinchiha/OwnTV with those two assets.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -98,7 +100,20 @@ check_code_above_latest "$version" "$latest" || die "stopped: version code not a
 
 version_code="$(bash tools/kevbox/version.sh code "$version")"
 
+# KevBox: the SDK tools the checks after the build need, looked up before anything is built.
+android_home="${ANDROID_HOME:-/home/kevin/Android/Sdk}"
+apksigner="$(ls -d "$android_home"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
+[[ -n "$apksigner" && -x "$apksigner" ]] || die "no apksigner under $android_home/build-tools"
+aapt2="$(ls -d "$android_home"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1 || true)"
+[[ -n "$aapt2" && -x "$aapt2" ]] || die "no aapt2 under $android_home/build-tools"
+
 # --- Build. ---
+
+built_arm="app/build/outputs/apk/standard/release/app-standard-release.apk"
+built_x86="app/build/outputs/apk/x86_64/release/app-x86_64-release.apk"
+# KevBox: delete every earlier release APK first. Gradle leaves the last build's APK in place when
+# signing is not set up (it then writes only an -unsigned APK), and the copy below would ship it.
+rm -f -- "$built_arm" "$built_x86" "$arm_apk" "$x86_apk"
 
 echo "release: building KevBox Live $version (code $version_code)"
 (
@@ -115,19 +130,22 @@ echo "release: building KevBox Live $version (code $version_code)"
   ./gradlew assembleStandardRelease assembleX86_64Release
 ) || die "the Gradle build failed; nothing was published"
 
-built_arm="app/build/outputs/apk/standard/release/app-standard-release.apk"
-built_x86="app/build/outputs/apk/x86_64/release/app-x86_64-release.apk"
 [[ -f "$built_arm" ]] || die "no signed arm APK at $built_arm (an -unsigned APK means signing was not set up)"
 [[ -f "$built_x86" ]] || die "no signed x86_64 APK at $built_x86"
 mkdir -p "$out_dir"
 cp "$built_arm" "$arm_apk"
 cp "$built_x86" "$x86_apk"
 
-# --- Signature check (AC-4). ---
+# --- Version check: both APKs say the version this release is tagged with. ---
 
-android_home="${ANDROID_HOME:-/home/kevin/Android/Sdk}"
-apksigner="$(ls -d "$android_home"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
-[[ -n "$apksigner" && -x "$apksigner" ]] || die "no apksigner under $android_home/build-tools"
+for apk in "$arm_apk" "$x86_apk"; do
+  badging="$("$aapt2" dump badging "$apk")" || die "aapt2 could not read $apk; nothing was published"
+  built_name="$(sed -n "s/^package: .* versionName='\([^']*\)'.*/\1/p" <<<"$badging")"
+  [[ "$built_name" == "$version" ]] \
+    || die "$apk has versionName '$built_name', not $version; nothing was published"
+done
+
+# --- Signature check (AC-4). ---
 
 normalize() { tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]'; }
 want="$(printf '%s' "$expected_sha256" | normalize)"
@@ -141,6 +159,11 @@ for apk in "$arm_apk" "$x86_apk"; do
   done <<<"$digests"
   echo "release: $apk signed with the KevBox TV key"
 done
+
+# --- Brand check (AC-3): no shipped string may still say OwnTV. ---
+
+bash tools/kevbox/check-brand.sh "$arm_apk" \
+  || die "$arm_apk still ships OwnTV text (see above); nothing was published"
 
 # --- Publish. ---
 

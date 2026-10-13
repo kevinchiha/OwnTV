@@ -53,8 +53,8 @@
     <string name="settings_sources_probe_unknown">このプロバイダーが許可するチャンネル数を KevBox Live は特定できませんでした。</string>
     <string name="settings_sources_probe_warning">同時に視聴できるチャンネル数を知らせないプロバイダーは少なくありません。そこで KevBox Live はいくつか実際に開き、どれが続くかを見て判断します。再生中のものはすべて停止し、最大で 2 分ほどかかります。</string>
     <string name="settings_surround_forced_description">サラウンド — Dolby/DTSを実際の5.1/7.1レシーバーに送信します。無音になったりカクついたりする場合は、KevBox Liveはステレオに切り替えてその旨通知します。</string>
-    <string name="setup_byo_source_description">KevBox Liveはプレーヤーです。ご自身のXtream、M3U、またはStalkerソースを追加してください。</string>
-    <string name="setup_disclaimer">KevBox Liveはメディアプレーヤーにすぎません。チャンネル、プレイリスト、コンテンツは一切含まれていません。合法的にアクセスできるご自身のXtream、M3U、またはStalkerソースを追加する責任はユーザーにあります。</string>
+    <string name="setup_byo_source_description">KevBox Live plays the playlist your admin sets up for you.</string>
+    <string name="setup_disclaimer">KevBox Live is a media player. It includes no channels or content of its own. Your playlist is set up by the admin, so there is no source for you to add.</string>
     <string name="setup_line_app_icon">テレビのホーム画面での KevBox Live の見え方</string>
     <string name="setup_set_up_owntv">KevBox Liveをセットアップ</string>
     <string name="setup_sync_device_description">Wi-Fi 経由でもう一方の KevBox Live 端末からすべてをコピーします</string>

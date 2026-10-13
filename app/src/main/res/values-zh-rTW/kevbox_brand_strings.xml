@@ -53,8 +53,8 @@
     <string name="settings_sources_probe_unknown">KevBox Live 無法判斷此供應商允許多少個頻道。</string>
     <string name="settings_sources_probe_warning">許多供應商從不說明你可以同時觀看多少個頻道，因此 KevBox Live 會開啟幾個頻道，看看哪些能持續播放來判斷。目前正在播放的內容會停止，此過程最多需要兩分鐘。</string>
     <string name="settings_surround_forced_description">環繞音效 — 將 Dolby/DTS 傳送至實體的 5.1/7.1 環繞擴大機。如果出現無聲或卡頓，KevBox Live 仍會自動切回立體聲並通知你。</string>
-    <string name="setup_byo_source_description">KevBox Live 是一款播放器，請自行提供 Xtream、M3U 或 Stalker 來源。</string>
-    <string name="setup_disclaimer">KevBox Live 僅為媒體播放器，不包含任何頻道、播放清單或內容。您有責任自行新增可合法存取的 Xtream、M3U 或 Stalker 來源。</string>
+    <string name="setup_byo_source_description">KevBox Live plays the playlist your admin sets up for you.</string>
+    <string name="setup_disclaimer">KevBox Live is a media player. It includes no channels or content of its own. Your playlist is set up by the admin, so there is no source for you to add.</string>
     <string name="setup_line_app_icon">KevBox Live 在電視主畫面上的樣子</string>
     <string name="setup_set_up_owntv">設定 KevBox Live</string>
     <string name="setup_sync_device_description">透過 Wi-Fi 從你的另一部 KevBox Live 裝置複製所有內容</string>

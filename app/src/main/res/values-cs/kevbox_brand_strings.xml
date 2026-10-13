@@ -56,8 +56,8 @@
     <string name="settings_sources_probe_unknown">KevBox Live nedokázal zjistit, kolik kanálů tento poskytovatel dovolí.</string>
     <string name="settings_sources_probe_warning">Mnozí poskytovatelé nikdy neuvedou, kolik kanálů můžete sledovat najednou, a tak to KevBox Live zjistí tím, že jich několik otevře a sleduje, které vydrží. Vše, co právě běží, se zastaví a může to trvat až dvě minuty.</string>
     <string name="settings_surround_forced_description">Prostorový zvuk – posílejte Dolby/DTS do skutečného přijímače 5.1/7.1. Pokud ztichne nebo se zadrhává, KevBox Live se i tak vrátí ke stereu a dá vám vědět.</string>
-    <string name="setup_byo_source_description">KevBox Live je přehrávač — přidejte vlastní zdroj Xtream, M3U nebo Stalker.</string>
-    <string name="setup_disclaimer">KevBox Live je pouze přehrávač médií. Neobsahuje žádné kanály, playlisty ani obsah. Za přidání vlastních legálně dostupných zdrojů Xtream, M3U nebo Stalker odpovídáte vy.</string>
+    <string name="setup_byo_source_description">KevBox Live plays the playlist your admin sets up for you.</string>
+    <string name="setup_disclaimer">KevBox Live is a media player. It includes no channels or content of its own. Your playlist is set up by the admin, so there is no source for you to add.</string>
     <string name="setup_line_app_icon">Jak se KevBox Live zobrazí na domovské obrazovce televize</string>
     <string name="setup_set_up_owntv">Nastavení KevBox Live</string>
     <string name="setup_sync_device_description">Zkopírujte vše z druhého zařízení KevBox Live přes Wi-Fi</string>

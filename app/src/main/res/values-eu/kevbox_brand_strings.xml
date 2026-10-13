@@ -41,8 +41,8 @@
     <string name="settings_sources_probe_unknown">KevBox Livek ezin izan du jakin hornitzaile honek zenbat kanal onartzen dituen.</string>
     <string name="settings_sources_probe_warning">Hornitzaile askok ez dute inoiz esaten zenbat kanal ikus ditzakezun aldi berean, beraz KevBox Livek hainbat ireki eta zeintzuk irauten duten ikusiz jakiten du. Orain erreproduzitzen ari den guztia gelditu egingo da, eta honek bi minutu arte iraun dezake.</string>
     <string name="settings_surround_forced_description">Surround — bidali Dolby/DTS benetako 5.1/7.1 hartzaile bati. Isildu edo eten-etenka egiten badu, KevBox Livek estereora itzultzen da eta jakinarazten dizu.</string>
-    <string name="setup_byo_source_description">KevBox Live erreproduzigailua da — ekarri zure Xtream, M3U edo Stalker iturburua.</string>
-    <string name="setup_disclaimer">KevBox Live multimedia-erreproduzigailu hutsa da. Ez du kanalik, erreprodukzio-zerrendarik edo edukirik barne hartzen. Zure ardura da legez atzitu ditzakezun Xtream, M3U edo Stalker iturburuak gehitzea.</string>
+    <string name="setup_byo_source_description">KevBox Live plays the playlist your admin sets up for you.</string>
+    <string name="setup_disclaimer">KevBox Live is a media player. It includes no channels or content of its own. Your playlist is set up by the admin, so there is no source for you to add.</string>
     <string name="setup_set_up_owntv">Konfiguratu KevBox Live</string>
     <string name="setup_sync_device_description">Kopiatu dena zure beste KevBox Live gailutik Wi-Fi bidez</string>
     <string name="update_ready">KevBox Live v<xliff:g id="available">%1$s</xliff:g> prest dago (v<xliff:g id="current">%2$s</xliff:g> duzu).</string>
