@@ -107,7 +107,7 @@ keep one file per row, with its full path.
 | `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` |
 | `app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` | `grep -n 'LiveOnly.browseSections' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` |
-| `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
+| `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'class SidebarExit' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` | `grep -n 'KevBox: every channel shows' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt && grep -n 'KevBox: reload when a playlist finishes a sync' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` |
 | `app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` |
@@ -210,8 +210,11 @@ Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
   link, a More page) is a route to cut.
 - Live TV is always the guide grid (`OwnTVShell` ignores the stored List/Guide choice). The grid
   has no control line; Back or ◀ on it opens the category sidebar, and Back or ◀ there moves to the
-  main menu. If upstream reworks `EpgScreen`'s control line, its sheet or `GuideRow`'s ◀ handling,
-  check those three keys again on a TV.
+  main menu. ▶ or OK on a category moves to the grid through `SidebarExit`, which waits for the
+  sidebar to close and the new channels to load: upstream's direct `focusGrid()` let focus fall to
+  the main menu. The sidebar draws a 92% layer of the glass colour under its glass. If upstream
+  reworks `EpgScreen`'s control line, its sheet or `GuideRow`'s ◀ handling, check all of these keys
+  again on a TV.
 - The playlist's own guide feed is added and downloaded by `kevbox/epg/GuideFeeds.kt`, which
   stands in for the onboarding's "sync the guide?" question. If Core starts adding the Xtream
   feed by itself (its `ImportFinalizer` only does so for Stalker portals today), drop GuideFeeds.
