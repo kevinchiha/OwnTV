@@ -520,6 +520,10 @@ internal fun LiveCategories(
     val rightKey = Modifier.onPreviewKeyEvent { e ->
         if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) { onNavigateRight(); true } else false
     }
+    // KevBox: ▲ ▼ step by row number, as the channel grid does, so a held key no longer outruns the
+    // list and stops (see CategorySteps). headingPos is the row the "GROUPS" heading item sits before.
+    val headingPos = if (firstGroup >= 0 && query.isBlank()) visible.indexOf(firstGroup) else -1
+    val stepper = remember(listState) { tv.own.owntv.features.shell.components.VodStepper(scope) { listState } }
     val a = stageAccent
     Column(
         modifier
@@ -591,6 +595,17 @@ internal fun LiveCategories(
                 }
                 item(key = entry.item.key.toString()) {
                     val rowModifier = Modifier.focusRequester(rowFocusers[pos]).then(rightKey)
+                        // KevBox: the stepper's own handle on this row, and ▲ ▼ through it. A burst counts on
+                        // from the row a step is still heading to; ▲ on the first row goes on to the search.
+                        .focusRequester(stepper.focus(tv.own.owntv.kevbox.live.CategorySteps.itemIndex(pos, headingPos)))
+                        .onPreviewKeyEvent { e ->
+                            val delta = when (e.key) { Key.DirectionDown -> 1; Key.DirectionUp -> -1; else -> return@onPreviewKeyEvent false }
+                            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
+                            val from = stepper.target?.let { tv.own.owntv.kevbox.live.CategorySteps.rowPos(it, headingPos) } ?: pos
+                            val to = tv.own.owntv.kevbox.live.CategorySteps.next(from, delta, visible.size) ?: return@onPreviewKeyEvent false
+                            stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex(to, headingPos))
+                            true
+                        }
                         .onFocusChanged { if (it.hasFocus) onRowFocus(index) }
                     val selected = index == selectedIndex
                     if (sheet) {

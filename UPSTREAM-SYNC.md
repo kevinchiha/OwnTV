@@ -112,7 +112,7 @@ keep one file per row, with its full path.
 | `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'class SidebarExit' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'okOnRow = liveMode' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'LocalLiveVideoStage.current' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
 | `app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` | `grep -n 'fun onFullscreenExited(keepStream: Boolean' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt && grep -n 'fun keepInBox(channel: ChannelEntity)' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` | `grep -n 'KevBox: every channel shows' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt && grep -n 'KevBox: reload when a playlist finishes a sync' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` |
-| `app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` |
+| `app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt && grep -n 'stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` |
 | `app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` |
 | `app/src/main/java/tv/own/owntv/features/settings/SettingsStage.kt` | `grep -n 'passwordShownAtStart' app/src/main/java/tv/own/owntv/features/settings/SettingsStage.kt` |
 | `app/src/main/java/tv/own/owntv/player/PlayerHud.kt` | `grep -n 'kevbox.onChannelFailed()' app/src/main/java/tv/own/owntv/player/PlayerHud.kt` |
@@ -226,6 +226,11 @@ Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
   feed by itself (its `ImportFinalizer` only does so for Stalker portals today), drop GuideFeeds.
 - Provider category names show verbatim (`LiveOnly.categoryName`), channel names still go through
   `ProviderTags`.
+- ▲ ▼ in every `LiveCategories` list (the Live TV sidebar among them) step by row number through
+  `VodStepper`, as the channel grid does (`kevbox/live/CategorySteps.kt` maps a row to its list item
+  past the search field and the "GROUPS" heading). Upstream leaves them to focus search, which a held
+  key outran on a long provider list: the list stopped until its scroll caught up. If upstream adds
+  its own stepping to `LiveCategories`, drop this.
 - Seamless Live video (`kevbox/live/LiveVideoStage.kt`). Live TV on ExoPlayer has one video
   window, a single `ExoPreviewSurface` in `LiveVideoLayer`, composed first in the shell's root
   `Box` so the whole UI draws above it. It moves, without being handed to a new surface, between the
