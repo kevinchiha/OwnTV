@@ -98,6 +98,9 @@ open class MainActivity : ComponentActivity() {
     private val previewEngine: tv.own.owntv.player.LivePreviewEngine by inject()
     private val heroPreviewEngine: tv.own.owntv.player.HeroPreviewEngine by inject()
     private val engines: tv.own.owntv.player.PlaybackEngines by inject()
+    // KevBox: the gate's coordinator, and the Multiview pool so a status screen can free its tiles too.
+    private val kevbox: tv.own.owntv.kevbox.KevBoxCoordinator by inject()
+    private val enginePool: tv.own.owntv.player.LiveEnginePool by inject()
     // Activity-scoped: the same instance Compose retrieves via koinViewModel() inside setContent.
     private val shellViewModel: ShellViewModel by viewModel()
     // The sole locale authority (SharedPreferences-backed; see docs/internationalization.md 0b).
@@ -136,10 +139,23 @@ open class MainActivity : ComponentActivity() {
         // Paired with onStop: bring back what was freed while backgrounded (notably the TV screensaver, which
         // kicks in during a long pause) — a VOD restored paused at its position, and a live channel re-tuned
         // to the live edge — so Play resumes instead of sitting on a dead/empty stream. No-op on fresh launch.
-        engines.onAppForegrounded()
+        // KevBox: re-check the member's playlist and access, and bring a stream back only while the gate
+        // is Open, so a remembered stream never plays behind the lock or a status screen.
+        kevbox.onForeground()
+        if (kevbox.gate.value == tv.own.owntv.kevbox.GateState.Open) engines.onAppForegrounded()
         // Staleness-based auto refresh on resume (interval modes only — STARTUP is cold-start only). The
         // ViewModel throttles this internally so a quick toggle doesn't re-run the check.
         shellViewModel.checkAutoRefresh(includeStartup = false)
+    }
+
+    // KevBox: the gate left Open or the visible line changed. Every engine stops (the main player, the
+    // Live preview, the hero and each Multiview tile) and none keeps a stream to bring back on onStart:
+    // the hidden line may belong to another TV under the provider's stream cap now (AC-30).
+    private fun stopAllPlayback() {
+        engines.onAppBackgrounded()
+        player.discardBackgroundRestore()
+        previewEngine.discardBackgroundRestore()
+        enginePool.releaseAll()
     }
 
     /**
@@ -398,6 +414,9 @@ open class MainActivity : ComponentActivity() {
                         // base color shows through and glass renders over that instead.
                         if (background.showsPicture) BackgroundLayer(background, blurred)
 
+                        // KevBox: sign-in, the access lock and the playlist screens come before anything
+                        // upstream draws, onboarding included (AC-10, AC-16).
+                        tv.own.owntv.kevbox.KevBoxGate(onExit = { finish() }, onStopPlayback = ::stopAllPlayback) {
                         Box(modifier = Modifier.fillMaxSize()) {
                         val profile = activeProfileId
                         when {
@@ -475,6 +494,7 @@ open class MainActivity : ComponentActivity() {
                             else -> Unit
                         }
                         } // end foreground Box (above the background layer)
+                        } // KevBox: end KevBoxGate
                     }
                     } // end LocalizedContent
                 }

@@ -50,9 +50,8 @@ import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 import tv.own.owntv.BuildConfig
 import tv.own.owntv.R
-import tv.own.owntv.features.settings.BackupScreen
+// KevBox: BackupScreen and LocalSyncScreen imports removed with their More items.
 import tv.own.owntv.features.settings.DeveloperScreen
-import tv.own.owntv.features.settings.LocalSyncScreen
 import tv.own.owntv.features.settings.SettingsViewModel
 import tv.own.owntv.features.shell.components.RailAvatar
 import tv.own.owntv.player.PlaybackErrorLog
@@ -67,7 +66,9 @@ import tv.own.owntv.ui.theme.stageAccent
 import tv.own.owntv.ui.theme.stageText
 
 /** The sheet's items, top to bottom. [DEVELOPER] exists only in local builds (BuildConfig.DEV_TOOLS). */
-private enum class MoreItem { SETTINGS, FAVORITES, HISTORY, BACKUP, LOCAL_SYNC, ERROR_LOG, ABOUT, DEVELOPER }
+// KevBox: BACKUP and LOCAL_SYNC are gone (members restore and sync nothing; the admin assigns the
+// playlist), and ACCOUNT shows the signed-in email with Sign out (AC-14).
+private enum class MoreItem { SETTINGS, FAVORITES, HISTORY, ACCOUNT, ERROR_LOG, ABOUT, DEVELOPER }
 
 /**
  * More (Stage P8-01 … P8-08): the glass section sheet, topped by the profile, and one page on the right
@@ -127,8 +128,8 @@ fun MoreScreen(
 
     val favorites by vm.favorites.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
-    val sync by vm.sync.collectAsStateWithLifecycle()
-    val lastBackup by vm.lastBackup.collectAsStateWithLifecycle()
+    // KevBox: no sync or last-backup values: their items are gone.
+    val kevboxEmail = tv.own.owntv.kevbox.ui.kevboxSignedInEmail()
     val playlists by vm.playlistCount.collectAsStateWithLifecycle()
     val pinned by settingsVm.quickPinnedKeys.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -164,13 +165,9 @@ fun MoreScreen(
             GroupLabel(stringResource(R.string.more_group_your_things))
             item(MoreItem.FAVORITES, OwnTVIcon.FAVORITE, stringResource(R.string.content_category_favorites), favorites.total.toString(), false)
             item(MoreItem.HISTORY, OwnTVIcon.HISTORY, stringResource(R.string.content_category_history), history.total.toString(), false)
-            GroupLabel(stringResource(R.string.more_group_keep_safe))
-            item(
-                MoreItem.BACKUP, OwnTVIcon.DOWNLOADS, stringResource(R.string.settings_backup_restore),
-                lastBackup?.let { relativeShort(it.at) } ?: stringResource(R.string.common_never), lastBackup == null,
-            )
-            item(MoreItem.LOCAL_SYNC, OwnTVIcon.PHONE, stringResource(R.string.local_sync_title), stringResource(if (sync.listening) R.string.common_on else R.string.common_off), false)
+            // KevBox: the "Keep safe" group (Backup & restore, Local sync) is gone; Account opens the App group.
             GroupLabel(stringResource(R.string.settings_app_group))
+            item(MoreItem.ACCOUNT, OwnTVIcon.PERSON, stringResource(R.string.kevbox_account), kevboxEmail, false)
             item(MoreItem.ERROR_LOG, OwnTVIcon.WARNING, stringResource(R.string.settings_playback_error_log), logCount.toString(), false)
             item(MoreItem.ABOUT, OwnTVIcon.INFO, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, false)
             // Maintainer-only; DEV_TOOLS is a compile-time constant, so R8 removes it from published APKs.
@@ -210,8 +207,8 @@ fun MoreScreen(
                     onClearHistory = { settingsVm.clearWatchHistory(it) },
                     onPlayChannel = onPlayChannel, onPlayMovie = onPlayMovie, onPlayEpisode = onPlayEpisode, onOpenSeries = onOpenSeries,
                 )
-                MoreItem.BACKUP -> BackupScreen(entry = pageTarget, modifier = Modifier.fillMaxSize())
-                MoreItem.LOCAL_SYNC -> LocalSyncScreen(entry = pageTarget, modifier = Modifier.fillMaxSize())
+                // KevBox: Backup and Local sync pages removed; Account shows the email and Sign out.
+                MoreItem.ACCOUNT -> tv.own.owntv.kevbox.ui.KevBoxAccountMorePage(entry = pageTarget)
                 MoreItem.ERROR_LOG -> ErrorLogPage(setEntry = setEntry, onCountChanged = { logVersion++ })
                 MoreItem.ABOUT -> AboutPage(vm = vm, entry = pageTarget, onOpenLanguage = { onOpenSettings(8, false) })
                 MoreItem.DEVELOPER -> Box(Modifier.focusRequester(pageTarget).focusGroup()) { DeveloperScreen(onBack = backToSheet) }

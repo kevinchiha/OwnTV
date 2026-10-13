@@ -96,15 +96,13 @@ import tv.own.owntv.R
 import tv.own.owntv.features.customize.CustomizeScreen
 import tv.own.owntv.core.i18n.SupportedLocales
 import tv.own.owntv.core.player.SurroundMode
-import tv.own.owntv.features.settings.LocalSyncScreen
+// KevBox: LocalSyncScreen, BackupScreen and ManageSourcesScreen imports removed with their tabs.
 import tv.own.owntv.features.settings.HomeSettingsScreen
 import tv.own.owntv.features.settings.NO_ARGS
 import tv.own.owntv.features.settings.LanguageSettingsScreen
 import tv.own.owntv.features.settings.LanguageSettingsViewModel
 import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.features.update.UpdateDialog
-import tv.own.owntv.features.settings.BackupScreen
-import tv.own.owntv.features.settings.ManageSourcesScreen
 import tv.own.owntv.features.settings.SettingsViewModel
 import tv.own.owntv.core.nav.MainSection
 import tv.own.owntv.ui.components.BrandLockup
@@ -159,7 +157,9 @@ internal val LocalSettingsRowTone = staticCompositionLocalOf { TileTone.PRIMARY 
 private fun Toned(tone: TileTone, content: @Composable () -> Unit) =
     CompositionLocalProvider(LocalSettingsRowTone provides tone, content = content)
 
-private enum class SettingsTab { ROOT, LANGUAGE, SOURCES, EPG, BACKUP, LOCAL_SYNC, CUSTOMIZE, HOME, NETWORK, DNS, METADATA, OPEN_SUBTITLES, WEATHER, CH_NAV, PANEL_WIDTH, GUIDE_WIDTH, GLASS_EFFECT, CONTENT_MENUS, FONTS, BROWSING, SUBTITLE_STYLE }
+// KevBox: SOURCES (Playlists, which opened ManageSourcesScreen) gives way to CHOOSE_PLAYLIST; BACKUP and
+// LOCAL_SYNC are gone. Members add, edit, restore and sync no sources: the admin assigns playlists.
+private enum class SettingsTab { ROOT, LANGUAGE, CHOOSE_PLAYLIST, EPG, CUSTOMIZE, HOME, NETWORK, DNS, METADATA, OPEN_SUBTITLES, WEATHER, CH_NAV, PANEL_WIDTH, GUIDE_WIDTH, GLASS_EFFECT, CONTENT_MENUS, FONTS, BROWSING, SUBTITLE_STYLE }
 
 @Composable
 internal fun surroundModeLabel(mode: SurroundMode): String = stringResource(
@@ -457,10 +457,9 @@ fun SettingsScreen(
     CompositionLocalProvider(tv.own.owntv.features.settings.LocalSettingsSearch provides openSearch) {
     when (tab) {
         SettingsTab.LANGUAGE -> { LanguageSettingsScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
-        SettingsTab.SOURCES -> { ManageSourcesScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
+        // KevBox: Choose playlist in place of Playlists (ManageSourcesScreen); no Backup or Local sync tabs.
+        SettingsTab.CHOOSE_PLAYLIST -> { tv.own.owntv.kevbox.ui.KevBoxChoosePlaylistSettingsScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
         SettingsTab.EPG -> { tv.own.owntv.features.settings.EpgSourcesScreen(onBack = { tab = SettingsTab.ROOT; consumeEpgAdd = false }, modifier = modifier, startOnAdd = consumeEpgAdd) }
-        SettingsTab.BACKUP -> { Toned(TileTone.TERTIARY) { BackupScreen(onBack = { tab = SettingsTab.ROOT }, modifier = sub) } }
-        SettingsTab.LOCAL_SYNC -> { Toned(TileTone.TERTIARY) { LocalSyncScreen(onBack = { tab = SettingsTab.ROOT }, modifier = sub) } }
         SettingsTab.CUSTOMIZE -> { CustomizeScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
         SettingsTab.HOME -> { HomeSettingsScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
         SettingsTab.NETWORK -> { tv.own.owntv.features.settings.NetworkSettingsScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
@@ -490,6 +489,8 @@ fun SettingsScreen(
     if (onBack != null) BackHandler { onBack() }
 
     val colors = OwnTVTheme.colors
+    // KevBox: the Choose playlist row's data, or null while it is hidden (fewer than two playlists).
+    val kevboxChoice = tv.own.owntv.kevbox.ui.kevboxPlaylistChoice()
 
     // The root rows, as data (see [RootItem]). Building 40 small objects is a fraction of the cost of
     // composing 40 rows, and it is what lets the list below stay lazy while both focus restores can
@@ -544,15 +545,20 @@ fun SettingsScreen(
         ),
         RootGroup("group_profile", stringResource(R.string.settings_profile_group), OwnTVIcon.PERSON, stringResource(R.string.settings_group_summary_profile)),
         RootGroup("group_sources", stringResource(R.string.settings_group_sources), OwnTVIcon.PLAYLIST, stringResource(R.string.settings_group_summary_sources)),
-        RootRow(
-            tabRowKey(SettingsTab.SOURCES), TileTone.PRIMARY, OwnTVIcon.PLAYLIST,
+        // KevBox: the Playlists row (add, edit, delete sources) gives way to Choose playlist, shown only
+        // with two or more playlists; its chip is the playlist the TV plays now.
+        if (kevboxChoice != null) RootRow(
+            tabRowKey(SettingsTab.CHOOSE_PLAYLIST), TileTone.PRIMARY, OwnTVIcon.PLAYLIST,
             heading = stringResource(R.string.settings_sources_title),
-            title = stringResource(R.string.settings_playlists), desc = stringResource(R.string.settings_playlists_description),
-            focus = rowFocus.getValue(SettingsTab.SOURCES),
-            onClick = { open(SettingsTab.SOURCES) },
-        ),
+            title = stringResource(R.string.kevbox_choose_playlist),
+            chip = kevboxChoice.currentName, chipTone = TileTone.PRIMARY,
+            focus = rowFocus.getValue(SettingsTab.CHOOSE_PLAYLIST),
+            onClick = { open(SettingsTab.CHOOSE_PLAYLIST) },
+        ) else null,
         RootRow(
             tabRowKey(SettingsTab.EPG), TileTone.PRIMARY, OwnTVIcon.EPG,
+            // KevBox: the group's heading moves here while Choose playlist is hidden.
+            heading = if (kevboxChoice == null) stringResource(R.string.settings_sources_title) else null,
             title = stringResource(R.string.settings_epg_sources), desc = stringResource(R.string.settings_epg_sources_nav_description),
             focus = rowFocus.getValue(SettingsTab.EPG),
             onClick = { open(SettingsTab.EPG) },
@@ -786,19 +792,8 @@ fun SettingsScreen(
             focus = rowFocus.getValue(SettingsTab.LANGUAGE),
             onClick = { open(SettingsTab.LANGUAGE) },
         ),
-        RootRow(
-            "app_icon", TileTone.SECONDARY, OwnTVIcon.PALETTE,
-            title = stringResource(R.string.settings_app_icon), desc = stringResource(R.string.settings_app_icon_summary),
-            chip = stringResource(appIcon.label), chipTone = TileTone.SECONDARY,
-            focus = appIconRowFocus,
-            onClick = { saveScroll(); dialogReturn = appIconRowFocus; showAppIcon = true },
-        ),
-        RootRow(
-            "brand_accent", TileTone.SECONDARY, OwnTVIcon.PALETTE,
-            title = stringResource(R.string.settings_brand_accent), desc = stringResource(R.string.settings_line_brand_accent),
-            chip = stringResource(if (brandAccent) R.string.common_on else R.string.common_off), chipTone = TileTone.SECONDARY,
-            onClick = { settingsVm.setBrandAccentTriangle(!brandAccent) },
-        ),
+        // KevBox: no App icon row (KevBox Live ships one icon) and no Accent-colored logo row: the mark's
+        // play triangle is transparent in KevBox Live, so that toggle would change nothing.
         RootRow(
             "app_startup", TileTone.SECONDARY, OwnTVIcon.POWER,
             title = stringResource(R.string.settings_app_startup), desc = stringResource(R.string.settings_app_startup_description),
@@ -994,7 +989,9 @@ fun SettingsScreen(
             SettingsSearchEntry(stringResource(R.string.settings_app_group), stringResource(R.string.settings_language), stringResource(R.string.settings_search_keywords_language), OwnTVIcon.LANGUAGE, TileTone.PRIMARY,
                 chip = languageChip, chipTone = TileTone.PRIMARY) { open(SettingsTab.LANGUAGE) },
             SettingsSearchEntry(stringResource(R.string.settings_group_profile), stringResource(R.string.profiles_title), stringResource(R.string.settings_search_keywords_profiles), OwnTVIcon.PERSON, TileTone.SECONDARY) { searchQuery = ""; selectedGroup = SettingsGroup.PROFILE.ordinal },
-            SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_playlists), stringResource(R.string.settings_search_keywords_playlists), OwnTVIcon.PLAYLIST, TileTone.PRIMARY) { open(SettingsTab.SOURCES) },
+            // KevBox: Choose playlist in place of the Playlists entry, and only while its row shows.
+            if (kevboxChoice != null) SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.kevbox_choose_playlist), stringResource(R.string.settings_search_keywords_playlists), OwnTVIcon.PLAYLIST, TileTone.PRIMARY,
+                chip = kevboxChoice.currentName, chipTone = TileTone.PRIMARY) { open(SettingsTab.CHOOSE_PLAYLIST) } else null,
             SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_epg_sources), stringResource(R.string.settings_search_keywords_epg), OwnTVIcon.EPG, TileTone.PRIMARY) { open(SettingsTab.EPG) },
             SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.content_epg_time_offset), stringResource(R.string.settings_search_keywords_epg_offset), OwnTVIcon.EPG, TileTone.SECONDARY,
                 chip = epgShiftLabel(epgOffset), chipTone = if (epgOffset == 0) TileTone.SECONDARY else TileTone.PRIMARY) { saveScroll(); dialogReturn = searchFieldFocus; showEpgOffset = true },
@@ -1048,10 +1045,7 @@ fun SettingsScreen(
         ) { saveScroll(); dialogReturn = searchFieldFocus; showPopupSize = true },
         SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_ui_zoom), stringResource(R.string.settings_search_keywords_zoom), OwnTVIcon.ZOOM, TileTone.SECONDARY,
                 chip = stringResource(R.string.common_percent, uiZoomPercent), chipTone = TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; showZoom = true },
-        SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.settings_app_icon), stringResource(R.string.settings_app_icon_summary), OwnTVIcon.PALETTE, TileTone.SECONDARY,
-                chip = stringResource(appIcon.label), chipTone = TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; showAppIcon = true },
-        SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.settings_brand_accent), stringResource(R.string.settings_line_brand_accent), OwnTVIcon.PALETTE, TileTone.SECONDARY,
-                chip = stringResource(if (brandAccent) R.string.common_on else R.string.common_off), chipTone = TileTone.SECONDARY, showChevron = false) { settingsVm.setBrandAccentTriangle(!brandAccent) },
+        // KevBox: no App icon or Accent-colored logo entries; both rows are hidden.
             SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_animations), stringResource(R.string.settings_search_keywords_animation), OwnTVIcon.MOTION, TileTone.SECONDARY,
                 chip = stringResource(animationLevel.labelRes), chipTone = TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; showAnimations = true },
             SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_weather), stringResource(R.string.settings_search_keywords_weather), OwnTVIcon.WEATHER, TileTone.SECONDARY,
@@ -2118,9 +2112,8 @@ private fun CatchupSourceValueHost(settingsVm: SettingsViewModel, src: tv.own.ow
     )
 }
 
-/** The repository line More › About shows. */
-internal const val GITHUB_REPO = "github.com/ahXN00/OwnTV"
-internal const val TELEGRAM_LINK = "t.me/owntvplayer"
+// KevBox: GITHUB_REPO and TELEGRAM_LINK removed. More › About no longer shows upstream's repository or
+// Telegram group, and nothing else drew them (AC-35).
 
 /**
  * Read-only viewer for the persisted playback error history (B5): the last ~10 failures with their

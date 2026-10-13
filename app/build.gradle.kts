@@ -44,18 +44,30 @@ android {
     }
 
     defaultConfig {
-        applicationId = "tv.own.owntv"
+        // KevBox: own application ID, so KevBox Live installs beside stock OwnTV (tv.own.owntv) and KevBox TV (tv.kevbox).
+        applicationId = "tv.kevbox.live"
         minSdk = 26
         targetSdk = 36
         // CI injects these from the git tag (see .github/workflows/android.yml) so releases never
         // need a manual edit here. The fallbacks are only used for local/debug builds — pinned HIGH
         // (99999, mirroring versionName 99.99.99) so a local/debug APK is always "newer" than any
         // published release and installs straight over it (no INSTALL_FAILED_VERSION_DOWNGRADE).
-        versionCode = (System.getenv("VERSION_CODE") ?: "99999").toInt()
         // CI injects VERSION_NAME from the git tag for releases. The fallback is only ever used by
         // LOCAL builds (i.e. debug), so we pin it to 99.99.99 — that way a dev build is always "newer"
         // than any published release and the in-app updater never offers an "update" while developing.
-        versionName = System.getenv("VERSION_NAME") ?: "99.99.99"
+        // KevBox: four-number versions A.B.C.K (upstream A.B.C + KevBox K); code A*1000000+B*10000+C*100+K,
+        // computed by tools/kevbox/version.sh. The fallback 99.99.99.99 = 99999999 keeps a local build above every release.
+        versionCode = (System.getenv("VERSION_CODE") ?: "99999999").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "99.99.99.99"
+
+        // KevBox: the KevBox Supabase project the TV signs in to. Env var (release.sh) > Gradle property
+        // (-Pkevbox.supabaseUrl / -Pkevbox.supabaseAnonKey, e.g. a local stack for the emulator) > blank.
+        val kevboxSupabaseUrl = System.getenv("KEVBOX_SUPABASE_URL")
+            ?: providers.gradleProperty("kevbox.supabaseUrl").orNull ?: ""
+        val kevboxSupabaseAnonKey = System.getenv("KEVBOX_SUPABASE_ANON_KEY")
+            ?: providers.gradleProperty("kevbox.supabaseAnonKey").orNull ?: ""
+        buildConfigField("String", "KEVBOX_SUPABASE_URL", "\"$kevboxSupabaseUrl\"")
+        buildConfigField("String", "KEVBOX_SUPABASE_ANON_KEY", "\"$kevboxSupabaseAnonKey\"")
 
         // Opt-in local diagnostic APKs keep the rolling playback trace enabled even when they are
         // release-signed (so they can update an installed production build without changing its data).

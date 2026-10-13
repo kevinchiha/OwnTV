@@ -64,8 +64,8 @@ fun ContentPane(
                 icon = emptyIcon,
                 title = stringResource(R.string.content_nothing_here),
                 message = emptyMessage,
-                actionLabel = stringResource(R.string.content_add_source),
-                onAction = onAddSource,
+                // KevBox: no "add source" action. The admin assigns playlists, so the empty state only
+                // says there is nothing here. onAddSource stays in the signature so callers still compile.
             )
         }
     }

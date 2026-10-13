@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KevBox Live fork only: member-facing text. Says "admin", never a person's name. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="kevbox_sign_in_title">Sign in to KevBox Live</string>
+    <string name="kevbox_sign_in_hint">Use your KevBox email and password.</string>
+    <string name="kevbox_email">Email</string>
+    <string name="kevbox_password">Password</string>
+    <string name="kevbox_sign_in">Sign in</string>
+    <string name="kevbox_wrong_credentials">Wrong email or password</string>
+    <string name="kevbox_no_internet">No internet connection</string>
+    <string name="kevbox_sign_in_failed">Sign-in failed. Try again.</string>
+    <string name="kevbox_retry">Retry</string>
+    <string name="kevbox_choose_your_playlist">Choose your playlist</string>
+    <string name="kevbox_choose_playlist">Choose playlist</string>
+    <string name="kevbox_current_playlist">Current</string>
+    <string name="kevbox_no_playlist">No playlist assigned yet. Contact admin.</string>
+    <string name="kevbox_access_locked">Access locked. Contact admin.</string>
+    <string name="kevbox_expired">Your subscription has expired. Contact admin to renew.</string>
+    <string name="kevbox_expiring_one">Your subscription expires in 1 day. Contact admin to renew.</string>
+    <!-- Two plain strings on purpose, not <plurals>: CJK locales never pick "one", so N = 1 would read "1 days".
+         Code picks kevbox_expiring_one for N = 1, so lint's PluralsCandidate check does not apply here. -->
+    <string name="kevbox_expiring_other" tools:ignore="PluralsCandidate">Your subscription expires in %d days. Contact admin to renew.</string>
+    <string name="kevbox_ok">OK</string>
+    <string name="kevbox_account">Account</string>
+    <string name="kevbox_sign_out">Sign out</string>
+    <string name="kevbox_sign_out_confirm">Sign out of KevBox Live?</string>
+    <string name="kevbox_cancel">Cancel</string>
+</resources>

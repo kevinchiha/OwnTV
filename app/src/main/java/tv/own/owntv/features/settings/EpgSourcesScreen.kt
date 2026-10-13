@@ -30,6 +30,8 @@ import tv.own.owntv.R
 import tv.own.owntv.ui.theme.mpx
 import androidx.compose.ui.focus.onFocusChanged
 import tv.own.owntv.core.epg.EpgSource
+// KevBox: redactUrl masks guide URLs that carry a line's credentials.
+import tv.own.owntv.core.network.HttpClient
 import tv.own.owntv.ui.components.DayStepperDialog
 import tv.own.owntv.core.settings.EpgAutoRefresh
 import tv.own.owntv.core.settings.EpgRefresh
@@ -227,7 +229,8 @@ private fun EpgRow(
     val subtitle = if (tv.own.owntv.core.repository.EpgRepository.stalkerSourceIdOf(source.url) != null) {
         stringResource(R.string.settings_epg_sources_portal_guide)
     } else {
-        source.url
+        // KevBox: masked. An Xtream guide's URL carries the line's username and password (AC-34).
+        HttpClient.redactUrl(source.url)
     }
     val catchupNote = count?.third?.takeIf { it > 0 }?.let {
         pluralStringResource(R.plurals.settings_epg_sources_catchup, it, it)
@@ -328,7 +331,14 @@ internal fun EpgSourceForm(
     modifier: Modifier = Modifier,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
-    var url by remember { mutableStateOf(initial?.url ?: "") }
+    // KevBox: a guide URL that carries credentials (filled from a playlist, or saved that way) lives in
+    // filledUrl and is saved as is. The text field stays empty and shows the masked form as its
+    // placeholder, so editing starts from a blank field: an address the member types replaces the
+    // filled one, and an edit left empty keeps it. The masked text never becomes part of the saved URL,
+    // and a member never sees or copies the line's username and password (AC-34).
+    var filledUrl by remember { mutableStateOf(initial?.url?.takeIf { HttpClient.redactUrl(it) != it }) }
+    var url by remember { mutableStateOf(if (filledUrl != null) "" else initial?.url ?: "") }
+    val savedUrl = url.ifBlank { filledUrl ?: url }
     var ua by remember { mutableStateOf(initial?.userAgent ?: "") }
     var autoRefresh by remember { mutableStateOf(initialAutoRefresh) }
     var useLogos by remember { mutableStateOf(initialUseLogos) }
@@ -351,13 +361,14 @@ internal fun EpgSourceForm(
     val fieldHelp = stringResource(R.string.settings_form_field_help)
     val submitLabel = stringResource(if (initial == null) R.string.settings_epg_sources_add_sync else R.string.settings_epg_sources_save_sync)
     val submitButton: @Composable () -> Unit = {
-        if (url.isNotBlank()) {
-            StageActionColumn(listOf(StageAction(OwnTVIcon.DOWNLOADS, submitLabel, { onSave(name, url, ua, autoRefresh, useLogos) })), back = null, first = submitFocus)
+        // KevBox: savedUrl, not url: a filled guide's real address is not in the field.
+        if (savedUrl.isNotBlank()) {
+            StageActionColumn(listOf(StageAction(OwnTVIcon.DOWNLOADS, submitLabel, { onSave(name, savedUrl, ua, autoRefresh, useLogos) })), back = null, first = submitFocus)
         }
     }
     val toSubmit = Modifier.focusProperties { right = submitFocus }
     // ▶ reaches the panel's button from any row; said in the keys while the button is there.
-    val submitHint = if (url.isNotBlank()) "▶" to submitLabel else null
+    val submitHint = if (savedUrl.isNotBlank()) "▶" to submitLabel else null
     fun keys(vararg k: Pair<String, String>) = listOfNotNull(*k.dropLast(1).toTypedArray(), submitHint, k.last())
     StageFullPage(
         parents = listOf(parent),
@@ -377,9 +388,11 @@ internal fun EpgSourceForm(
         )
         val urlLabel = stringResource(R.string.settings_epg_sources_url)
         StageFieldRow(
+            // KevBox: the field holds only what the member types; a filled URL shows masked as the
+            // placeholder, never as editable text (editing it in place used to save "***" into the URL).
             OwnTVIcon.PENCIL, urlLabel, url, { url = it },
             SettingHelp(urlLabel, fieldHelp, extra = submitButton),
-            placeholder = stringResource(R.string.settings_epg_sources_url_hint), keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+            placeholder = filledUrl?.let { HttpClient.redactUrl(it) } ?: stringResource(R.string.settings_epg_sources_url_hint), keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
             backLabel = parent, submitHint = submitHint, modifier = toSubmit,
         )
         val fillTitle = stringResource(R.string.settings_epg_sources_fill_playlist)
@@ -439,7 +452,9 @@ internal fun EpgSourceForm(
                     onSave(opt.name, opt.url, ua, autoRefresh, useLogos)
                 } else {
                     if (name.isBlank()) name = opt.name
-                    url = opt.url
+                    // KevBox: the real URL is kept out of the text field, which shows it masked (AC-34).
+                    filledUrl = opt.url
+                    url = ""
                 }
             },
             onDismiss = { showPlaylistPicker = false },
@@ -491,7 +506,8 @@ private fun PlaylistEpgPicker(
             else -> Column(Modifier.trapAllFocusExit().focusGroup()) {
                 opts.forEach { opt ->
                     // A portal guide has no address to show — say what it is instead.
-                    val line = if (tv.own.owntv.core.repository.EpgRepository.stalkerSourceIdOf(opt.url) != null) stringResource(R.string.settings_epg_sources_portal_guide) else opt.url
+                    // KevBox: the address is masked; the Xtream guide URL holds the line's credentials (AC-34).
+                    val line = if (tv.own.owntv.core.repository.EpgRepository.stalkerSourceIdOf(opt.url) != null) stringResource(R.string.settings_epg_sources_portal_guide) else HttpClient.redactUrl(opt.url)
                     tv.own.owntv.ui.stage.StagePopupOption(
                         title = opt.name, subtitle = line, onClick = { onPick(opt) },
                         modifier = if (opt == opts.first()) Modifier.focusRequester(firstFocus) else Modifier,

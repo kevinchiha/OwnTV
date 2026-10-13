@@ -69,6 +69,9 @@ import tv.own.owntv.ui.theme.stageText
 
 private enum class Step { WELCOME, DISPLAY_SIZE, DISCLAIMER, SETUP_CHOICE, SYNC_DEVICE, CREATE_PROFILE, ADD_CONTENT, ADD_SOURCE_REMOTE, ADD_SOURCE, IMPORTING, EXISTING, IMPORT_BACKUP_CHOOSER, IMPORT_BACKUP_REMOTE, IMPORT_BACKUP }
 
+// KevBox: the only steps a member walks through: Welcome, Display size, Disclaimer, Create profile.
+private val KEVBOX_OPEN_STEPS = setOf(Step.WELCOME, Step.DISPLAY_SIZE, Step.DISCLAIMER, Step.CREATE_PROFILE)
+
 /**
  * Onboarding for one profile (P10B-W1 … W9). [firstRun] shows language/welcome/disclaimer; otherwise it
  * starts at profile creation (used by "Add profile"). [onDone] receives the newly active profile id and
@@ -103,6 +106,11 @@ fun Onboarding(firstRun: Boolean, onDone: (Long?) -> Unit, onCancel: () -> Unit,
     // Refresh the "existing playlists" availability whenever we land on the add-content step.
     LaunchedEffect(step) { if (step == Step.ADD_CONTENT) existing = runCatching { vm.availableExistingSources() }.getOrDefault(emptyList()) }
 
+    // KevBox: the setup choice, device sync, add-content, add-source, existing-playlist, import and
+    // backup-restore steps are locked. Nothing routes to them any more; a step restored from saved
+    // state that names one lands on Create profile instead.
+    LaunchedEffect(step) { if (step !in KEVBOX_OPEN_STEPS) step = Step.CREATE_PROFILE }
+
     val accent = stageAccent.accent
     Box(modifier = modifier.fillMaxSize().stageBackground(accent)) {
         when (step) {
@@ -115,7 +123,9 @@ fun Onboarding(firstRun: Boolean, onDone: (Long?) -> Unit, onCancel: () -> Unit,
                 title = stringResource(R.string.setup_before_you_start),
                 sub = stringResource(R.string.setup_disclaimer),
                 back = WizardAction(stringResource(R.string.common_back), { step = Step.DISPLAY_SIZE }),
-                next = WizardAction(stringResource(R.string.setup_i_understand), { step = Step.SETUP_CHOICE }, rememberFirstFocus()),
+                // KevBox: straight to Create profile. The setup choice (restore a backup, sync a device)
+                // is skipped, because the admin assigns the playlist and members restore nothing.
+                next = WizardAction(stringResource(R.string.setup_i_understand), { step = Step.CREATE_PROFILE }, rememberFirstFocus()),
             )
             // First decision: start fresh or bring everything back from a backup (profiles included —
             // no point creating a profile first that the restore would replace).
@@ -148,8 +158,12 @@ fun Onboarding(firstRun: Boolean, onDone: (Long?) -> Unit, onCancel: () -> Unit,
                 onBack = { step = Step.SETUP_CHOICE },
             )
             Step.CREATE_PROFILE -> ProfileStep(
-                onCreate = { name, avatar, kids, pin -> vm.createProfile(name.ifBlank { defaultProfileName }, avatar, kids, pin) { step = Step.ADD_CONTENT } },
-                onBack = { if (firstRun) step = Step.SETUP_CHOICE else onCancel() },
+                // KevBox: creating the profile finishes onboarding, as "Skip for now" on the old Add a
+                // playlist step did: finish() makes the new profile active. No add-source step, because
+                // the admin assigns playlists and the TV links them itself. Same for Add profile.
+                onCreate = { name, avatar, kids, pin -> vm.createProfile(name.ifBlank { defaultProfileName }, avatar, kids, pin) { vm.finish(onDone) } },
+                // KevBox: Back goes to the disclaimer; the setup choice step is no longer shown.
+                onBack = { if (firstRun) step = Step.DISCLAIMER else onCancel() },
             )
             Step.ADD_CONTENT -> AddContentStep(
                 hasExisting = existing.isNotEmpty(),
@@ -358,18 +372,7 @@ private fun DisplaySizeStep(onNext: () -> Unit, onBack: () -> Unit) {
             onClick = { vm.setFontSize(fontSize + UiFontScale.STEP) },
             onStep = { dir -> vm.setFontSize(fontSize + dir * UiFontScale.STEP) },
         )
-        // No restart prompt here: nothing is on the home screen yet, and the pick applies as soon as
-        // the app is next in the background.
-        val icons = AppIcon.entries
-        val at = icons.indexOf(appIcon).coerceAtLeast(0)
-        StageSettingRow(
-            icon = OwnTVIcon.SPARKLE,
-            title = stringResource(R.string.settings_app_icon),
-            desc = stringResource(R.string.setup_line_app_icon),
-            value = SettingValue.Custom { AppIconSwatches(icons, appIcon) },
-            onClick = { pickIcon = true },
-            onStep = { dir -> vm.setAppIcon(icons[(at + dir + icons.size) % icons.size]) },
-        )
+        // KevBox: the app-icon stepper is gone. KevBox Live ships one icon, so there is nothing to pick.
         // The sample (W2): a row's own type at the size it will really be.
         Row(
             Modifier
@@ -558,7 +561,9 @@ private fun ExistingSourcesStep(sources: List<SourceEntity>, onAdd: (Set<Long>) 
             StageSettingRow(
                 icon = OwnTVIcon.PLAYLIST,
                 title = src.name,
-                desc = src.url,
+                // KevBox: masked, in case this locked step is ever reached: a playlist URL can hold its
+                // username and password (AC-34).
+                desc = tv.own.owntv.core.network.HttpClient.redactUrl(src.url),
                 value = SettingValue.Switch(checked),
                 onClick = { selected = if (checked) selected - src.id else selected + src.id },
                 modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
