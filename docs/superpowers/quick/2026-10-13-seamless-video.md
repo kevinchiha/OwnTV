@@ -100,10 +100,12 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt`, plus KevBo
 - `PlayerHud` and the full-screen-only overlays (the auto-frame-rate prompt) compose only once settled on PLAYER, or at once when `liveOnExo` is false.
 - Docking to the mini-player and expanding move the window between the two PLAYER rectangles. The stage animates any change of target rectangle, not only a change of site.
 - Audio Mode, Multiview and mpv playback report no site, so the window goes away after the grace period, as today.
+- While no target exists, `LiveVideoPatch` draws only if the last site to clear was PLAYER. That bridges Back from full screen until the box reports. A BOX that clears with no new target (leaving Live TV mid-preview) hides the video at once, while the window itself still waits out the grace period.
 
 **Tests** (plain JUnit, through `report` and `frame`):
 - A target-rectangle change on the same site starts a move: `settledOn` is false at `now + durationMs - 1` and true at `now + durationMs`.
 - With `durationMs = 0`, `settledOn` is true after one `frame`.
+- The patch rule: with no target, the patch shows after PLAYER clears and stays hidden after BOX clears. Test it through a pure or internal function.
 
 **Verify:** `GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew testStandardDebugUnitTest --tests 'tv.own.owntv.kevbox.live.*'`
 
@@ -135,3 +137,6 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt`, plus KevBo
 ## Build log
 baseline: gate green (tests, lint, check-divergence 0 failures)
 Task 1: started at a0defb47
+Task 1: landed (5cc39008, fix round 1 a042cf64: window clipped to the animated corner so Glass mode keeps round box corners). Bent: frame loop runs only while moving or in the grace period; expiry resets the window so the next site starts in place; bounds from localToWindow, not boundsInWindow; no inspectableProperties (i18n check).
+Task 1 minor: lerpRect reuses lerpCorner for x/y (naming); runCatching around requireLayoutCoordinates in update() swallows everything.
+Plan edit: Task 2 gains the patch rule (bridge only after PLAYER clears; a BOX leaving with no target hides at once), from the Task 1 implementer's risk note.
