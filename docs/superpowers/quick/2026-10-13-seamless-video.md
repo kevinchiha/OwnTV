@@ -140,3 +140,5 @@ Task 1: started at a0defb47
 Task 1: landed (5cc39008, fix round 1 a042cf64: window clipped to the animated corner so Glass mode keeps round box corners). Bent: frame loop runs only while moving or in the grace period; expiry resets the window so the next site starts in place; bounds from localToWindow, not boundsInWindow; no inspectableProperties (i18n check).
 Task 1 minor: lerpRect reuses lerpCorner for x/y (naming); runCatching around requireLayoutCoordinates in update() swallows everything.
 Plan edit: Task 2 gains the patch rule (bridge only after PLAYER clears; a BOX leaving with no target hides at once), from the Task 1 implementer's risk note.
+Task 1: emulator check ok (box video with round corners and overlays, sidebar and exit dialog cover it)
+Task 2: started at b7c6b60d
