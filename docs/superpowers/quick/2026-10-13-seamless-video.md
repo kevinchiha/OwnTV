@@ -100,12 +100,12 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt`, plus KevBo
 - `PlayerHud` and the full-screen-only overlays (the auto-frame-rate prompt) compose only once settled on PLAYER, or at once when `liveOnExo` is false.
 - Docking to the mini-player and expanding move the window between the two PLAYER rectangles. The stage animates any change of target rectangle, not only a change of site.
 - Audio Mode, Multiview and mpv playback report no site, so the window goes away after the grace period, as today.
-- While no target exists, `LiveVideoPatch` draws only if the last site to clear was PLAYER. That bridges Back from full screen until the box reports. A BOX that clears with no new target (leaving Live TV mid-preview) hides the video at once, while the window itself still waits out the grace period.
+- While no target exists, `LiveVideoPatch` draws only if the bridge is armed (`fun armBridge()`) and the last site to clear was PLAYER. That bridges Back from full screen until the box reports. The arm is spent when the next target appears or the grace period ends. Every other exit hides the video at once: mini Close, Audio Mode, Back from a channel opened outside the grid, and a BOX leaving with no new target. The window itself still waits out the grace period. Task 2 adds the hook but never calls it; Task 3 does.
 
 **Tests** (plain JUnit, through `report` and `frame`):
 - A target-rectangle change on the same site starts a move: `settledOn` is false at `now + durationMs - 1` and true at `now + durationMs`.
 - With `durationMs = 0`, `settledOn` is true after one `frame`.
-- The patch rule: with no target, the patch shows after PLAYER clears and stays hidden after BOX clears. Test it through a pure or internal function.
+- The patch rule: with no target, the patch shows after an armed PLAYER clear, and stays hidden after an unarmed PLAYER clear or any BOX clear. The arm is gone after the next report.
 
 **Verify:** `GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew testStandardDebugUnitTest --tests 'tv.own.owntv.kevbox.live.*'`
 
@@ -121,7 +121,8 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt`, plus KevBo
   - `liveOnExo` is true
   - `catchupActive` is false
 
-  On such an exit the shell does three things:
+  On such an exit the shell does four things:
+  - It calls `stage.armBridge()` (added in Task 2) before the player box leaves, so the patch carries the video until the box reports.
   - It sets `stage.boxChannel = liveVm.previewChannel.value`.
   - It calls `liveVm.onFullscreenExited(keepStream = true)`.
   - If that channel differs from the box channel when full screen opened, it calls `liveVm.revealChannel(channel)`. Every other exit clears `stage.boxChannel` and keeps today's call.
@@ -142,3 +143,5 @@ Task 1 minor: lerpRect reuses lerpCorner for x/y (naming); runCatching around re
 Plan edit: Task 2 gains the patch rule (bridge only after PLAYER clears; a BOX leaving with no target hides at once), from the Task 1 implementer's risk note.
 Task 1: emulator check ok (box video with round corners and overlays, sidebar and exit dialog cover it)
 Task 2: started at b7c6b60d
+Plan edit: the bridge is opt-in (armBridge), so mini Close, Audio Mode and Back from a channel opened outside the grid hide the video at once. Task 3 calls armBridge on a Back-to-grid exit.
+Task 2: landed (a2d92da1). Added: armBridge, patchVisible, internal patchShows(target, settledOnTarget, lastCleared, bridgeArmed); a same-site report keeps the arm. ExoSubtitleLayer composes only once the window settles. PlayerHud, the AFR prompt and the timeshift-resume dialog wait for the window to settle (playerChromeReady).
