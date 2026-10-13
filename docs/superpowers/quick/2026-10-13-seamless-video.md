@@ -145,3 +145,4 @@ Task 1: emulator check ok (box video with round corners and overlays, sidebar an
 Task 2: started at b7c6b60d
 Plan edit: the bridge is opt-in (armBridge), so mini Close, Audio Mode and Back from a channel opened outside the grid hide the video at once. Task 3 calls armBridge on a Back-to-grid exit.
 Task 2: landed (a2d92da1). Added: armBridge, patchVisible, internal patchShows(target, settledOnTarget, lastCleared, bridgeArmed); a same-site report keeps the arm. ExoSubtitleLayer composes only once the window settles. PlayerHud, the AFR prompt and the timeshift-resume dialog wait for the window to settle (playerChromeReady).
+Task 3: started at 80de1d23
