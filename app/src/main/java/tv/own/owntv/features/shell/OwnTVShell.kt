@@ -919,10 +919,16 @@ fun OwnTVShell(
         else -> null
     }
 
+    // KevBox: Live TV's one video window (kevbox/live/LiveVideoStage.kt), as long-lived as the shell.
+    // Its moves take 320 ms, or none with Animations Off.
+    val liveVideoStage = remember { tv.own.owntv.kevbox.live.LiveVideoStage() }
+    androidx.compose.runtime.SideEffect { liveVideoStage.durationMs = shellAnimationLevel.scale(320) }
+
     CompositionLocalProvider(
         LocalContentScrolled provides contentScrolled,
         LocalRemoteShortcuts provides remoteShortcutEnvironment,
         tv.own.owntv.features.shell.components.LocalClockWeather provides (weatherInfo to weatherFahrenheit),
+        tv.own.owntv.kevbox.live.LocalLiveVideoStage provides liveVideoStage, // KevBox: the video window.
     ) {
     Box(
         modifier = modifier.fillMaxSize().background(shellBase)
@@ -1020,6 +1026,11 @@ fun OwnTVShell(
                 }
             },
     ) {
+      // KevBox: Live TV's video window, first so everything after draws over it. A site that shows the
+      // video cuts a see-through patch in the UI above (kevbox/live/LiveVideoStage.kt).
+      tv.own.owntv.kevbox.live.LiveVideoLayer(
+          stage = liveVideoStage, engine = liveVm.previewEngine, keepAwake = false, autoFrameRate = false,
+      )
       // Browse UI — hidden while the player is fullscreen (stays visible behind the docked mini-player).
       if (playerMode != PlayerMode.FULLSCREEN) {
         Column(
@@ -1469,6 +1480,8 @@ fun OwnTVShell(
             modifier = Modifier.fillMaxSize(),
         )
       }
+      // KevBox: cuts the video window's patch while it moves or waits out its grace period.
+      tv.own.owntv.kevbox.live.LiveVideoPatch(liveVideoStage)
 
       // Unobtrusive background-sync pill (bottom middle): visible while any catalog sync runs —
       // backgrounded first import, remainder worker, auto refresh — but never over fullscreen video.

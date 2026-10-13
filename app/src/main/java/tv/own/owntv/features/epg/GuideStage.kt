@@ -65,6 +65,7 @@ import tv.own.owntv.core.epg.displayLogoUrl
 import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.features.home.durationText
 import tv.own.owntv.features.live.LivePlate
+import tv.own.owntv.kevbox.live.liveVideoSite // KevBox: the grid box marks where the shell's video window goes.
 import tv.own.owntv.ui.components.ChannelLogoTile
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.OwnTVPopup
@@ -131,7 +132,12 @@ internal fun GuideVideo(
                 OwnTVIcon(OwnTVIcon.LIVE_TV, tint = StageColors.Dim, modifier = Modifier.size(48.mpx))
             }
         }
-        if (playing) tv.own.owntv.player.ExoPreviewSurface(engine = previewEngine, modifier = Modifier.fillMaxSize())
+        // KevBox: no surface of its own. The shell's one video window sits under the grid, and this box
+        // marks where it goes and cuts the see-through patch, so the overlays below still draw on top.
+        val videoStage = tv.own.owntv.kevbox.live.LocalLiveVideoStage.current
+        if (playing && videoStage != null) {
+            Box(Modifier.fillMaxSize().liveVideoSite(videoStage, tv.own.owntv.kevbox.live.VideoSite.BOX, r))
+        }
         if (showVideo && previewState == tv.own.owntv.player.LivePreviewEngine.State.LOADING) OwnTVSpinner(sizeDp = 24)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.58f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.72f))))
         Box(Modifier.fillMaxSize().drawBehind { drawInnerRing(Color.White.copy(alpha = 0.08f), 1.mpx.toPx(), r.toPx()) })

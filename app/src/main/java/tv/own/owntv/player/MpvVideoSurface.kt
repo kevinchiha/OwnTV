@@ -156,6 +156,9 @@ fun ExoPreviewSurface(
      * quarter-screen tile and a bad one for full screen — hence a parameter rather than a change.
      */
     useTextureView: Boolean = false,
+    // KevBox: false skips the subtitle view, for Live TV's bottom window, whose site above it draws
+    // subtitles with ExoSubtitleLayer instead.
+    subtitles: Boolean = true,
 ) {
     // Only the full-screen live player passes autoFrameRate = true — the in-pane preview must never
     // reconfigure the display while the user is just scrolling the channel list.
@@ -224,8 +227,27 @@ fun ExoPreviewSurface(
         // is actually looking at.
         val subOn by engine.subtitleOn.collectAsStateWithLifecycle()
         val cues by engine.cues.collectAsStateWithLifecycle()
-        if (subOn) {
+        if (subOn && subtitles) { // KevBox: the subtitles flag above.
             StyledSubtitleView(cues = cues, modifier = viewModifier)
+        }
+    }
+}
+
+/**
+ * KevBox: the [LivePreviewEngine]'s subtitles on their own, sized like the video with the same
+ * [Modifier.videoZoom] maths as [ExoPreviewSurface]. Live TV's video window sits under the browse
+ * UI, so the site that shows it draws the subtitles above, where they belong.
+ */
+@Composable
+fun ExoSubtitleLayer(engine: LivePreviewEngine, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.clipToBounds(), contentAlignment = Alignment.Center) {
+        val subOn by engine.subtitleOn.collectAsStateWithLifecycle()
+        if (subOn) {
+            val aspect by engine.videoAspect.collectAsStateWithLifecycle()
+            val videoSize by engine.videoSize.collectAsStateWithLifecycle()
+            val zoom by engine.zoomMode.collectAsStateWithLifecycle()
+            val cues by engine.cues.collectAsStateWithLifecycle()
+            StyledSubtitleView(cues = cues, modifier = Modifier.videoZoom(zoom, aspect, videoSize, maxWidth, maxHeight))
         }
     }
 }
