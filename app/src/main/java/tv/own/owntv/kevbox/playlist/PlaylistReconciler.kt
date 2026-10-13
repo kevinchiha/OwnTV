@@ -2,9 +2,12 @@
 package tv.own.owntv.kevbox.playlist
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import tv.own.owntv.kevbox.supabase.PlaylistRow
@@ -16,6 +19,9 @@ interface LocalSources {
     /** The ID of an Xtream source with this server URL and username, or null. */
     suspend fun findByLogin(serverUrl: String, username: String): Long?
     suspend fun profileIds(): List<Long>
+
+    /** The IDs of the sources linked to [profileId], again whenever that set changes. */
+    fun observeLinkedSourceIds(profileId: Long): Flow<List<Long>>
 
     /** Linked to each of [profileIds], not yet synced. */
     suspend fun create(row: PlaylistRow, profileIds: List<Long>): Long
@@ -60,10 +66,19 @@ class PlaylistReconciler(
     private val _visibleSourceChanges = MutableStateFlow(0)
 
     /**
-     * Goes up by one whenever the visible source changes (switch, re-pick, bring back, create) or
-     * its credentials change, so the expiry check knows its last answer is stale.
+     * Goes up by one whenever the visible source changes (switch, bring back, create) or its
+     * credentials change, so the expiry check knows its last answer is stale. A re-pick of the row
+     * already showing changes nothing and leaves it alone.
      */
     val visibleSourceChanges: StateFlow<Int> = _visibleSourceChanges.asStateFlow()
+
+    private val _visibleSourceId = MutableStateFlow<Long?>(null)
+
+    /**
+     * The visible picked source after the last reconcile of this run, null before the first one and
+     * after [wipe]. An admin edit keeps it, so only a real switch stops what is playing (AC-19, AC-36).
+     */
+    val visibleSourceId: StateFlow<Long?> = _visibleSourceId.asStateFlow()
 
     /** Only ever called with a successful fetch. */
     suspend fun apply(rows: List<PlaylistRow>) = mutex.withLock {
@@ -74,18 +89,19 @@ class PlaylistReconciler(
     }
 
     /** The first-run screen and Settings > Choose playlist. */
-    suspend fun choose(clientNumber: String) = mutex.withLock {
-        if (closed || _screen.value == null) return@withLock
-        if (_rows.value.none { it.clientNumber == clientNumber }) return@withLock
-        // A re-pick of the same row counts as a change too.
-        if (!reconcile(_rows.value, chosen = clientNumber)) _visibleSourceChanges.value += 1
+    suspend fun choose(clientNumber: String) {
+        mutex.withLock {
+            if (closed || _screen.value == null) return@withLock
+            if (_rows.value.none { it.clientNumber == clientNumber }) return@withLock
+            reconcile(_rows.value, chosen = clientNumber)
+        }
     }
 
     /**
-     * Run after any profile insert or delete. Core's `ProfileManager.create` links every existing
-     * source to a new profile, hidden ones included, so this links the visible source to every
-     * profile and takes every hidden one off again (AC-24). A pick that waited for the first profile
-     * gets its source now.
+     * Run after any profile insert or delete: links the visible source to every profile and takes
+     * every hidden one off again (AC-24). A pick that waited for the first profile gets its source
+     * now. Core links a new profile's sources after its row lands, so [watchProfiles] also watches
+     * the links themselves.
      */
     suspend fun onProfilesChanged(profileIds: List<Long>) = mutex.withLock {
         if (closed) return@withLock
@@ -104,6 +120,29 @@ class PlaylistReconciler(
         }
     }
 
+    /**
+     * Calls [onProfilesChanged] for every emission of [profileIds], and while that profile list
+     * stands, unlinks a hidden source the moment any of those profiles gains a link to it. Core's
+     * `ProfileManager.create` inserts the profile first and links every existing source after it,
+     * one by one and hidden ones included, so a single unlink at the profile emission can run before
+     * the link it should undo (AC-24). Never returns while [profileIds] keeps emitting.
+     */
+    suspend fun watchProfiles(profileIds: Flow<List<Long>>) {
+        profileIds.collectLatest { ids ->
+            guarded { onProfilesChanged(ids) }
+            ids.map { sources.observeLinkedSourceIds(it) }.merge().collect { linked ->
+                guarded { unlinkHidden(linked) }
+            }
+        }
+    }
+
+    private suspend fun unlinkHidden(linkedSourceIds: List<Long>) = mutex.withLock {
+        if (closed) return@withLock
+        store.read().sources.values
+            .filter { it.hidden && it.sourceId in linkedSourceIds && sources.fields(it.sourceId) != null }
+            .forEach { sources.unlinkEverywhere(it.sourceId) }
+    }
+
     /** The visible picked source, for the expiry check. */
     suspend fun currentSourceId(): Long? {
         val state = store.read()
@@ -115,27 +154,64 @@ class PlaylistReconciler(
     /**
      * Sign-out and a refused refresh: deletes every managed source, visible and hidden (Core
      * cascades their channels, movies and series), forgets the mapping and closes the reconciler.
+     *
+     * A source Core refused to delete stays in the mapping, hidden and unlinked where possible, so
+     * the next wipe tries it again instead of leaving a line nobody tracks. A Create the process
+     * died in is found by the login it recorded, so a cold start that goes straight to sign-out
+     * still removes it.
      */
     suspend fun wipe() = mutex.withLock {
         closed = true
         val state = store.read()
-        val ids = state.sources.values.map { it.sourceId }.toMutableSet()
-        // A Create the process died in may have left a source the mapping never recorded.
-        state.pendingCreate
-            ?.let { pending -> _rows.value.firstOrNull { it.clientNumber == pending } }
-            ?.let { row -> sources.findByLogin(row.serverUrl, row.username) }
-            ?.let { ids += it }
-        ids.forEach { id ->
-            try {
-                sources.delete(id)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
+        val kept = mutableMapOf<String, ManagedSource>()
+        state.sources.forEach { (clientNumber, mapping) ->
+            if (!tryDelete(mapping.sourceId)) {
+                attempt { sources.unlinkEverywhere(mapping.sourceId) }
+                kept[clientNumber] = mapping.copy(hidden = true)
             }
         }
-        store.clear()
+        val pendingLeft = state.pendingCreate?.let { raw ->
+            val pending = PendingCreate.parse(raw)
+            val login = pending.login ?: _rows.value.firstOrNull { it.clientNumber == pending.clientNumber }
+                ?.let { it.serverUrl to it.username }
+                // Nothing says which source it was: nothing to delete.
+                ?: return@let null
+            val mapped = state.sources.values.map { it.sourceId }.toSet()
+            var found: Long? = null
+            val looked = attempt { found = sources.findByLogin(login.first, login.second) }
+            val orphan = found
+            when {
+                !looked -> raw
+                orphan == null || orphan in mapped -> null
+                tryDelete(orphan) -> null
+                else -> raw
+            }
+        }
+        if (kept.isEmpty() && pendingLeft == null) {
+            store.clear()
+        } else {
+            store.write(ManagedState(pick = null, sources = kept, pendingCreate = pendingLeft))
+        }
         _screen.value = null
         _rows.value = emptyList()
         _currentClientNumber.value = null
+        _visibleSourceId.value = null
+    }
+
+    private suspend fun tryDelete(sourceId: Long): Boolean = attempt { sources.delete(sourceId) }
+
+    /** Runs [block]; false when it threw. Cancellation still ends the caller. */
+    private suspend fun attempt(block: suspend () -> Unit): Boolean = try {
+        block()
+        true
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        false
+    }
+
+    /** A failed Core call must not end [watchProfiles]: the next emission tries again. */
+    private suspend fun guarded(block: suspend () -> Unit) {
+        attempt(block)
     }
 
     /** After a successful sign-in. */
@@ -143,8 +219,8 @@ class PlaylistReconciler(
         closed = false
     }
 
-    /** Must run inside [mutex]. Returns true when it bumped [visibleSourceChanges]. */
-    private suspend fun reconcile(rows: List<PlaylistRow>, chosen: String?): Boolean {
+    /** Must run inside [mutex]. */
+    private suspend fun reconcile(rows: List<PlaylistRow>, chosen: String?) {
         val stored = store.read()
         // A mapping whose source Core no longer has (for example after "Reset data") counts as no
         // mapping, so a new source that reuses its Room ID is never touched through it.
@@ -161,6 +237,7 @@ class PlaylistReconciler(
         val visibleBefore = state.visibleId()
         val mapping = live.toMutableMap()
         var pending = state.pendingCreate
+        val pendingNumber = pending?.let { PendingCreate.parse(it).clientNumber }
         var visibleChanged = false
         try {
             val profiles = sources.profileIds()
@@ -187,7 +264,7 @@ class PlaylistReconciler(
                         // Sign-in comes before onboarding: keep the pick, create once a profile exists.
                         if (profiles.isEmpty()) continue
                         val row = step.row
-                        val adopted = if (pending == row.clientNumber) {
+                        val adopted = if (pendingNumber == row.clientNumber) {
                             sources.findByLogin(row.serverUrl, row.username)
                         } else {
                             null
@@ -197,7 +274,7 @@ class PlaylistReconciler(
                             sources.link(adopted, profiles)
                             adopted
                         } else {
-                            pending = row.clientNumber
+                            pending = PendingCreate(row.clientNumber, row.serverUrl to row.username).encode()
                             store.write(ManagedState(plan.pick, mapping.toMap(), pending))
                             sources.create(row, profiles)
                         }
@@ -213,13 +290,33 @@ class PlaylistReconciler(
         }
 
         val after = ManagedState(plan.pick, mapping, pending)
-        val bump = visibleChanged || after.visibleId() != visibleBefore
-        if (bump) _visibleSourceChanges.value += 1
+        val visibleAfter = after.visibleId()
+        // The ID first: a reader of the counter compares it with the ID to tell a switch from an edit.
+        _visibleSourceId.value = visibleAfter
+        if (visibleChanged || visibleAfter != visibleBefore) _visibleSourceChanges.value += 1
         _screen.value = plan.screen
         _currentClientNumber.value = plan.pick
-        return bump
     }
 
     private fun ManagedState.visibleId(): Long? =
         pick?.let { sources[it] }?.takeIf { !it.hidden }?.sourceId
+}
+
+/**
+ * What [ManagedState.pendingCreate] holds: the client number, then the server URL and username the
+ * Create used, so [PlaylistReconciler.wipe] can find the source with no fetched rows in memory. A
+ * value written before the login was recorded holds the client number alone.
+ */
+internal data class PendingCreate(val clientNumber: String, val login: Pair<String, String>?) {
+    fun encode(): String = login?.let { (url, user) -> listOf(clientNumber, url, user).joinToString(SEPARATOR.toString()) }
+        ?: clientNumber
+
+    companion object {
+        private const val SEPARATOR = '\u001F'
+
+        fun parse(raw: String): PendingCreate {
+            val parts = raw.split(SEPARATOR)
+            return if (parts.size == 3) PendingCreate(parts[0], parts[1] to parts[2]) else PendingCreate(raw, null)
+        }
+    }
 }

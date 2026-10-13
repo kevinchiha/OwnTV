@@ -35,6 +35,22 @@ data class ReconcilePlan(val steps: List<ReconcileStep>, val pick: String?, val 
 fun PlaylistRow.toFields() = SourceFields(name = name, serverUrl = serverUrl, username = username, password = password)
 
 /**
+ * Two server URLs that reach the same panel: Core stores the URL as given, so only spacing, a
+ * trailing slash or letter case can differ between what the admin typed twice. None of them is a
+ * change worth a resync.
+ */
+fun sameServerUrl(a: String, b: String): Boolean = a.serverKey() == b.serverKey()
+
+private fun String.serverKey() = trim().trimEnd('/').lowercase()
+
+/** True when [other] would leave this source as it is. */
+fun SourceFields.sameAs(other: SourceFields): Boolean =
+    name == other.name &&
+        sameServerUrl(serverUrl, other.serverUrl) &&
+        username == other.username &&
+        password == other.password
+
+/**
  * Decides what to do with the member's [rows] on this TV, with no side effects.
  *
  * [current] holds the fields Core has for the stored pick's visible source, or null when there is
@@ -74,7 +90,7 @@ fun planReconcile(
         mapping == null -> steps += ReconcileStep.Create(target)
         mapping.hidden -> steps += ReconcileStep.Unhide(target.clientNumber, mapping.sourceId, target)
         // [current] describes the stored pick's source, so only compare when the target is that pick.
-        target.clientNumber == state.pick && current != null && current != target.toFields() ->
+        target.clientNumber == state.pick && current != null && !current.sameAs(target.toFields()) ->
             steps += ReconcileStep.UpdateInPlace(mapping.sourceId, target)
     }
     return ReconcilePlan(steps, pick = target.clientNumber, screen = PlaylistScreen.Home)

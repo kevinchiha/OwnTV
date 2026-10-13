@@ -28,16 +28,16 @@ import tv.own.owntv.ui.theme.stageAccent
  * first, then the lock, then the playlist screens (AC-10). [content] is composed only while the
  * gate is Open, with the expiry popup over it.
  *
- * [onStopPlayback] runs whenever the gate leaves Open and whenever the visible source changes
+ * [onStopPlayback] runs whenever the gate leaves Open and whenever the visible source ID changes
  * while it stays Open: a hidden line may belong to another TV now, so nothing keeps streaming it
- * (AC-30). [onExit] is Back on the first-run playlist choice, which leaves without a pick (AC-16).
+ * (AC-30). An admin edit of the line keeps its ID and keeps playing (AC-19, AC-36). [onExit] is Back on the first-run playlist choice, which leaves without a pick (AC-16).
  */
 @Composable
 fun KevBoxGate(onExit: () -> Unit, onStopPlayback: () -> Unit, content: @Composable () -> Unit) {
     val vm: KevBoxViewModel = koinViewModel()
     val gate by vm.gate.collectAsStateWithLifecycle()
     val playlistKnown by vm.playlistKnown.collectAsStateWithLifecycle()
-    val sourceChanges by vm.visibleSourceChanges.collectAsStateWithLifecycle()
+    val sourceId by vm.visibleSourceId.collectAsStateWithLifecycle()
     val stop by rememberUpdatedState(onStopPlayback)
 
     val open = gate == GateState.Open
@@ -47,10 +47,13 @@ fun KevBoxGate(onExit: () -> Unit, onStopPlayback: () -> Unit, content: @Composa
         if (lastOpen[0] && !open) stop()
         lastOpen[0] = open
     }
-    val lastChanges = remember { intArrayOf(sourceChanges) }
-    LaunchedEffect(sourceChanges) {
-        if (sourceChanges != lastChanges[0] && open) stop()
-        lastChanges[0] = sourceChanges
+    // Null means "not known yet this run" (before the first fetch, the stored pick plays under no
+    // ID), so only a move from one known source to another is a switch.
+    val lastSource = remember { arrayOf(sourceId) }
+    LaunchedEffect(sourceId) {
+        val before = lastSource[0]
+        if (open && before != null && sourceId != null && sourceId != before) stop()
+        if (sourceId != null) lastSource[0] = sourceId
     }
 
     when (val state = gate) {

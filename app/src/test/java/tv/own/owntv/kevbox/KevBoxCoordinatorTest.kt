@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -22,7 +23,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.core.database.dao.ProfileDao
@@ -31,6 +34,7 @@ import tv.own.owntv.core.repository.SourceTestResult
 import tv.own.owntv.kevbox.access.AccessMonitor
 import tv.own.owntv.kevbox.access.VerdictPrefs
 import tv.own.owntv.kevbox.expiry.ExpiryMonitor
+import tv.own.owntv.kevbox.expiry.ExpiryPopup
 import tv.own.owntv.kevbox.expiry.ExpiryPrefs
 import tv.own.owntv.kevbox.playlist.LocalSources
 import tv.own.owntv.kevbox.playlist.ManagedSourceStore
@@ -44,6 +48,7 @@ import tv.own.owntv.kevbox.session.SessionStore
 import tv.own.owntv.kevbox.session.StoredSession
 import tv.own.owntv.kevbox.supabase.AccessVerdict
 import tv.own.owntv.kevbox.supabase.PlaylistRow
+import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
 
 class KevBoxCoordinatorTest {
@@ -59,10 +64,14 @@ class KevBoxCoordinatorTest {
     private class FakeServer : Interceptor {
         private val queues = mutableMapOf<String, ArrayDeque<Canned>>()
         private val sticky = mutableMapOf<String, Canned>()
+        private val perToken = mutableMapOf<String, Map<String, Canned>>()
         private val holds = mutableMapOf<String, CountDownLatch>()
         private val counts = mutableMapOf<String, Int>()
 
         @Synchronized fun always(path: String, canned: Canned) { sticky[path] = canned }
+
+        /** Answers [path] by the request's access token, so a member's answer never depends on timing. */
+        @Synchronized fun byToken(path: String, answers: Map<String, Canned>) { perToken[path] = answers }
         @Synchronized fun once(path: String, vararg canned: Canned) { queues.getOrPut(path) { ArrayDeque() }.addAll(canned) }
         @Synchronized fun hold(path: String) = CountDownLatch(1).also { holds[path] = it }
         @Synchronized fun calls(path: String) = counts[path] ?: 0
@@ -75,7 +84,10 @@ class KevBoxCoordinatorTest {
                 holds[path]
             }
             latch?.await(5, TimeUnit.SECONDS)
-            val next = synchronized(this) { queues[path]?.removeFirstOrNull() ?: sticky[path] }
+            val token = request.header("Authorization")?.removePrefix("Bearer ")
+            val next = synchronized(this) {
+                perToken[path]?.get(token) ?: queues[path]?.removeFirstOrNull() ?: sticky[path]
+            }
                 ?: throw UnknownHostException("no canned response")
             return Response.Builder()
                 .request(request)
@@ -106,6 +118,7 @@ class KevBoxCoordinatorTest {
         override suspend fun findByLogin(serverUrl: String, username: String): Long? =
             sources.entries.firstOrNull { it.value.serverUrl == serverUrl && it.value.username == username }?.key
         override suspend fun profileIds(): List<Long> = profiles.toList()
+        override fun observeLinkedSourceIds(profileId: Long): Flow<List<Long>> = MutableStateFlow(emptyList())
         override suspend fun create(row: PlaylistRow, profileIds: List<Long>): Long {
             val id = nextId++
             sources[id] = row.toFields()
@@ -158,6 +171,7 @@ class KevBoxCoordinatorTest {
         val reconciler = PlaylistReconciler(core, store)
         val playing = MutableStateFlow(false)
         val tests = MutableStateFlow(0)
+        @Volatile var testResult: SourceTestResult = SourceTestResult.Ok()
         var clock = 1_000_000_000_000L
 
         // The timer's sleep: tell the test the loop is idle, then wait for the test to move the clock.
@@ -166,6 +180,7 @@ class KevBoxCoordinatorTest {
 
         lateinit var auth: KevBoxAuth
         lateinit var coordinator: KevBoxCoordinator
+        lateinit var expiry: ExpiryMonitor
 
         init {
             server.always(LOGOUT, Canned(204, ""))
@@ -179,8 +194,8 @@ class KevBoxCoordinatorTest {
         /** Builds everything over the seeded state and starts it; returns once the start checks ran. */
         suspend fun start() {
             auth = KevBoxAuth(SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon"), sessions) { clock }
-            val expiry = ExpiryMonitor(
-                test = { tests.value += 1; SourceTestResult.Ok() },
+            expiry = ExpiryMonitor(
+                test = { tests.value += 1; testResult },
                 now = { clock },
                 today = { LocalDate.of(2026, 10, 13) },
                 prefs = MemoryExpiryPrefs(),
@@ -227,6 +242,16 @@ class KevBoxCoordinatorTest {
         """{"client_number":"${it.clientNumber}","name":"${it.name}","server_url":"${it.serverUrl}",""" +
             """"username":"${it.username}","password":"${it.password}"}"""
     }
+
+    private fun tokenBody(access: String, refresh: String) = JSONObject()
+        .put("access_token", access)
+        .put("refresh_token", refresh)
+        .put("expires_in", 3600)
+        .put("token_type", "bearer")
+        .put("user", JSONObject().put("id", "user-2").put("email", "other@example.com"))
+        .toString()
+
+    private suspend fun waitFor(condition: () -> Boolean) = withTimeout(5_000) { while (!condition()) yield() }
 
     private val minute = 60_000L
 
@@ -341,6 +366,85 @@ class KevBoxCoordinatorTest {
 
         assertEquals(GateState.ChoosePlaylist(listOf(alpha, zed)), coordinator.gate.await { it is GateState.ChoosePlaylist })
         assertEquals(0, server.calls(TOKEN))
+    }
+
+    @Test
+    fun `no rows at sign-in shows NoPlaylist, and a row appearing later creates the source and opens Home`() = harness {
+        server.always(TOKEN, Canned(200, tokenBody("access-b", "refresh-b")))
+        server.once(PLAYLIST, Canned(200, "[]"))
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        assertEquals(GateState.SignedOut, coordinator.gate.value)
+
+        assertTrue(coordinator.signIn("other@example.com", "pw") is SignInResult.Success)
+
+        assertEquals(GateState.NoPlaylist, coordinator.gate.await { it == GateState.NoPlaylist })
+        assertTrue(coordinator.playlistKnown.value)
+        assertEquals(0, core.calls("create"))
+
+        advance(15 * minute)
+
+        assertEquals(GateState.Open, coordinator.gate.await { it == GateState.Open })
+        assertEquals(1, core.calls("create"))
+        assertEquals("1", store.state.pick)
+        assertEquals(PlaylistScreen.Home, reconciler.screen.value)
+    }
+
+    @Test
+    fun `a credential change does not bring back a dismissed Expired popup, and its expiry recheck waits while playing`() = harness {
+        signedIn()
+        reconciler.apply(listOf(row("1")))
+        val id = reconciler.currentSourceId()
+        testResult = SourceTestResult.Expired(clock - minute)
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1").copy(password = "renewed"))))
+        start()
+        tests.await { it == 1 }
+        assertEquals(ExpiryPopup.Expired, expiry.popup.await { it != null })
+        expiry.dismissPopup()
+        playing.value = true
+        val changes = reconciler.visibleSourceChanges.value
+
+        advance(15 * minute) // the admin's edit arrives with this fetch
+
+        waitFor { reconciler.visibleSourceChanges.value > changes }
+        assertEquals(id, reconciler.visibleSourceId.value)
+        repeat(20) { yield() }
+        assertEquals(1, tests.value)
+        assertNull(expiry.popup.value)
+
+        playing.value = false
+        tests.await { it == 2 }
+        assertNull(expiry.popup.value)
+        assertTrue(expiry.channelShowsExpired.value)
+    }
+
+    @Test
+    fun `a playlist fetch in flight across a sign-out and another member's sign-in is dropped`() = harness {
+        signedIn() // member A, token "access"
+        server.byToken(
+            PLAYLIST,
+            mapOf("access" to Canned(200, rowsBody(row("1"))), "access-b" to Canned(200, rowsBody(row("9")))),
+        )
+        server.always(TOKEN, Canned(200, tokenBody("access-b", "refresh-b")))
+        start()
+        coordinator.gate.await { it == GateState.Open }
+        assertEquals(setOf("1"), store.state.sources.keys)
+
+        // A's next fetch is out when A signs out and B signs in; B's own fetch is out too.
+        val latch = server.hold(PLAYLIST)
+        coordinator.onForeground()
+        waitFor { server.calls(PLAYLIST) == 2 }
+        coordinator.signOut()
+        val signingIn = scope.async { coordinator.signIn("other@example.com", "pw") }
+        waitFor { server.calls(PLAYLIST) == 3 }
+        latch.countDown()
+
+        assertTrue(signingIn.await() is SignInResult.Success)
+        coordinator.gate.await { it == GateState.Open }
+        assertEquals(setOf("9"), store.state.sources.keys)
+        assertEquals(listOf("http://s9.example"), core.sources.values.map { it.serverUrl })
+        assertEquals(2, core.calls("create"))
     }
 
     private companion object {

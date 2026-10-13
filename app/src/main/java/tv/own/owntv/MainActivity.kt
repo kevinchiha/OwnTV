@@ -101,6 +101,13 @@ open class MainActivity : ComponentActivity() {
     // KevBox: the gate's coordinator, and the Multiview pool so a status screen can free its tiles too.
     private val kevbox: tv.own.owntv.kevbox.KevBoxCoordinator by inject()
     private val enginePool: tv.own.owntv.player.LiveEnginePool by inject()
+    // KevBox: what stopAllPlayback needs to close the player the way the shell does, and the line
+    // that was visible when the app went to the background.
+    private val sleepTimer: tv.own.owntv.player.SleepTimer by inject()
+    private val playbackSession: tv.own.owntv.player.PlaybackSession by inject()
+    private val reconciler: tv.own.owntv.kevbox.playlist.PlaylistReconciler by inject()
+    private val liveVm: tv.own.owntv.features.live.LiveViewModel by viewModel()
+    private var sourceAtStop: Long? = null
     // Activity-scoped: the same instance Compose retrieves via koinViewModel() inside setContent.
     private val shellViewModel: ShellViewModel by viewModel()
     // The sole locale authority (SharedPreferences-backed; see docs/internationalization.md 0b).
@@ -131,6 +138,9 @@ open class MainActivity : ComponentActivity() {
         // cache + decoder buffers — holding them while invisible got the process LMK-killed on real TVs.
         // Every engine: mpv, the Live engine (its audio must stop too), each Multiview tile and the hero.
         if (!isChangingConfigurations) engines.onAppBackgrounded()
+        // KevBox: remember the visible line, so onStart can tell whether the stream it would bring back
+        // still belongs to it.
+        sourceAtStop = reconciler.visibleSourceId.value
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -141,8 +151,10 @@ open class MainActivity : ComponentActivity() {
         // to the live edge — so Play resumes instead of sitting on a dead/empty stream. No-op on fresh launch.
         // KevBox: re-check the member's playlist and access, and bring a stream back only while the gate
         // is Open, so a remembered stream never plays behind the lock or a status screen.
+        // A line switch while backgrounded leaves the old line's stream to bring back: drop it instead.
         kevbox.onForeground()
-        if (kevbox.gate.value == tv.own.owntv.kevbox.GateState.Open) engines.onAppForegrounded()
+        val sameLine = reconciler.visibleSourceId.value == sourceAtStop
+        if (kevbox.gate.value == tv.own.owntv.kevbox.GateState.Open && sameLine) engines.onAppForegrounded()
         // Staleness-based auto refresh on resume (interval modes only — STARTUP is cold-start only). The
         // ViewModel throttles this internally so a quick toggle doesn't re-run the check.
         shellViewModel.checkAutoRefresh(includeStartup = false)
@@ -151,7 +163,20 @@ open class MainActivity : ComponentActivity() {
     // KevBox: the gate left Open or the visible line changed. Every engine stops (the main player, the
     // Live preview, the hero and each Multiview tile) and none keeps a stream to bring back on onStart:
     // the hidden line may belong to another TV under the provider's stream cap now (AC-30).
+    // The shell's own state goes too: playerMode and zapSource live on the Activity-scoped ShellViewModel,
+    // so left at FULLSCREEN the shell would come back after an unlock into an empty full-screen player.
+    // With the stop below, the member returns to the shell's start after an unlock.
     private fun stopAllPlayback() {
+        // The shell's sleep-timer stop closes the player as Back does (saving a film's resume point),
+        // releases a Multiview grid and stops the Live preview. Null when the shell is not composed.
+        sleepTimer.stopPlayback?.invoke()
+        shellViewModel.playerMode.value = tv.own.owntv.features.shell.PlayerMode.NONE
+        shellViewModel.zapSource.value = null
+        liveVm.stopPreview()
+        // Nothing plays now: PlaybackSession.active must say so, or the expiry check waits behind the lock.
+        playbackSession.attach(null)
+        // Core's PlaybackEngines has no call that drops a stream for good, so each engine is told
+        // separately below not to bring its stream back on onStart.
         engines.onAppBackgrounded()
         player.discardBackgroundRestore()
         previewEngine.discardBackgroundRestore()
