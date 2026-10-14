@@ -244,8 +244,15 @@ fun EpgScreen(
     // that category's channels are in, so ▶ in the category column never enters a channel list that is
     // about to be replaced.
     var categoryLoadFrom by remember { mutableStateOf<EpgUiState?>(null) }
+    // KevBox: Live TV's channel search (in the top area): its focus requester, and whether it holds focus or
+    // is being typed in. Declared here because the Back handlers and the grid's ▲ below use them too.
+    val liveSearchFocus = remember { FocusRequester() }
+    var liveSearchHasFocus by remember { mutableStateOf(false) }
+    var liveSearchEditing by remember { mutableStateOf(false) }
     LaunchedEffect(liveMode, liveSelected) {
         if (!liveMode) return@LaunchedEffect
+        // KevBox: a channel search is for the category it was typed in; another category starts without it.
+        if (vm.query.value.isNotEmpty()) vm.setQuery("")
         val from = vm.state.value.takeIf { vm.categoryFilter.value != liveSelected.takeUnless { it == LiveKey.All } }
         vm.setCategoryFilter(liveSelected)
         if (from == null) { categoryLoadFrom = null; return@LaunchedEffect }
@@ -544,6 +551,10 @@ fun EpgScreen(
     BackHandler(enabled = liveMode && onBackToSearch != null && ((gridHasFocus && !inCellMode) || columnHasFocus)) {
         onBackToSearch?.invoke()
     }
+    // KevBox: Back on Live TV's channel search clears what is typed, then goes back to the grid.
+    BackHandler(enabled = liveMode && liveSearchHasFocus && !liveSearchEditing) {
+        if (query.isNotEmpty()) vm.setQuery("") else focusGrid(0)
+    }
 
     // KevBox: where a pending move into the grid stands. A category change waits for a load after it: a
     // new state, as two empty lists can be one object.
@@ -720,6 +731,30 @@ fun EpgScreen(
             // KevBox: liveMode, so ◀ reads "Categories" in Live TV, and OK reads "Preview" on a channel not yet in the box.
             val okPreviews = liveMode && previewEnabled && topChannel != null && !inBox(topChannel)
             Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus, liveMode = liveMode, okPreviews = okPreviews) }
+            // KevBox: Live TV's channel search, bottom left of the top area (Kevin, 2026-10-14): the control
+            // line's search, which Live TV hides with the rest of that line. ▲ from the first channel reaches
+            // it; ▼, ◀ or Back (with nothing typed) go back to the grid or the column. It filters the open
+            // category's channels by name, as the control line's did.
+            if (liveMode) StageSearchField(
+                query = query, onQueryChange = vm::setQuery,
+                placeholder = stringResource(R.string.content_epg_search_hint).trimEnd('…'),
+                onEditingChange = { liveSearchEditing = it },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 46.mpx)
+                    .width(340.mpx)
+                    .focusRequester(liveSearchFocus)
+                    .onFocusChanged { liveSearchHasFocus = it.hasFocus }
+                    .onPreviewKeyEvent { e ->
+                        if (liveSearchEditing) return@onPreviewKeyEvent false
+                        when (e.key) {
+                            Key.DirectionDown -> { if (e.type == KeyEventType.KeyDown && state.channels.isNotEmpty()) focusGrid(0); true }
+                            Key.DirectionLeft -> { if (e.type == KeyEventType.KeyDown) leaveRow(); true }
+                            Key.DirectionUp, Key.DirectionRight -> true
+                            else -> false
+                        }
+                    },
+            )
         }
 
         }
@@ -874,7 +909,8 @@ fun EpgScreen(
                                             // ▲ from the first row: up to the control line. KevBox: Live TV has
                                             // none, so ▲ stays on the first row (the focus search could pick the
                                             // category column hidden off screen).
-                                            to < 0 -> liveMode
+                                            // KevBox: there, ▲ goes up to the channel search instead.
+                                            to < 0 -> liveMode && run { runCatching { liveSearchFocus.requestFocus() }; true }
                                             to >= state.channels.size -> true
                                             else -> { stepTo(to); true }
                                         }
