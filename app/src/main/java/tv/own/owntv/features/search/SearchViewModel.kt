@@ -53,6 +53,9 @@ class SearchViewModel(
     private val settings: SettingsRepository,
     private val searchReader: SearchReader,
     private val metadata: MetadataRepository,
+    // KevBox: the TV guide tab's show finder, and the store its hidden channels and categories come from.
+    private val showSearch: tv.own.owntv.kevbox.live.ShowSearch,
+    private val customize: tv.own.owntv.core.customize.CustomizationStore,
 ) : ViewModel() {
 
     // Observe the active profile's sources reactively so adding/removing a playlist refreshes Search
@@ -77,8 +80,46 @@ class SearchViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchResults())
 
+    /**
+     * KevBox: the shows for the TV guide tab, on now and in the next 24 hours, from the same debounced
+     * query. Search lists these instead of core's "On TV" ([SearchResults.programmes]), which stops at
+     * 12 hours and 20 rows (Kevin, 2026-10-14).
+     */
+    val shows: StateFlow<tv.own.owntv.kevbox.live.ShowMatches> = _query
+        .map { it.trim() }
+        .debounce(300)
+        .distinctUntilChanged()
+        .mapLatest { q -> findShows(q) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), tv.own.owntv.kevbox.live.ShowMatches.EMPTY)
+
+    /** KevBox: the tab the user moved to; null lets the results pick (kevbox/live/SearchBox.kt pickShowTab). */
+    private val _showTab = MutableStateFlow<tv.own.owntv.kevbox.live.SearchShowTab?>(null)
+    val showTab: StateFlow<tv.own.owntv.kevbox.live.SearchShowTab?> = _showTab.asStateFlow()
+    fun setShowTab(t: tv.own.owntv.kevbox.live.SearchShowTab) { _showTab.value = t } // KevBox
+
+    /**
+     * KevBox: the hidden channels and categories are read the way core's SearchReader reads them: the
+     * profile's Live customizations, and on a kids profile the adult categories as well.
+     */
+    private suspend fun findShows(q: String): tv.own.owntv.kevbox.live.ShowMatches {
+        if (q.length < 2) return tv.own.owntv.kevbox.live.ShowMatches.EMPTY
+        val pid = currentProfileId() ?: return tv.own.owntv.kevbox.live.ShowMatches.EMPTY
+        val liveIds = ctx.value.liveSourceIds
+        if (liveIds.isEmpty()) return tv.own.owntv.kevbox.live.ShowMatches.EMPTY
+        val cust = customize.observe(pid, tv.own.owntv.core.model.MediaType.LIVE).first()
+        val isKids = profileDao.getById(pid)?.isKids == true
+        val hiddenCats = if (cust.hiddenCategories.isEmpty() && !isKids) emptySet() else
+            tv.own.owntv.core.content.AdultCategoryClassifier.hiddenCategoryIds(
+                categoryDao.observe(liveIds, tv.own.owntv.core.model.MediaType.LIVE).first(),
+                cust.hiddenCategories,
+                isKids,
+            )
+        return showSearch.find(q, liveIds, cust, hiddenCats, System.currentTimeMillis())
+    }
+
     fun setQuery(q: String) {
-        if (q.trim() != _query.value.trim()) { _tab.value = SearchTab.ALL; lastFocusKey = null }
+        // KevBox: a new query also forgets the tab the last one was on (_showTab).
+        if (q.trim() != _query.value.trim()) { _tab.value = SearchTab.ALL; _showTab.value = null; lastFocusKey = null }
         _query.value = q
         if (q.isNotBlank()) _intent.value = null // typing overrides an active launcher intent
     }
