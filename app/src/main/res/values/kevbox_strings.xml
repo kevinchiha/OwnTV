@@ -29,6 +29,14 @@
     <string name="kevbox_key_preview">Preview</string>
     <!-- Search key hint, after "Hold OK": holding OK on a channel opens it in the Live TV guide, in its category. -->
     <string name="kevbox_key_guide">Guide</string>
+    <!-- Category list key hint, after "Hold OK": opens the Jump to list of category blocks. -->
+    <string name="kevbox_key_jump">Jump</string>
+    <!-- Title of the list Hold OK opens in the category list: one line per block of categories (FR|, US|...). -->
+    <string name="kevbox_jump_title">Jump to</string>
+    <!-- Jump to line for the fixed rows at the top of the category list. -->
+    <string name="kevbox_jump_top">Favorites &amp; All channels</string>
+    <!-- Jump to line for categories that belong to no block. -->
+    <string name="kevbox_jump_other">Other</string>
     <!-- Search finds channels and TV programs only (no movies or series in KevBox Live). -->
     <string name="kevbox_search_field_hint">Channels and TV programs</string>
     <string name="kevbox_search_card_body">Channels from your playlist, and TV programs on now or later today by their title. OK plays a result here; hold OK to open it in the guide.</string>

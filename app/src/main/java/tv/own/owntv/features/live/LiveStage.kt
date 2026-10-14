@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -502,10 +504,17 @@ internal fun LiveCategories(
     focusFollowsSelection: Boolean = true,
     // KevBox: the search field took focus (Live TV's guide column: the cursor is off every category).
     onSearchFocus: () -> Unit = {},
+    // KevBox: Hold OK on a category opens the "Jump to" list of its blocks (FR|, US|…) instead of
+    // [onLongSelect], while no search is typed (kevbox/live/CategoryJumps.kt, Kevin 2026-10-14).
+    jumpToBlocks: Boolean = false,
 ) {
     var localQuery by remember { mutableStateOf("") }
     val query = searchQuery ?: localQuery
     val setQuery: (String) -> Unit = onSearchQueryChange ?: { localQuery = it }
+    // KevBox: the search field is being typed in; ▲ there then belongs to the text, not the wrap.
+    var searchEditing by remember { mutableStateOf(false) }
+    // KevBox: the row Hold OK opened "Jump to" from, while it is open.
+    var jumpFrom by remember { mutableStateOf<Int?>(null) }
     val visible = remember(entries, query) {
         val q = query.trim()
         if (q.isEmpty()) entries.indices.toList() else entries.indices.filter { entries[it].label.contains(q, ignoreCase = true) }
@@ -553,6 +562,26 @@ internal fun LiveCategories(
     // list and stops (see CategorySteps). headingPos is the row the "GROUPS" heading item sits before.
     val headingPos = if (firstGroup >= 0 && query.isBlank()) visible.indexOf(firstGroup) else -1
     val stepper = remember(listState) { tv.own.owntv.features.shell.components.VodStepper(scope) { listState } }
+    // KevBox: the blocks "Jump to" lists, for the whole list (it only opens with no search typed).
+    val jumps = remember(entries, firstGroup) { tv.own.owntv.kevbox.live.CategoryJumps.of(entries.map { it.label }, firstGroup) }
+    val jumpsOn = jumpToBlocks && query.isBlank()
+    // KevBox: put row [pos] at the top of the list, focus it, then close "Jump to". Focus moves straight
+    // from the panel to the row: closing the panel first left focus nowhere for a frame, and the list put
+    // it back on the open category.
+    // While it lands, the list's own entry rule (focus entering goes to the open category) stands aside.
+    var landing by remember { mutableStateOf(false) }
+    fun landOn(pos: Int) {
+        scope.launch {
+            landing = true
+            runCatching { listState.scrollToItem(tv.own.owntv.kevbox.live.CategorySteps.itemIndex(pos, headingPos)) }
+            withFrameNanos { }
+            runCatching { rowFocusers[pos].requestFocus() }
+            jumpFrom = null
+            withFrameNanos { }
+            landing = false
+        }
+    }
+    val longSelect: (pos: Int, index: Int) -> Unit = { pos, index -> if (jumpsOn) jumpFrom = pos else onLongSelect(index) }
     val a = stageAccent
     Column(
         modifier
@@ -570,15 +599,17 @@ internal fun LiveCategories(
         }
         // Edge-only scrolling, as the channel list (no double step on ▼).
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides edgeScrollSpec) {
+        // KevBox: a Box, so "Jump to" can open over the list in its place.
+        Box(Modifier.fillMaxWidth().weight(1f)) {
         LazyColumn(
             state = listState,
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .onFocusChanged { hasFocus = it.hasFocus }
                 .focusProperties {
-                    onEnter = {
+                    onEnter = enter@{
+                        if (landing) return@enter // KevBox: a "Jump to" landing picks its own row
                         val pos = visible.indexOf(selectedIndex)
                         val target = if (pos in rowFocusers.indices) rowFocusers[pos] else searchFocus
                         if (!runCatching { target.requestFocus() }.getOrDefault(false)) {
@@ -600,10 +631,20 @@ internal fun LiveCategories(
                     query = query,
                     onQueryChange = setQuery,
                     placeholder = stringResource(R.string.content_search_categories).trimEnd('…'),
-                    onEditingChange = onSearchEditingChange,
+                    onEditingChange = { searchEditing = it; onSearchEditingChange(it) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = if (sheet) 8.mpx else 0.mpx, end = if (sheet) 8.mpx else 0.mpx, bottom = if (sheet) 14.mpx else 16.mpx)
+                        // KevBox: ▲ on the search field, the list's top, wraps to the last category on a
+                        // fresh press; a held ▲ stops here instead of leaving the list (CategorySteps).
+                        .onPreviewKeyEvent { e ->
+                            if (searchEditing || e.key != Key.DirectionUp) return@onPreviewKeyEvent false
+                            if (e.type == KeyEventType.KeyDown) {
+                                tv.own.owntv.kevbox.live.CategorySteps.fromSearch(visible.size, fresh = e.nativeKeyEvent.repeatCount == 0)
+                                    ?.let { stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex(it, headingPos)) }
+                            }
+                            true
+                        }
                         .focusRequester(searchFocus)
                         .onFocusChanged { if (it.hasFocus) onSearchFocus() } // KevBox: see onSearchFocus
                         .then(if (query.isEmpty()) rightKey else Modifier),
@@ -632,7 +673,11 @@ internal fun LiveCategories(
                             val delta = when (e.key) { Key.DirectionDown -> 1; Key.DirectionUp -> -1; else -> return@onPreviewKeyEvent false }
                             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
                             val from = stepper.target?.let { tv.own.owntv.kevbox.live.CategorySteps.rowPos(it, headingPos) } ?: pos
-                            val to = tv.own.owntv.kevbox.live.CategorySteps.next(from, delta, visible.size) ?: return@onPreviewKeyEvent false
+                            // KevBox: a held key speeds up, and a fresh ▼ on the last row wraps (CategorySteps).
+                            val k = e.nativeKeyEvent
+                            val to = tv.own.owntv.kevbox.live.CategorySteps.next(
+                                from, delta, visible.size, heldMs = k.eventTime - k.downTime, fresh = k.repeatCount == 0,
+                            ) ?: return@onPreviewKeyEvent false
                             stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex(to, headingPos))
                             true
                         }
@@ -650,15 +695,107 @@ internal fun LiveCategories(
                                 entry.name.tags.forEach { StageTag(it, onAccent = if (focused) a.onAccent else null) }
                             },
                             trailing = entry.mark?.let { m -> { _ -> StagePlaylistMark(m) } },
-                            onLongClick = { onLongSelect(index) },
+                            onLongClick = { longSelect(pos, index) }, // KevBox: see longSelect
                             modifier = rowModifier,
                         )
                     } else {
-                        LiveColumnItem(entry, selected, onClick = { onSelect(index) }, onLongClick = { onLongSelect(index) }, modifier = rowModifier)
+                        LiveColumnItem(entry, selected, onClick = { onSelect(index) }, onLongClick = { longSelect(pos, index) }, modifier = rowModifier)
                     }
                 }
             }
         }
+        // KevBox: "Jump to", beside the list on its right (Kevin, 2026-10-14), so the categories stay in
+        // view. OK lands on the block's first category; Back goes back to the row.
+        jumpFrom?.let { from ->
+            val gap = 64.mpx
+            val panelW = 360.mpx
+            CategoryJumpPanel(
+                jumps = jumps,
+                startGroup = jumps.groupOf(from),
+                onPick = { g -> landOn(g.firstRow) },
+                onClose = { landOn(from) },
+                sheet = sheet,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(top = 104.mpx, bottom = 32.mpx)
+                    // Laid out past the list's right edge: nothing above clips it, and it draws over
+                    // what is there (the guide, or the player's picture behind the sheet).
+                    .layout { measurable, constraints ->
+                        val w = panelW.roundToPx()
+                        val placeable = measurable.measure(constraints.copy(minWidth = w, maxWidth = w))
+                        layout(constraints.maxWidth, placeable.height) { placeable.place(constraints.maxWidth + gap.roundToPx(), 0) }
+                    },
+            )
+        }
+        }
+        }
+        // KevBox: the one key this list adds, under it.
+        if (jumpsOn) {
+            tv.own.owntv.ui.stage.StageKeyHints(
+                listOf(stringResource(R.string.content_key_hold_ok) to stringResource(R.string.kevbox_key_jump)),
+                modifier = Modifier.padding(start = 14.mpx, top = 10.mpx),
+                textSize = 15,
+            )
+        }
+    }
+}
+
+/**
+ * KevBox: the "Jump to" list (kevbox/live/CategoryJumps.kt): one line per block with its category count,
+ * the cursor on [startGroup]. ◀ ▶ do nothing, so focus stays until OK ([onPick]) or Back ([onClose]).
+ */
+@Composable
+private fun CategoryJumpPanel(
+    jumps: tv.own.owntv.kevbox.live.CategoryJumps,
+    startGroup: Int,
+    onPick: (tv.own.owntv.kevbox.live.CategoryJumps.JumpGroup) -> Unit,
+    onClose: () -> Unit,
+    sheet: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val groups = jumps.groups
+    val requesters = remember(groups.size) { List(groups.size) { FocusRequester() } }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.activity.compose.BackHandler { onClose() }
+    LaunchedEffect(Unit) {
+        val i = startGroup.coerceIn(0, (groups.size - 1).coerceAtLeast(0))
+        runCatching { listState.scrollToItem(i) }
+        withFrameNanos { }
+        runCatching { requesters[i].requestFocus() }
+    }
+    val topLabel = stringResource(R.string.kevbox_jump_top)
+    val otherLabel = stringResource(R.string.kevbox_jump_other)
+    Column(
+        modifier
+            // Solid, so the list it covers does not show through (glass is see-through by design).
+            .background(tv.own.owntv.ui.theme.LocalStagePalette.current.glassOff, RoundedCornerShape(if (sheet) 20.mpx else 16.mpx))
+            .stageGlass(if (sheet) 20.mpx else 16.mpx, overContent = true)
+            .padding(horizontal = 6.mpx, vertical = 12.mpx)
+            .onPreviewKeyEvent { e -> e.key == Key.DirectionLeft || e.key == Key.DirectionRight },
+    ) {
+        Text(
+            stringResource(R.string.kevbox_jump_title), style = stageText(20, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 12.mpx, bottom = 10.mpx),
+        )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxWidth().weight(1f).trapVerticalFocusExit().focusGroup(),
+            contentPadding = PaddingValues(4.mpx),
+        ) {
+            items(groups.size) { i ->
+                val g = groups[i]
+                StageSheetItem(
+                    text = when (val b = g.block) {
+                        tv.own.owntv.kevbox.live.CategoryJumps.Block.Top -> topLabel
+                        tv.own.owntv.kevbox.live.CategoryJumps.Block.Other -> otherLabel
+                        is tv.own.owntv.kevbox.live.CategoryJumps.Block.Named -> b.name
+                    },
+                    onClick = { onPick(g) },
+                    count = g.count.takeIf { g.block != tv.own.owntv.kevbox.live.CategoryJumps.Block.Top }?.let { tv.own.owntv.ui.components.formatCount(it) },
+                    selected = i == startGroup,
+                    modifier = Modifier.focusRequester(requesters[i]),
+                )
+            }
         }
     }
 }
