@@ -79,3 +79,4 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt` (with its tes
 
 ## Build log
 - baseline: gate green (tests, lint, check-divergence 0 failures)
+- Task 1+2: started at 9919f735
