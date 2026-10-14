@@ -21,6 +21,9 @@ import tv.own.owntv.kevbox.playlist.LocalSources
 import tv.own.owntv.kevbox.playlist.ManagedSourceStore
 import tv.own.owntv.kevbox.playlist.PlaylistReconciler
 import tv.own.owntv.kevbox.playlist.PrefsManagedSourceStore
+import tv.own.owntv.kevbox.refresh.CoreSyncSteps
+import tv.own.owntv.kevbox.refresh.PlaylistRefreshSetting
+import tv.own.owntv.kevbox.refresh.PlaylistUpdater
 import tv.own.owntv.kevbox.session.KevBoxAuth
 import tv.own.owntv.kevbox.session.KeystoreTokenCipher
 import tv.own.owntv.kevbox.session.PrefsSessionStore
@@ -73,6 +76,22 @@ val kevboxModule = module {
             scope = get(),
             now = System::currentTimeMillis,
             proxy = tv.own.owntv.kevbox.network.ManagedProxy(tv.own.owntv.kevbox.network.CoreProxyTarget(get())),
+        )
+    }
+    single {
+        PlaylistRefreshSetting(androidContext().prefs(PlaylistRefreshSetting.PREFS_NAME), get(), get(), scope = get())
+    }
+    single { CoreSyncSteps(get(), get(), get(), get(), get(), get(), get(), get()) }
+    single {
+        val coordinator = get<KevBoxCoordinator>()
+        val reconciler = get<PlaylistReconciler>()
+        val steps = get<CoreSyncSteps>()
+        PlaylistUpdater(
+            checkPlaylist = { coordinator.checkPlaylistNow() },
+            currentSourceId = { reconciler.currentSourceId() },
+            syncChannels = steps::syncChannels,
+            syncGuides = steps::syncGuides,
+            scope = get(),
         )
     }
     single {

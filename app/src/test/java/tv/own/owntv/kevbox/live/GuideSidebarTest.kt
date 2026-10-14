@@ -85,4 +85,18 @@ class GuideSidebarTest {
         assertEquals(Move.SELECT_THEN_ENTER, GuideSidebar.rightOrOk(cursor = "Sport", shown = "Sport", shownChannels = 40, loadPending = true))
         assertEquals(Move.SELECT_THEN_ENTER, GuideSidebar.rightOrOk(cursor = "Sport", shown = "Sport", shownChannels = 0, loadPending = true))
     }
+
+    @Test
+    fun theMarkerFollowsTheCursorWhileItIsOnACategory() {
+        // Kevin, 2026-10-14: scrolling fast left the old category marked until the cursor rested.
+        assertEquals(12, GuideSidebar.markedRow(shown = 4, cursor = 12, columnHasFocus = true))
+    }
+
+    @Test
+    fun theMarkerShowsTheOpenCategoryOtherwise() {
+        // On the search field, nothing is under the cursor.
+        assertEquals(4, GuideSidebar.markedRow(shown = 4, cursor = null, columnHasFocus = true))
+        // Focus in the grid or the menu: a cursor left over from the column means nothing.
+        assertEquals(4, GuideSidebar.markedRow(shown = 4, cursor = 12, columnHasFocus = false))
+    }
 }

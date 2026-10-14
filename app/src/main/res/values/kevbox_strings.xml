@@ -81,6 +81,24 @@
     <string name="kevbox_settings_reset_live_pins_description">Switching a channel between ExoPlayer and mpv with the player button in full screen saves that choice for the channel. Reset clears these choices, so every channel starts on the default player again.</string>
     <!-- 0.2 AC-26: the guide feed the app adds from the playlist. -->
     <string name="kevbox_epg_automatic">Set up for you</string>
+    <!-- Settings › Playlists: how often the channel list downloads again by itself, and a button to do it now. -->
+    <string name="kevbox_refresh_playlist">Refresh playlist</string>
+    <string name="kevbox_refresh_playlist_description">How often the channel list downloads again by itself. The app checks when it opens or comes back to the screen, and waits while something plays. The TV guide keeps its own timer in EPG sources.</string>
+    <string name="kevbox_refresh_app_start">Every time the app opens</string>
+    <string name="kevbox_refresh_6h">Every 6 hours</string>
+    <string name="kevbox_refresh_12h">Every 12 hours</string>
+    <string name="kevbox_refresh_24h">Every 24 hours</string>
+    <string name="kevbox_refresh_4d">Every 4 days</string>
+    <string name="kevbox_refresh_never">Never</string>
+    <string name="kevbox_update_now">Update now</string>
+    <string name="kevbox_update_now_description">Downloads the channel list and the TV guide again now.</string>
+    <string name="kevbox_updating">Updating…</string>
+    <!-- Settings search: extra words that find Refresh playlist and Update now. -->
+    <string name="kevbox_search_keywords_refresh">refresh update sync reload download channels playlist list</string>
+    <!-- More › Restart app: ends the app and opens it again, as a force stop would. -->
+    <string name="kevbox_restart_app">Restart app</string>
+    <string name="kevbox_restart_app_body">Closes KevBox Live and opens it again, like a force stop. Use it if something froze or stopped working.</string>
+    <string name="kevbox_restart_now">Restart now</string>
     <!-- 0.2 AC-31: Favorites holds channels only. -->
     <string name="kevbox_more_fav_empty_body">Hold OK on a channel and choose Add to Favorites.</string>
     <!-- 0.2 AC-32: More › About. -->
