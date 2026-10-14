@@ -58,5 +58,29 @@ class ScrubberTest {
         assertNull(Scrubber.host(""))
         assertNull(Scrubber.host("not an address"))
         assertNull(Scrubber.host("panel.example.com/live"))
+        assertEquals("[fe80::1]", Scrubber.host("http://u:p@[FE80::1]:8080/x"))
+    }
+
+    @Test
+    fun `host never returns part of a login that holds odd characters`() {
+        // '@' inside the login: the host is what follows the last '@'.
+        assertEquals("host.com", Scrubber.host("http://u:p@ss@host.com/x"))
+        assertEquals("host.com", Scrubber.host("http://kev@mail.com:p@ss@host.com:8080/live/1.ts"))
+        // '/', '?', '#' or '\' inside the login, alone or with '@': no answer rather than a credential.
+        listOf(
+            "http://kevuser:pa/ss@host.com/x",
+            "http://kevuser:p@ss/word@host.com/x",
+            "http://kevuser:12/34@host.com/x",
+            "http://kevuser/pass@host.com/x",
+            "http://kevuser:pa?ss@host.com/x",
+            "http://kevuser:1#2@host.com/x",
+            "http://kevuser:pa\\ss@host.com/x",
+            "http://kevuser:pa ss@host.com/x",
+            "http://kevuser:pass@/x",
+            "http://kevuser:pass@host.com:port/x",
+        ).forEach { address ->
+            val host = Scrubber.host(address)
+            assertNull("$address gave $host", host)
+        }
     }
 }
