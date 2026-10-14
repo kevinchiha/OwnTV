@@ -80,3 +80,4 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt` (with its tes
 ## Build log
 - baseline: gate green (tests, lint, check-divergence 0 failures)
 - Task 1+2: started at 9919f735
+- Task 1+2: landed (f50cd89a). Bent: LiveCategories also gained onSearchFocus (stops the 300 ms timer when the cursor reaches the search field). Outside Files: kevbox/live/LiveVideoStage.kt + LiveVideoStageTest.kt (boxSlide, so the box video moves in the same frame as the guide layer).
