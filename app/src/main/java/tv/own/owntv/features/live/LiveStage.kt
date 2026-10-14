@@ -70,6 +70,7 @@ import tv.own.owntv.kevbox.live.liveVideoSite // KevBox: Search's box marks wher
 import tv.own.owntv.ui.components.ChannelLogoTile
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.OwnTVSpinner
+import tv.own.owntv.ui.components.longPressMenuGuard // KevBox: the "Jump to" panel ignores the OK that opened it
 import tv.own.owntv.ui.components.trapVerticalFocusExit
 import tv.own.owntv.ui.format.rememberSystemTimeFormatter
 import tv.own.owntv.ui.stage.shownColor
@@ -769,6 +770,10 @@ private fun CategoryJumpPanel(
     val otherLabel = stringResource(R.string.kevbox_jump_other)
     Column(
         modifier
+            // KevBox: the OK that opened this panel is often still held. Its repeats landed on the focused
+            // line, so letting go picked that block and the landing row started another Hold OK. The guard
+            // eats OK until the key is up, as every other Hold OK menu does.
+            .longPressMenuGuard()
             // Solid, so the list it covers does not show through (glass is see-through by design).
             .background(tv.own.owntv.ui.theme.LocalStagePalette.current.glassOff, RoundedCornerShape(if (sheet) 20.mpx else 16.mpx))
             .stageGlass(if (sheet) 20.mpx else 16.mpx, overContent = true)
