@@ -196,12 +196,12 @@ internal val SUBTITLE_APPEARANCE_SEARCH_ROWS: List<Int> = listOf(
 internal val VIDEO_QUICK_ROWS: List<VideoQuickRef> = listOf(
     VideoQuickRef("vp_live_engine", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_live_tv_player, R.string.settings_live_player_description),
     VideoQuickRef("vp_live_engine_sources", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_live_engine_per_playlist, R.string.settings_live_engine_per_playlist_description),
-    VideoQuickRef("vp_reset_live_pins", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_reset_live_player_choices, R.string.settings_reset_live_player_choices_description),
+    VideoQuickRef("vp_reset_live_pins", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_reset_live_player_choices, R.string.kevbox_settings_reset_live_pins_description), // KevBox: names no hidden setting (AC-3)
     VideoQuickRef("vp_vod_engine", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_movies_series_player, R.string.settings_movies_player_description),
     VideoQuickRef("vp_vod_engine_sources", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_vod_engine_per_playlist, R.string.settings_vod_engine_per_playlist_description),
     VideoQuickRef("vp_reset_pins", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_reset_player_choices, R.string.settings_reset_player_choices_description),
     VideoQuickRef("vp_forget_fixes", SECTION_PLAYER, OwnTVIcon.REFRESH, R.string.settings_forget_stream_fixes, R.string.settings_forget_stream_fixes_description),
-    VideoQuickRef("vp_external", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_external_player, R.string.settings_external_player_row_description),
+    VideoQuickRef("vp_external", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_external_player, R.string.kevbox_settings_external_player_row_description), // KevBox: one Live TV switch (AC-5)
     VideoQuickRef("vp_hw", SECTION_PICTURE, OwnTVIcon.VIDEO, R.string.settings_hardware_decoding, R.string.settings_hardware_decoding_description),
     VideoQuickRef("vp_hdr", SECTION_PICTURE, OwnTVIcon.VIDEO, R.string.settings_quick_hdr, R.string.settings_hdr_description),
     VideoQuickRef("vp_max_quality", SECTION_PICTURE, OwnTVIcon.VIDEO, R.string.settings_max_video_quality, R.string.settings_max_video_quality_description),
@@ -829,7 +829,7 @@ internal fun VideoPlayerGroupRows(
             quickKey = "vp_reset_live_pins",
             saved = true,
             icon = OwnTVIcon.PLAY, title = stringResource(R.string.settings_reset_live_player_choices),
-            desc = stringResource(R.string.settings_reset_live_player_choices_description),
+            desc = stringResource(R.string.kevbox_settings_reset_live_pins_description), // KevBox: names no hidden setting, no movies or episodes (AC-3)
             chip = if (livePins == 0) stringResource(R.string.settings_reset_player_choices_none)
             else pluralStringResource(R.plurals.settings_reset_player_choices_count, livePins, livePins),
             primaryChip = livePins > 0,
@@ -891,7 +891,7 @@ internal fun VideoPlayerGroupRows(
             quickKey = "vp_external",
             opens = true,
             icon = OwnTVIcon.PLAY, title = stringResource(R.string.settings_external_player),
-            desc = stringResource(R.string.settings_external_player_row_description),
+            desc = stringResource(R.string.kevbox_settings_external_player_row_description), // KevBox: one Live TV switch, no sections (AC-5)
             // KevBox: the chip reads the Live TV switch alone (AC-5); stored Movies and Series values stay untouched.
             chip = externalPlayerChip(externalLive, movies = false, series = false), chevron = true,
             primaryChip = externalLive,
@@ -2007,9 +2007,15 @@ private fun engineOptions(default: EnginePreference): List<Pair<String, String>>
         }
     }
 
-/** Row chip for the External player row: "Off", "On" (all three), or the sections that are on. */
+/**
+ * Row chip for the External player row: "Off", "On" (all three), or the sections that are on.
+ * KevBox: with Movies and Series off (KevBox Live passes false for both), the Live TV switch alone
+ * gives "On" or "Off" (AC-5).
+ */
 @Composable
 private fun externalPlayerChip(live: Boolean, movies: Boolean, series: Boolean): String {
+    // KevBox: one switch left, so On and Off follow it instead of naming the section (AC-5).
+    if (!movies && !series) return stringResource(if (live) R.string.common_on else R.string.common_off)
     val on = buildList {
         if (live) add(stringResource(R.string.common_nav_live_tv))
         if (movies) add(stringResource(R.string.common_nav_movies))
@@ -2354,7 +2360,7 @@ private fun ExternalPlayerDialog(
     }
     // Three switches: in the page's panel (owner, P12), a Stage popup elsewhere.
     if (panelEditor(onDismiss) { switches() }) return
-    tv.own.owntv.ui.stage.StagePopup(onDismiss = onDismiss, title = stringResource(R.string.settings_external_player), body = stringResource(R.string.settings_external_player_description)) { switches() }
+    tv.own.owntv.ui.stage.StagePopup(onDismiss = onDismiss, title = stringResource(R.string.settings_external_player), body = stringResource(R.string.kevbox_settings_external_player_description)) { switches() } // KevBox: one Live TV switch, no sections (AC-5)
 }
 
 /** A +/- stepper dialog for an integer value. */
