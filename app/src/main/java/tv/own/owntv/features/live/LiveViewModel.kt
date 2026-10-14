@@ -284,8 +284,10 @@ class LiveViewModel(
         }
     }
 
-    private val livePreviewAudio: StateFlow<Boolean> = settings.livePreviewAudio
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    // KevBox: preview sound is fixed on (0.2 AC-13), read from the hide list instead of storage, so no
+    // preview mutes and the collector below never re-mutes a playing box. Was settings.livePreviewAudio.
+    private val livePreviewAudio: StateFlow<Boolean> =
+        MutableStateFlow(tv.own.owntv.kevbox.settings.LiveOnlySettings.PREVIEW_SOUND)
 
     /** Settings → "Channel numbers": shows the provider number in the lists and the player, and enables
      *  typing one to tune. Off hides every number without touching the stored data. Eager so a playback
@@ -880,7 +882,8 @@ class LiveViewModel(
         // navigated). A saved folder is honoured only once it actually exists in this profile's rail.
         // Gated by "Remember last category — Live TV" (Settings → Browsing & lists), on by default.
         viewModelScope.launch {
-            if (!settings.rememberCategoryLive.first()) return@launch
+            // KevBox: fixed value from the hide list (0.2 AC-15), not settings.rememberCategoryLive.
+            if (!tv.own.owntv.kevbox.settings.LiveOnlySettings.REMEMBER_CATEGORY_LIVE) return@launch
             val saved = parseLiveKey(settings.lastLiveCategory.first()) ?: return@launch
             // A saved Folder/Custom is honoured only while it still exists in this profile's rail —
             // a deleted custom category or a re-synced-away folder must not resurrect on restart.
@@ -903,7 +906,8 @@ class LiveViewModel(
                 .collect { settings.setLastLiveChannelId(it) }
         }
         viewModelScope.launch {
-            if (!settings.rememberLastLive.first()) return@launch
+            // KevBox: fixed value from the hide list (0.2 AC-15), not settings.rememberLastLive.
+            if (!tv.own.owntv.kevbox.settings.LiveOnlySettings.REMEMBER_CHANNEL_LIVE) return@launch
             val savedId = settings.lastLiveChannelId.first()
             if (savedId > 0 && _previewChannel.value == null) {
                 ctx.first { it.profileId >= 0 }
@@ -962,7 +966,7 @@ class LiveViewModel(
     private val live = tv.own.owntv.player.LiveTuneController(
         scope = viewModelScope,
         engines = tv.own.owntv.player.EnginePair(previewEngine, player),
-        host = tv.own.owntv.player.LiveTuneController.CoreHost(
+        host = kevBoxLiveHost(tv.own.owntv.player.LiveTuneController.CoreHost(
             context = appContext,
             settings = settings,
             sourceDao = sourceDao,
@@ -973,8 +977,18 @@ class LiveViewModel(
             sourceLookup = { id -> sourceById[id] },
             // A handover re-opens the channel at its live edge: the rewind is over.
             backToLiveEdge = { clearTimeshift() },
-        ),
+        )), // KevBox: wrapped by kevBoxLiveHost so live starts on ExoPlayer whatever storage says (0.2 AC-38)
     )
+
+    // KevBox: Core's host with the live player order fixed (0.2 AC-38): the global choice is
+    // LiveOnlySettings.LIVE_ENGINE and a playlist's own engine choice is cleared. The grow and shrink into
+    // the top box need live on ExoPlayer. A per-channel pin (enginePin/pin) still delegates to Core.
+    private fun kevBoxLiveHost(core: tv.own.owntv.player.LiveTuneController.CoreHost): tv.own.owntv.player.LiveTuneController.Host =
+        object : tv.own.owntv.player.LiveTuneController.Host by core {
+            override suspend fun globalPreference() = tv.own.owntv.kevbox.settings.LiveOnlySettings.LIVE_ENGINE
+            override suspend fun sourceOf(sourceId: Long) =
+                tv.own.owntv.kevbox.settings.LiveOnlySettings.withoutEngineChoice(core.sourceOf(sourceId))
+        }
 
     // True while the in-pane preview is suppressed because the provider allows one stream at a time and
     // that stream is already in use (full-screen playback). The pane says so instead of sitting silently
@@ -1187,8 +1201,8 @@ class LiveViewModel(
      *  pane may re-take the engine (and re-apply the preview mute) on the next focus. Keeps the stream
      *  playing (no stop) — just clears the flag so [playPreview] works again. */
     // KevBox: keepStream is Back to the Live TV grid, whose top box takes the stream over
-    // (kevbox/live/LiveVideoStage.kt): the stream keeps playing with its sound on, and the next preview
-    // mutes it the way any preview starts.
+    // (kevbox/live/LiveVideoStage.kt): the stream keeps playing with its sound on, and no preview mutes
+    // it any more: preview sound is fixed on (LiveOnlySettings.PREVIEW_SOUND, 0.2 AC-13).
     fun onFullscreenExited(keepStream: Boolean = false) {
         live.detach() // the stream stays; its watchers and the give-up alarm stand down
         // Leaving full-screen ends the rewind: the archive stream is torn down with the player, and the
@@ -1527,7 +1541,8 @@ class LiveViewModel(
         _catchupActive.value = false // tuning live ends any archive playback the HUD was showing
         // Core routes it (DRM, the pin, a learned panel refusal, the playlist, the setting), arms the
         // ladder and starts the engine — the same code the phone runs.
-        live.start(channel, getSource(channel.sourceId))
+        // KevBox: the playlist's own engine choice is cleared so live follows LIVE_ENGINE (0.2 AC-38).
+        live.start(channel, tv.own.owntv.kevbox.settings.LiveOnlySettings.withoutEngineChoice(getSource(channel.sourceId)))
         recordLiveHistory(channel)
     }
 
@@ -1694,7 +1709,8 @@ class LiveViewModel(
             playingCatchupProgramme = programme // …and the anchor auto-play continues from
             releaseForArchive() // catch-up is a VOD-style archive on mpv, not the live ExoPlayer channel
             // isLive=false → seekable archive; isArchive → mid-GOP tolerant (hardware first, software rescue).
-            player.play(url, title = ch.name, subtitle = programme.title, logoUrl = ch.displayLogoUrl, isLive = false, isArchive = true, userAgent = sourceUa, httpHeaders = headersFor(ch))
+            player.play(url, title = ch.name, subtitle = programme.title, logoUrl = ch.displayLogoUrl, isLive = false, isArchive = true, userAgent = sourceUa, httpHeaders = headersFor(ch),
+                vodEngineOverride = tv.own.owntv.kevbox.settings.LiveOnlySettings.CATCHUP_ENGINE) // KevBox: catch-up starts on mpv, ExoPlayer as fallback (0.2 AC-38)
             // The picture is this programme's own airtime, not the present — drive the "watching" clock
             // from its start, exactly as the rewind path does from the archive's start. The offset stays
             // null: a fixed programme is not the live rewind, so the HUD keeps its VOD chrome.
@@ -1882,6 +1898,8 @@ class LiveViewModel(
             userAgent = sourceUa,
             httpHeaders = headersFor(ch),
             rewindStartMs = startMs,
+            // KevBox: the archive and live rewind start on mpv, ExoPlayer as fallback (0.2 AC-38).
+            vodEngineOverride = tv.own.owntv.kevbox.settings.LiveOnlySettings.CATCHUP_ENGINE,
         )
         return true
     }
