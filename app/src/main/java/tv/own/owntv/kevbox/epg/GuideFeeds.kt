@@ -73,9 +73,9 @@ class GuideFeeds(
     }
 
     /**
-     * Takes [source]'s guide feeds out of the EPG list with their programmes, as Settings › EPG
-     * sources › Delete does. For a line that is deleted or hidden: its feed URL carries that line's
-     * login, and nothing on this TV plays its channels any more.
+     * Takes [source]'s guide feeds out of the EPG list with their programmes. For a line that is
+     * deleted or hidden: its feed URL carries that line's login, and nothing on this TV plays its
+     * channels any more.
      */
     suspend fun removeFor(source: SourceEntity) {
         val urls = epgRepository.guideUrls(source).toSet()
@@ -86,18 +86,25 @@ class GuideFeeds(
     }
 
     /**
-     * Takes out the guide feeds [old] used and [new] does not, when the playlist sync edits a source
-     * in place. Its server, username or password changed, so the old feed URL no longer works and
-     * would keep failing to download. The new feed is added by [ensure] once the resync finishes.
+     * Takes out the guide feeds [old] used and [new] does not, then runs [save], which stores [new].
+     * For when the playlist sync edits a source in place: its server, username or password changed,
+     * so the old feed URL no longer works and would keep failing to download. The new feed is added
+     * by [ensure] once the resync finishes.
+     *
+     * The save runs inside the same lock as the removal. Saved after the lock, a sync finishing in
+     * between would let [ensure] read the row with the old server and add the old feed back, and
+     * nothing would ever remove it (AC-28). Removal comes first: if it fails, the save never runs, the
+     * stored row still differs from the playlist, and the next reconcile retries both.
      */
-    suspend fun replaceFor(old: SourceEntity, new: SourceEntity) {
-        val oldUrls = epgRepository.guideUrls(old)
-        if (oldUrls.isEmpty()) return
-        val newUrls = epgRepository.guideUrls(new)
-        mutex.withLock {
-            val feeds = store.getAll().map { GuideFeed(it.id, it.url, it.lastSyncAt) }
-            planGuideFeedSwap(oldUrls, newUrls, feeds).forEach { remove(it) }
-        }
+    suspend fun replaceFor(old: SourceEntity, new: SourceEntity, save: suspend () -> Unit) {
+        swapGuideFeedsThenSave(
+            lock = mutex,
+            oldGuideUrls = epgRepository.guideUrls(old),
+            newGuideUrls = epgRepository.guideUrls(new),
+            feeds = { store.getAll().map { GuideFeed(it.id, it.url, it.lastSyncAt) } },
+            remove = { remove(it) },
+            save = save,
+        )
     }
 
     /** Call with [mutex] held. */
@@ -122,4 +129,23 @@ class GuideFeeds(
     private companion object {
         const val SYNC_REASON = "kevbox"
     }
+}
+
+/**
+ * [GuideFeeds.replaceFor]'s order, apart from Core's stores so a test can drive it with fakes: under
+ * [lock], remove each feed [planGuideFeedSwap] picks, then [save]. A throw from [remove] skips the
+ * save; a throw from [save] leaves the removals done. Either way it reaches the caller.
+ */
+internal suspend fun swapGuideFeedsThenSave(
+    lock: Mutex,
+    oldGuideUrls: List<String>,
+    newGuideUrls: List<String>,
+    feeds: suspend () -> List<GuideFeed>,
+    remove: suspend (Long) -> Unit,
+    save: suspend () -> Unit,
+) = lock.withLock {
+    if (oldGuideUrls.isNotEmpty()) {
+        planGuideFeedSwap(oldGuideUrls, newGuideUrls, feeds()).forEach { remove(it) }
+    }
+    save()
 }

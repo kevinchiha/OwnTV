@@ -230,8 +230,9 @@ fun EpgScreen(
     val guidePreview by vm.guidePreview.collectAsStateWithLifecycle()
     // KevBox: true while the playlist's first sync runs (see the grid's empty states).
     val firstSync = tv.own.owntv.kevbox.live.rememberPlaylistFirstSync()
-    // KevBox: CH paging for the grid (kevbox/live/GuideChannelSteps.kt). The review popup reads the same
-    // three settings for its own list further down, where the grid cannot see them.
+    // KevBox: CH paging for the grid, run by upstream's Modifier.chNavPaging on the channel list below.
+    // The review popup reads the same three settings for its own list further down, where the grid
+    // cannot see them.
     val gridSettingsVm: tv.own.owntv.features.settings.SettingsViewModel = koinViewModel()
     val gridChNavEnabled by gridSettingsVm.chNavEnabled.collectAsStateWithLifecycle()
     val gridChNavUpSkip by gridSettingsVm.chNavUpSkip.collectAsStateWithLifecycle()
