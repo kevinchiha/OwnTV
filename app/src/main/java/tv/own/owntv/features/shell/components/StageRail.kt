@@ -266,8 +266,7 @@ fun StageRail(
             }
             // Full height: the profile sits at the bottom, after the last separator.
             if (full) Spacer(Modifier.weight(1f))
-            RailSeparator(open)
-            RailProfile(open, profileName, profileLine.takeIf { counts }, avatarId, avatarPath, onSwitchProfile, onPickAvatar)
+            // KevBox: no profile at the bottom of the menu. KevBox Live keeps one hidden profile (Kevin, 2026-10-14).
         }
     }
 }

@@ -475,11 +475,9 @@ open class MainActivity : ComponentActivity() {
                             // Run 2+ (or a single locked profile): "Who's watching?" — choose a profile or add one.
                             // Also opens when the sidebar avatar is single-clicked (switchProfileRequested),
                             // which is the only way to switch when there's a single unpinned profile.
-                            gateRequired && !authenticatedForActiveProfile -> ProfileGate(
-                                onEnter = { profileId -> gateSession.authenticateProfile(profileId) },
-                                onAddProfile = { gateSession.startAddingProfile() },
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                            // KevBox: never "Who's watching?". KevBox Live keeps one hidden profile, so the
+                            // active one is entered without asking (Kevin, 2026-10-14).
+                            gateRequired && !authenticatedForActiveProfile -> LaunchedEffect(profile) { gateSession.authenticateProfile(profile) }
                             shellReady -> OwnTVShell(
                                 selectedSection = selectedSection,
                                 visibleSections = visibleSections,

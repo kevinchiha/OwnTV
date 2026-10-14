@@ -152,7 +152,7 @@ fun MoreScreen(
                 }
                 .focusGroup(),
         ) {
-            ProfileRow(profileName, playlistLabel, playlists, avatarId, avatarPath, onSwitchProfile, onPickAvatar)
+            // KevBox: no profile row (name, avatar, switch profile): KevBox Live keeps one hidden profile.
             val item = @Composable { it: MoreItem, icon: OwnTVIcon, label: String, value: String?, warn: Boolean ->
                 StageGroupItem(
                     text = label, icon = icon, value = value, warn = warn,

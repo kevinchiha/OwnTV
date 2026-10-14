@@ -792,10 +792,8 @@ fun OwnTVShell(
             RemoteShortcutAction.OPEN_GUIDE -> openShortcutSection(MainSection.EPG)
             RemoteShortcutAction.OPEN_SEARCH -> openShortcutSection(MainSection.SEARCH)
             RemoteShortcutAction.OPEN_SETTINGS -> openShortcutSection(MainSection.SETTINGS)
-            RemoteShortcutAction.OPEN_PROFILE_SWITCHER -> {
-                if (playerMode == PlayerMode.FULLSCREEN) dockPlayer()
-                onSwitchProfile()
-            }
+            // KevBox: no profile switcher to open; KevBox Live keeps one hidden profile.
+            RemoteShortcutAction.OPEN_PROFILE_SWITCHER -> Unit
             RemoteShortcutAction.OPEN_PLAYLIST_SWITCHER -> {
                 if (playerMode == PlayerMode.FULLSCREEN) dockPlayer()
                 if (playlists.size > 1) showPlaylistPicker = true
