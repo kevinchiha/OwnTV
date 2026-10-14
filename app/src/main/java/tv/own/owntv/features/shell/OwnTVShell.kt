@@ -566,6 +566,16 @@ fun OwnTVShell(
     // KevBox: Live TV's one video window (kevbox/live/LiveVideoStage.kt), as long-lived as the shell.
     // Its moves take 320 ms, or none with Animations Off. Made here, above exitPlayer, which uses it.
     val liveVideoStage = remember { tv.own.owntv.kevbox.live.LiveVideoStage() }
+    // KevBox: tells the error reporter what Live TV shows (kevbox/errors/PlaybackScene.kt). No UI.
+    val kevboxScene = koinInject<tv.own.owntv.kevbox.errors.PlaybackScene>()
+    LaunchedEffect(liveVideoStage) { // KevBox: channel, category, video window and catch-up, as one value
+        kotlinx.coroutines.flow.combine(
+            liveVm.previewChannel, liveVm.previewCategoryName, // KevBox: the scene for error reports
+            androidx.compose.runtime.snapshotFlow { liveVideoStage.target }, liveVm.catchupActive,
+        ) { channel, category, target, catchup -> // KevBox: inBox is the grid's small video window
+            kevboxScene.update(channel, category, inBox = target == tv.own.owntv.kevbox.live.VideoSite.BOX, catchup = catchup)
+        }.collect {} // KevBox: the update above is the whole effect
+    }
     androidx.compose.runtime.SideEffect { liveVideoStage.durationMs = shellAnimationLevel.scale(320) }
     // KevBox: keepForGrid is false for exits that are not the user leaving full screen (Multiview's
     // exit, the sleep timer); those always stop the stream. exitPlayer below is the user's exit.

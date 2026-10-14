@@ -23,6 +23,8 @@ import tv.own.owntv.kevbox.access.PrefsVerdictPrefs
 import tv.own.owntv.kevbox.errors.AccountCheck
 import tv.own.owntv.kevbox.errors.ErrorReporter
 import tv.own.owntv.kevbox.errors.ErrorSender
+import tv.own.owntv.kevbox.errors.ErrorWatchers
+import tv.own.owntv.kevbox.errors.PlaybackScene
 import tv.own.owntv.kevbox.errors.secretWordsOf
 import tv.own.owntv.kevbox.expiry.ExpiryMonitor
 import tv.own.owntv.kevbox.expiry.PrefsExpiryPrefs
@@ -39,6 +41,8 @@ import tv.own.owntv.kevbox.session.KeystoreTokenCipher
 import tv.own.owntv.kevbox.session.PrefsSessionStore
 import tv.own.owntv.kevbox.session.SessionStore
 import tv.own.owntv.kevbox.supabase.SupabaseApi
+import tv.own.owntv.player.LivePreviewEngine
+import tv.own.owntv.player.OwnTVPlayer
 
 private const val ERROR_QUEUE_FILE = "kevbox_live_errors.json"
 
@@ -109,6 +113,23 @@ val kevboxModule = module {
             readSecrets = { secretWordsOf(currentSource(), auth.email.value, sessions.load()) },
             scope = get(),
             now = System::currentTimeMillis,
+        )
+    }
+    single { PlaybackScene() }
+    single {
+        // Lazy: the shell builds the engines; the watchers only read them once it has shown.
+        val koin = getKoin()
+        ErrorWatchers(
+            reporter = get(),
+            livePreview = lazy { koin.get<LivePreviewEngine>() },
+            player = lazy { koin.get<OwnTVPlayer>() },
+            scene = get(),
+            catalogSync = get(),
+            sourceRepository = get(),
+            sourceDao = get(),
+            epgStore = get(),
+            reconciler = get(),
+            scope = get(),
         )
     }
 
