@@ -5,6 +5,8 @@ KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 
     python3 tools/kevbox/e2e/fake_xtream.py --port 8091
     python3 tools/kevbox/e2e/fake_xtream.py --port 8091 --media /tmp/clip.ts
+    python3 tools/kevbox/e2e/fake_xtream.py --port 8091 --stream-status 403
+    python3 tools/kevbox/e2e/fake_xtream.py --port 8091 --stream-status 401 --account-status Expired
 
 The emulator reaches the host at 10.0.2.2, so a playlist row with server URL
 http://10.0.2.2:8091 points the TV here. player_api.php accepts any username and password and
@@ -15,7 +17,10 @@ Every request is logged with the username and password it carried. They are fake
 how the run proves which credentials the TV is using after an admin edit.
 
 Stream URLs (/live/<user>/<pass>/<id>.ts and friends) answer with the --media file when one is
-given, so a channel can play; without it they answer 404.
+given, so a channel can play; without it they answer 404. --stream-status N makes every stream URL
+answer N instead, whatever --media says, so the error reporter sees a panel refusing a channel.
+--account-status WORD puts WORD in player_api.php's status field (auth stays 1), the way a panel
+reports an expired or banned line: Expired, Banned, Disabled.
 """
 
 import argparse
@@ -61,7 +66,7 @@ def live_streams(category_id):
     return out
 
 
-def account(host, port, username, password):
+def account(host, port, username, password, status="Active"):
     now = int(time.time())
     return {
         "user_info": {
@@ -69,7 +74,7 @@ def account(host, port, username, password):
             "password": password,
             "message": "",
             "auth": 1,
-            "status": "Active",
+            "status": status,
             "exp_date": str(now + 30 * 86400),
             "is_trial": "0",
             "active_cons": "0",
@@ -90,9 +95,9 @@ def account(host, port, username, password):
     }
 
 
-def player_api(action, query, host, port, username, password):
+def player_api(action, query, host, port, username, password, status="Active"):
     if not action:
-        return account(host, port, username, password)
+        return account(host, port, username, password, status)
     if action == "get_live_categories":
         return CATEGORIES
     if action == "get_live_streams":
@@ -115,6 +120,8 @@ class Handler(BaseHTTPRequestHandler):
     # next request on a pooled connection fails with "unexpected end of stream".
     protocol_version = "HTTP/1.1"
     media = None
+    stream_status = None
+    account_status = "Active"
 
     def log_message(self, fmt, *args):
         pass
@@ -145,7 +152,9 @@ class Handler(BaseHTTPRequestHandler):
             action = query.get("action", [""])[0]
             self.log_line(f"player_api username={username} password={password} action={action or '(account)'}")
             host, port = self.server.server_address[:2]
-            payload = player_api(action, query, self.headers.get("Host", host).split(":")[0], port, username, password)
+            payload = player_api(
+                action, query, self.headers.get("Host", host).split(":")[0], port, username, password, self.account_status,
+            )
             self.send_body(200, json.dumps(payload).encode(), "application/json")
             return
 
@@ -157,7 +166,9 @@ class Handler(BaseHTTPRequestHandler):
         parts = path.strip("/").split("/")
         if parts and parts[0] in ("live", "movie", "series", "timeshift") and len(parts) >= 4:
             self.log_line(f"stream {parts[0]} username={parts[1]} password={parts[2]} file={parts[-1]}")
-            if self.media:
+            if self.stream_status is not None:
+                self.send_body(self.stream_status, b"refused by --stream-status\n", "text/plain")
+            elif self.media:
                 self.send_body(200, self.media, "video/mp2t")
             else:
                 self.send_body(404, b"no media\n", "text/plain")
@@ -172,14 +183,26 @@ def main():
     parser.add_argument("--port", type=int, default=8091)
     parser.add_argument("--bind", default="0.0.0.0")
     parser.add_argument("--media", help="file served for every stream URL (an MPEG-TS clip)")
+    parser.add_argument("--stream-status", type=int, metavar="N", help="answer every stream URL with HTTP status N")
+    parser.add_argument("--account-status", default="Active", metavar="WORD",
+                        help="status player_api.php reports for the account (default Active), e.g. Expired")
     args = parser.parse_args()
+
+    if args.stream_status is not None and not 100 <= args.stream_status <= 999:
+        parser.error("--stream-status must be 100-999")
+    Handler.stream_status = args.stream_status
+    Handler.account_status = args.account_status
 
     if args.media:
         with open(args.media, "rb") as handle:
             Handler.media = handle.read()
 
     server = ThreadingHTTPServer((args.bind, args.port), Handler)
-    print(f"fake_xtream listening on {args.bind}:{args.port}", flush=True)
+    print(
+        f"fake_xtream listening on {args.bind}:{args.port}"
+        f" stream_status={args.stream_status or 'normal'} account_status={args.account_status}",
+        flush=True,
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
