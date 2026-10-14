@@ -80,6 +80,23 @@ git_q tag -d v5.0.4
 git_q tag -d v5.1.0
 expect 1 "no upstream tag reachable refused"         check_upstream_base 5.1.0.1
 
+# The app's error-code list against kevbox's copy, both in throwaway folders under $tmp.
+mkdir -p tools/kevbox "$tmp/kevbox/src/lib"
+echo '{"codes":["http_404"]}' > tools/kevbox/live-error-codes.json
+cp tools/kevbox/live-error-codes.json "$tmp/kevbox/src/lib/live-error-codes.json"
+expect 0 "equal error-code lists pass"               check_error_codes_match "$tmp/kevbox"
+echo '{"codes":["http_404","http_403"]}' > "$tmp/kevbox/src/lib/live-error-codes.json"
+expect 1 "different error-code lists refused"        check_error_codes_match "$tmp/kevbox"
+rm "$tmp/kevbox/src/lib/live-error-codes.json"
+expect 0 "a missing kevbox list warns and passes"    check_error_codes_match "$tmp/kevbox"
+warning="$(check_error_codes_match "$tmp/kevbox" 2>&1 >/dev/null)"
+expect 0 "the missing-list case prints a warning"    test -n "$warning"
+
+expect 0 "no Sentry token needs no org or project"   check_sentry_settings "" "" ""
+expect 0 "token with org and project passes"         check_sentry_settings tok org proj
+expect 1 "token without org refused"                 check_sentry_settings tok "" proj
+expect 1 "token without project refused"             check_sentry_settings tok org ""
+
 # check-divergence.sh guards every upstream merge, and its failure path is tested here too: a git
 # diff that fails must fail the check, never read as "0 changed". A throwaway repo with one upstream
 # commit and one fork-only file passes; deleting the upstream commit's root tree object then breaks

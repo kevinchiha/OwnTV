@@ -100,6 +100,9 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         // user can export from Settings, instead of being lost with the process.
         tv.own.owntv.core.util.CrashRecorder.diagnostics = { tv.own.owntv.player.LiveDiagnosticsLog.snapshot() }
         tv.own.owntv.core.util.CrashRecorder.install(this)
+        // KevBox: crashes, freezes and native crashes to Sentry, only when the build has a key. Its handler
+        // sits in front of CrashRecorder's and hands each crash on to it, so the crash file is still written.
+        tv.own.owntv.kevbox.errors.KevBoxSentry.start(this, BuildConfig.SENTRY_DSN)
         // Core learns a panel's session limit while syncing; the engine is what acts on it. Registered
         // before Koin so the very first source flow already reaches the player (see LiveSessionLimit).
         tv.own.owntv.core.player.LiveSessionLimit.report = tv.own.owntv.player.LiveStreamQuirks::rememberSessionLimit
@@ -127,6 +130,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         GlobalContext.get().get<tv.own.owntv.kevbox.usage.LiveCheckin>().start()
         // KevBox: error reports to KevBox (players, channel-list sync, guide feeds); starts the reporter too.
         GlobalContext.get().get<tv.own.owntv.kevbox.errors.ErrorWatchers>().start()
+        // KevBox: Sentry's user is the member's id (never the email) and its breadcrumbs are the reporter's entries.
+        tv.own.owntv.kevbox.errors.KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)
         // KevBox: Cloudflare DNS-over-HTTPS on, once per install, unless the member set their own DNS.
         appScope.launch { runCatching { GlobalContext.get().get<tv.own.owntv.kevbox.network.DnsDefault>().applyOnce() } }
         // A chosen icon colour ("Later", the first-run pick, a restore) reaches the launcher when the app

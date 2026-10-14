@@ -27,6 +27,9 @@ plugins {
     alias(libs.plugins.ksp)
     // Consumes :baselineprofile's output and packages it as baseline.prof (audit ST1).
     alias(libs.plugins.baselineprofile)
+    // KevBox: Sentry's build plugin uploads R8 mappings and native symbols when a token is set (see the sentry block).
+    // Versioned inline because gradle/libs.versions.toml stays as upstream has it.
+    id("io.sentry.android.gradle") version "6.23.0"
 }
 
 android {
@@ -164,6 +167,9 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
+    // KevBox: a Java string literal for buildConfigField, quotes and backslashes escaped.
+    fun javaString(value: String): String = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
     buildTypes {
         debug {
             // Pseudolocales (en-XA / ar-XB) are generated for the debug BuildType, NOT androidResources.
@@ -172,8 +178,13 @@ android {
             // block at the bottom of this file (see docs/internationalization.md 0b, "Pseudolocales must
             // survive the filter").
             isPseudoLocalesEnabled = true
+            // KevBox: debug never reports to Sentry unless the command line passes -Pkevbox.sentryDsnDebug=<dsn>
+            // (the end-to-end proof points it at a local fake receiver). Blank means Sentry never starts (AC-4).
+            buildConfigField("String", "SENTRY_DSN", javaString(providers.gradleProperty("kevbox.sentryDsnDebug").orNull ?: ""))
         }
         release {
+            // KevBox: release reports to Sentry with the key release.sh exports; without one Sentry never starts (AC-4).
+            buildConfigField("String", "SENTRY_DSN", javaString(System.getenv("SENTRY_DSN") ?: ""))
             // Stable AGP release optimization API. Keep both code and resource shrinking enabled;
             // the optimized default rules are extended by OwnTV's project-specific keep rules.
             isMinifyEnabled = true
@@ -263,6 +274,28 @@ androidComponents {
 // the `standard` arm APK.
 baselineProfile {
     mergeIntoMain = true
+}
+
+// KevBox: Sentry's build side. Mappings and native symbols are uploaded only when release.sh exports
+// SENTRY_AUTH_TOKEN (AC-9); a build without one registers no upload task and contacts no Sentry host.
+// No source upload, no dependency report, no plugin telemetry, no bytecode instrumentation and no
+// automatic SDK dependency (the two SDK modules are declared below). Debug builds are skipped.
+val sentryUpload = !System.getenv("SENTRY_AUTH_TOKEN").isNullOrBlank()
+sentry {
+    org.set(System.getenv("SENTRY_ORG"))
+    projectName.set(System.getenv("SENTRY_PROJECT"))
+    authToken.set(System.getenv("SENTRY_AUTH_TOKEN"))
+    includeProguardMapping.set(sentryUpload)
+    autoUploadProguardMapping.set(sentryUpload)
+    uploadNativeSymbols.set(sentryUpload)
+    autoUploadNativeSymbols.set(sentryUpload)
+    includeNativeSources.set(false)
+    includeSourceContext.set(false)
+    includeDependenciesReport.set(false)
+    telemetry.set(false)
+    tracingInstrumentation { enabled.set(false) }
+    autoInstallation { enabled.set(false) }
+    ignoredBuildTypes.set(setOf("debug"))
 }
 
 // --- hardcoded-literal gate ----------------------------------------------------------------
@@ -443,6 +476,11 @@ dependencies {
     implementation(platform(libs.koin.bom))
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
+
+    // KevBox: Sentry for crashes, freezes and native crashes; no replay, fragment or timber modules.
+    // Versions inline because gradle/libs.versions.toml stays as upstream has it.
+    implementation("io.sentry:sentry-android-core:8.60.0")
+    implementation("io.sentry:sentry-android-ndk:8.60.0")
 
 
     // Debug tooling

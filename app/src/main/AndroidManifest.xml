@@ -50,6 +50,22 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="26">
 
+        <!-- KevBox: Sentry never starts on its own; OwnTVApp starts it only when the build carries a key (AC-4). -->
+        <meta-data
+            android:name="io.sentry.auto-init"
+            android:value="false" />
+
+        <!-- KevBox: adb-only trigger for Sentry's three test events (crash, native, freeze). DUMP is held
+             only by the shell and the system, so no app can send it and the member never sees it. -->
+        <receiver
+            android:name=".kevbox.errors.SentryTestReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="tv.kevbox.live.SENTRY_TEST" />
+            </intent-filter>
+        </receiver>
+
         <!-- Exposes the downloaded update APK to the system installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"
