@@ -125,3 +125,5 @@ New files under `app/src/main/java/tv/own/owntv/kevbox/live/` (with tests), plus
 - re-review: gate green (555 tests, lint clean, check-divergence 0). Items a, b, c, d, f, g, i, j closed; h closed for the list (leftover minor: on a tab the hint still says Tabs while ▲ goes to the field).
 - re-review: important, new in the fix, SearchScreen.kt:406-413: the Down-while-loading wait can steal focus after the user moved on (typing, full screen, menu) and, after its 5 s cap, focuses a tab from stale or half results, locking the choice (AC-4). Fix round 1.
 - fix round 1 (ced23947): ▼'s wait on the field moves focus only with both lists in for the same query, the field still focused and Search on show; a timeout, a new query or a new ▼ moves nothing. The ▲ hint says Search while a tab has focus. Gate green, check-divergence 0 failures.
+- re-review round 1: gate green (tests, lint, check-divergence 0). The ▼-while-loading wait and the ▲ hint on a tab are closed; no new critical or important.
+- final review: done
