@@ -32,9 +32,13 @@ class KevBoxAuth(
     private val now: () -> Long,
 ) {
     private val _email = MutableStateFlow(store.load()?.email)
+    private val _userId = MutableStateFlow(store.load()?.userId)
 
     /** The signed-in member's email; null when signed out. */
     val email: StateFlow<String?> = _email.asStateFlow()
+
+    /** The signed-in member's Supabase user id; null when signed out. Moves with [email]. */
+    val userId: StateFlow<String?> = _userId.asStateFlow()
 
     // Every store write takes this lock. Refresh tokens rotate, so two refreshes racing on the same
     // token would burn it; and a refresh still waiting on the server must not write its session
@@ -62,7 +66,12 @@ class KevBoxAuth(
             http.code == HTTP_OK -> {
                 val session = parseSession(http.body, previous = null) ?: return SignInResult.Failed
                 val saved = refreshLock.withLock {
-                    trySave(session).also { if (it) _email.value = session.email }
+                    trySave(session).also {
+                        if (it) {
+                            _email.value = session.email
+                            _userId.value = session.userId
+                        }
+                    }
                 }
                 if (saved) SignInResult.Success(session.email) else SignInResult.Failed
             }
@@ -73,7 +82,7 @@ class KevBoxAuth(
     }
 
     suspend fun playlists(): Fetch<List<PlaylistRow>> =
-        when (val result = authorized { api.selectPlaylists(it) }) {
+        when (val result = signedInCall { api.selectPlaylists(it) }) {
             is Fetch.Ok -> parsePlaylists(result.value)?.let { Fetch.Ok(it) } ?: Fetch.Failed
             Fetch.Failed -> Fetch.Failed
             Fetch.SessionRejected -> Fetch.SessionRejected
@@ -81,7 +90,7 @@ class KevBoxAuth(
         }
 
     suspend fun verdict(): Fetch<AccessVerdict> =
-        when (val result = authorized { api.accessVerdict(it) }) {
+        when (val result = signedInCall { api.accessVerdict(it) }) {
             is Fetch.Ok -> parseVerdict(result.value)?.let { Fetch.Ok(it) } ?: Fetch.Failed
             Fetch.Failed -> Fetch.Failed
             Fetch.SessionRejected -> Fetch.SessionRejected
@@ -105,11 +114,15 @@ class KevBoxAuth(
         refreshLock.withLock {
             store.clear()
             _email.value = null
+            _userId.value = null
         }
     }
 
-    /** Runs [call] with a fresh access token; one refresh and one retry on a 401. */
-    private suspend fun authorized(call: suspend (String) -> ApiResponse): Fetch<ApiResponse.Http> {
+    /**
+     * Runs [call] with a fresh access token; one refresh and one retry on a 401. NoNetwork reads as
+     * Failed. The error reporter and the usage check-in send through this too.
+     */
+    suspend fun signedInCall(call: suspend (accessToken: String) -> ApiResponse): Fetch<ApiResponse.Http> {
         val session = when (val fresh = freshSession()) {
             is Fetch.Ok -> fresh.value
             Fetch.Failed -> return Fetch.Failed
@@ -156,6 +169,7 @@ class KevBoxAuth(
                 // A Keystore failure here reads as a failed fetch, never a crash.
                 if (!trySave(renewed)) return@withLock Fetch.Failed
                 _email.value = renewed.email
+                _userId.value = renewed.userId
                 Fetch.Ok(renewed)
             }
             // Any other 400/401 is a gateway refusing the apikey, not the session: keep it, since

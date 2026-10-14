@@ -11,6 +11,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 
 sealed interface ApiResponse {
@@ -19,7 +20,7 @@ sealed interface ApiResponse {
 }
 
 /**
- * The five Supabase calls the TV makes, as plain OkHttp requests. It reports the raw status and
+ * The Supabase calls the TV makes, as plain OkHttp requests. It reports the raw status and
  * body; [tv.own.owntv.kevbox.session.KevBoxAuth] decides what they mean.
  *
  * [http] is the app's shared client. Core turns retryOnConnectionFailure off on it, which breaks
@@ -71,6 +72,36 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
 
     suspend fun logout(accessToken: String): ApiResponse =
         post(LOGOUT_PATH, mapOf("scope" to "local"), body = null, accessToken = accessToken)
+
+    /** One batch of error entries (record_live_errors). The entries are never logged. */
+    suspend fun recordLiveErrors(
+        accessToken: String,
+        deviceId: String,
+        appVersion: String,
+        entries: JSONArray,
+    ): ApiResponse {
+        val body = JSONObject()
+            .put(P_DEVICE_ID, deviceId)
+            .put(P_APP_VERSION, appVersion)
+            .put(P_ENTRIES, entries)
+        return post(LIVE_ERRORS_PATH, emptyMap(), body, accessToken)
+    }
+
+    /** The usage check-in (record_live_checkin): which TV, which app version, which Android. */
+    suspend fun recordLiveCheckin(
+        accessToken: String,
+        deviceId: String,
+        appVersion: String,
+        model: String,
+        android: String,
+    ): ApiResponse {
+        val body = JSONObject()
+            .put(P_DEVICE_ID, deviceId)
+            .put(P_APP_VERSION, appVersion)
+            .put(P_MODEL, model)
+            .put(P_ANDROID, android)
+        return post(LIVE_CHECKIN_PATH, emptyMap(), body, accessToken)
+    }
 
     private suspend fun post(
         path: String,
@@ -125,6 +156,13 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val UNDEFINED_COLUMN = "42703"
         const val VERDICT_PATH = "rest/v1/rpc/get_access_verdict"
         const val GRANT_TYPE = "grant_type"
+        const val LIVE_ERRORS_PATH = "rest/v1/rpc/record_live_errors"
+        const val LIVE_CHECKIN_PATH = "rest/v1/rpc/record_live_checkin"
+        const val P_DEVICE_ID = "p_device_id"
+        const val P_APP_VERSION = "p_app_version"
+        const val P_ENTRIES = "p_entries"
+        const val P_MODEL = "p_model"
+        const val P_ANDROID = "p_android"
         const val APIKEY_HEADER = "apikey"
         const val AUTH_HEADER = "Authorization"
         const val JSON_TYPE = "application/json"

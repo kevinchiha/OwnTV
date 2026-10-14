@@ -39,6 +39,17 @@ val kevboxModule = module {
         PrefsSessionStore(androidContext().prefs(PrefsSessionStore.PREFS_NAME), KeystoreTokenCipher())
     }
     single { KevBoxAuth(get(), get(), now = System::currentTimeMillis) }
+    single { tv.own.owntv.kevbox.errors.DeviceId(androidContext().prefs(tv.own.owntv.kevbox.errors.DeviceId.PREFS_NAME)) }
+    single {
+        tv.own.owntv.kevbox.usage.LiveCheckin(
+            auth = get(),
+            api = get(),
+            deviceId = get(),
+            appVersion = BuildConfig.VERSION_NAME,
+            scope = get(),
+            now = System::currentTimeMillis,
+        )
+    }
 
     single { GuideFeeds(get(), get(), get(), get(), get(), scope = get()) }
     single<LocalSources> { CoreLocalSources(get(), get(), get(), get(), get(), get()) }
