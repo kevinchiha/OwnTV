@@ -240,7 +240,7 @@ fun StageRail(
             horizontalAlignment = if (open) Alignment.Start else Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.mpx),
         ) {
-            RailBrand(open)
+            // KevBox: no logo at the top of the menu (Kevin, 2026-10-14). Upstream: RailBrand(open).
             if (nowPlaying != null) {
                 RailItem(
                     icon = if (nowPlaying.audioMode) OwnTVIcon.EQ else OwnTVIcon.PLAY,
@@ -283,7 +283,7 @@ private val MainSection.stageIcon: OwnTVIcon
         MainSection.MOVIES -> OwnTVIcon.MOVIES
         MainSection.SERIES -> OwnTVIcon.SERIES
         MainSection.DOWNLOADS -> OwnTVIcon.DOWNLOADS
-        MainSection.MORE, MainSection.SETTINGS -> OwnTVIcon.TILES
+        MainSection.MORE, MainSection.SETTINGS -> OwnTVIcon.GEAR // KevBox: a cog, it opens Settings (Kevin, 2026-10-14)
     }
 
 /** `.edge`: 7 × 150 at the screen edge, accent, glowing 22 px at 80% and 60 px at 35%, 90% opaque. */
