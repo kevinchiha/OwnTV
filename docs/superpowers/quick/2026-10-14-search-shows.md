@@ -108,3 +108,4 @@ New files under `app/src/main/java/tv/own/owntv/kevbox/live/` (with tests), plus
 - Task 3: started at ea40d387
 - Task 3: landed (0a468959). Headings drawn inside the first row's lazy item (indices stay channel positions). EpgViewModel builds its own ShowSearch (Koin viewModelOf caps at 22 params). One-letter query: names only.
 - Task 4: started at 48d8deaf
+- Task 4: landed (c2f95c81). Hold also calls epgVm.noteChannelTuned on Live TV; exitPlayerWith reveals the playing channel when the grid no longer lists it (hold from another category). Known edge: guide search filter hiding the boxed channel leaves a pending reveal, as CH+/CH- today.
