@@ -183,6 +183,7 @@ class KevBoxCoordinatorTest {
         val tests = MutableStateFlow(0)
         @Volatile var testResult: SourceTestResult = SourceTestResult.Ok()
         var clock = 1_000_000_000_000L
+        @Volatile var checkinForegrounds = 0
 
         // The timer's sleep: tell the test the loop is idle, then wait for the test to move the clock.
         private val idle = Channel<Unit>()
@@ -222,6 +223,7 @@ class KevBoxCoordinatorTest {
                 now = { clock },
                 sleep = { idle.send(Unit); go.receive() },
                 proxy = tv.own.owntv.kevbox.network.ManagedProxy(proxyTarget),
+                checkinOnForeground = { checkinForegrounds += 1 },
             )
             coordinator.start()
             idle.receive()
@@ -389,6 +391,18 @@ class KevBoxCoordinatorTest {
         advance(5 * minute)
         assertEquals(3, server.calls(PLAYLIST))
         assertEquals(5, server.calls(VERDICT))
+    }
+
+    @Test
+    fun `each foreground hands the usage check-in its own foreground check, and start does not`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        assertEquals(0, checkinForegrounds)
+
+        coordinator.onForeground()
+        coordinator.onForeground()
+        assertEquals(2, checkinForegrounds)
     }
 
     @Test

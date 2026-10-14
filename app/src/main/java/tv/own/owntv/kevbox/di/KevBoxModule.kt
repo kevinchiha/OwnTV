@@ -169,6 +169,7 @@ val kevboxModule = module {
             scope = get(),
             now = System::currentTimeMillis,
             proxy = tv.own.owntv.kevbox.network.ManagedProxy(tv.own.owntv.kevbox.network.CoreProxyTarget(get())),
+            checkinOnForeground = get<tv.own.owntv.kevbox.usage.LiveCheckin>()::onForeground,
         )
     }
     single {
