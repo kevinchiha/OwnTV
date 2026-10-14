@@ -9,8 +9,9 @@ package tv.own.owntv.kevbox.live
  * A category's block is its provider prefix ("FR|", "AFR|", spaces before the bar dropped). One with no
  * prefix takes its first word when another unprefixed category shares it ("24/7 DISNEY+", "24/7 CRIME
  * VIP"); the rest go under [Block.Other]. A prefix split over several stretches of the list (US| in
- * three on Kevin's playlist) is one line that jumps to its first category. The fixed rows above the
- * categories (Favorites, All channels…) are [Block.Top].
+ * three on Kevin's playlist) has a line per stretch, largest first: the counts tell them apart, and a
+ * jump lands on that stretch rather than on a stray category above the main block. The fixed rows above
+ * the categories (Favorites, All channels…) are [Block.Top].
  *
  * Rows ("row") are places in the list as LiveCategories counts them, the search field not included.
  */
@@ -54,20 +55,32 @@ internal class CategoryJumps private constructor(val groups: List<JumpGroup>, pr
                 val word = firstWord(label)
                 return if (word in shared) Block.Named(word) else Block.Other
             }
-            val order = LinkedHashMap<Block, Pair<Int, Int>>() // block -> (first row, count)
-            val rowBlock = labels.indices.map { row ->
+            // One line per stretch of a named block (UK| apart from its main run is a line of its own), so
+            // a jump lands where that stretch starts; the fixed rows and Other are one line each. Key: the
+            // block and, for a named one, the row its stretch starts on.
+            val lines = LinkedHashMap<Pair<Block, Int>, Pair<Int, Int>>() // key -> (first row, count)
+            var prev: Block? = null
+            var stretchStart = 0
+            val rowKey = labels.indices.map { row ->
                 val b = blockOf(row)
-                val seen = order[b]
-                order[b] = if (seen == null) row to 1 else seen.first to seen.second + 1
-                b
+                if (b != prev) stretchStart = row
+                prev = b
+                val key = b to if (b is Block.Named) stretchStart else -1
+                val seen = lines[key]
+                lines[key] = if (seen == null) row to 1 else seen.first to seen.second + 1
+                key
             }
-            // Alphabetical (Kevin, 2026-10-14), with the fixed rows first and Other last.
-            val groups = order.map { (b, v) -> JumpGroup(b, v.second, v.first) }.sortedWith(
-                compareBy<JumpGroup>({ when (it.block) { Block.Top -> 0; is Block.Named -> 1; Block.Other -> 2 } })
-                    .thenBy { (it.block as? Block.Named)?.name?.uppercase().orEmpty() },
+            // Alphabetical (Kevin, 2026-10-14), with the fixed rows first and Other last; a name's stretches
+            // largest first, the same size in list order.
+            val keys = lines.keys.sortedWith(
+                compareBy<Pair<Block, Int>>({ when (it.first) { Block.Top -> 0; is Block.Named -> 1; Block.Other -> 2 } })
+                    .thenBy { (it.first as? Block.Named)?.name?.uppercase().orEmpty() }
+                    .thenByDescending { lines.getValue(it).second }
+                    .thenBy { lines.getValue(it).first },
             )
-            val index = groups.withIndex().associate { it.value.block to it.index }
-            return CategoryJumps(groups, IntArray(labels.size) { index.getValue(rowBlock[it]) })
+            val groups = keys.map { k -> lines.getValue(k).let { (first, count) -> JumpGroup(k.first, count, first) } }
+            val index = keys.withIndex().associate { it.value to it.index }
+            return CategoryJumps(groups, IntArray(labels.size) { index.getValue(rowKey[it]) })
         }
 
         private fun firstWord(label: String): String = label.trim().substringBefore(' ')

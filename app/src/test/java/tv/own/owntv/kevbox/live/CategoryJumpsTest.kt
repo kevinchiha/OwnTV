@@ -38,16 +38,21 @@ class CategoryJumpsTest {
     @Test
     fun groupsAreAlphabeticalWithTheFixedRowsFirstAndOtherLast() {
         assertEquals(
-            listOf(Block.Top, Block.Named("24/7"), Block.Named("AFR|"), Block.Named("FR|"), Block.Named("UK|"), Block.Named("US|"), Block.Other),
+            listOf(Block.Top, Block.Named("24/7"), Block.Named("AFR|"), Block.Named("FR|"), Block.Named("UK|"), Block.Named("US|"), Block.Named("US|"), Block.Other),
             jumps.groups.map { it.block },
         )
     }
 
     @Test
-    fun aSplitPrefixIsOneLineThatJumpsToItsFirstCategory() {
-        val us = jumps.groups.single { it.block == Block.Named("US|") }
-        assertEquals(6, us.firstRow)
-        assertEquals(3, us.count)
+    fun aSplitPrefixHasOneLinePerStretchLargestFirst() {
+        val us = jumps.groups.filter { it.block == Block.Named("US|") }
+        assertEquals(listOf(8 to 2, 6 to 1), us.map { it.firstRow to it.count })
+    }
+
+    @Test
+    fun stretchesOfTheSameSizeKeepListOrder() {
+        val j = CategoryJumps.of(listOf("UK| A", "FR| B", "UK| C", "FR| D", "UK| E"), firstCategoryRow = 0)
+        assertEquals(listOf(0, 2, 4), j.groups.filter { it.block == Block.Named("UK|") }.map { it.firstRow })
     }
 
     @Test
@@ -69,8 +74,9 @@ class CategoryJumpsTest {
     fun theCursorStartsOnTheBlockOfTheRowItCameFrom() {
         assertEquals(0, jumps.groupOf(2)) // Catch-up: the fixed rows
         assertEquals(3, jumps.groupOf(5)) // FR|
-        assertEquals(5, jumps.groupOf(9)) // US|
-        assertEquals(6, jumps.groupOf(12)) // WORLD LIVE SPORTS: Other
+        assertEquals(5, jumps.groupOf(9)) // US| NBA PACKAGE: the bigger US| stretch
+        assertEquals(6, jumps.groupOf(6)) // US| ENTERTAINMENT: the smaller one
+        assertEquals(7, jumps.groupOf(12)) // WORLD LIVE SPORTS: Other
         assertEquals(4, jumps.groupOf(14)) // UK|
     }
 
