@@ -23,7 +23,7 @@ import tv.own.owntv.core.sync.work.EpgSyncScheduler
  * Fills the TV guide from the playlist itself. Upstream asks for this in onboarding ("Sync the guide?"
  * after the first import); KevBox Live has no onboarding and adds the playlist on its own, so this
  * does the same job without asking: once a playlist's channels have synced, its own guide feed
- * (Xtream's xmltv.php) goes into Core's EPG list and downloads, set to refresh every 12 hours.
+ * (Xtream's xmltv.php) goes into Core's EPG list and downloads, set to refresh every 24 hours.
  *
  * Only a source linked to a profile counts, so a hidden line's guide is never added. The download
  * waits for the channel sync because Core keeps only the programmes of channels it already has.
@@ -64,7 +64,7 @@ class GuideFeeds(
             when (step) {
                 is GuideFeedStep.Add -> {
                     val feed = store.add(source.name, step.url, source.userAgent)
-                    settings.setEpgAutoRefresh(feed.id, EpgRefresh(EpgAutoRefresh.HOURS_12, 0))
+                    settings.setEpgAutoRefresh(feed.id, EpgRefresh(EpgAutoRefresh.HOURS_24, 0))
                     scheduler.enqueueSync(feed.id, SYNC_REASON)
                 }
                 is GuideFeedStep.Download -> scheduler.enqueueSync(step.feedId, SYNC_REASON)
@@ -81,14 +81,32 @@ class GuideFeeds(
         val urls = epgRepository.guideUrls(source).toSet()
         if (urls.isEmpty()) return
         mutex.withLock {
-            store.getAll().filter { it.url in urls }.forEach { feed ->
-                scheduler.cancelSync(feed.id)
-                // Programmes first, then the entry: a cancelled caller must not leave programmes with no feed.
-                withContext(NonCancellable) {
-                    epgRepository.clear(feed.id)
-                    store.remove(feed.id)
-                }
-            }
+            store.getAll().filter { it.url in urls }.forEach { remove(it.id) }
+        }
+    }
+
+    /**
+     * Takes out the guide feeds [old] used and [new] does not, when the playlist sync edits a source
+     * in place. Its server, username or password changed, so the old feed URL no longer works and
+     * would keep failing to download. The new feed is added by [ensure] once the resync finishes.
+     */
+    suspend fun replaceFor(old: SourceEntity, new: SourceEntity) {
+        val oldUrls = epgRepository.guideUrls(old)
+        if (oldUrls.isEmpty()) return
+        val newUrls = epgRepository.guideUrls(new)
+        mutex.withLock {
+            val feeds = store.getAll().map { GuideFeed(it.id, it.url, it.lastSyncAt) }
+            planGuideFeedSwap(oldUrls, newUrls, feeds).forEach { remove(it) }
+        }
+    }
+
+    /** Call with [mutex] held. */
+    private suspend fun remove(feedId: Long) {
+        scheduler.cancelSync(feedId)
+        // Programmes first, then the entry: a cancelled caller must not leave programmes with no feed.
+        withContext(NonCancellable) {
+            epgRepository.clear(feedId)
+            store.remove(feedId)
         }
     }
 

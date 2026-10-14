@@ -34,7 +34,8 @@ import tv.own.owntv.kevbox.supabase.PlaylistRow
  * home screen and a new one's appear.
  *
  * [delete] and [unlinkEverywhere] also take the line's guide feed out of the EPG list ([GuideFeeds]
- * adds it back when a hidden line returns and syncs).
+ * adds it back when a hidden line returns and syncs). [update] drops the feed for a guide URL the
+ * edit makes stale, such as the old server's.
  */
 class CoreLocalSources(
     private val sourceRepository: SourceRepository,
@@ -86,13 +87,15 @@ class CoreLocalSources(
 
     override suspend fun update(sourceId: Long, row: PlaylistRow) {
         val existing = sourceDao.getById(sourceId) ?: return
-        sourceRepository.updateSource(
-            // Live TV only, for a source made before the app dropped Movies and Series too.
-            existing.copy(
-                name = row.name, url = row.serverUrl, username = row.username, password = row.password,
-                syncMovies = false, syncSeries = false,
-            ),
+        // Live TV only, for a source made before the app dropped Movies and Series too.
+        val updated = existing.copy(
+            name = row.name, url = row.serverUrl, username = row.username, password = row.password,
+            syncMovies = false, syncSeries = false,
         )
+        // Before the save: if the swap fails or is cancelled, the stored fields still differ from the
+        // row, so the next reconcile calls update again and retries both (AC-28).
+        guideFeeds.replaceFor(existing, updated)
+        sourceRepository.updateSource(updated)
     }
 
     override suspend fun link(sourceId: Long, profileIds: List<Long>) {

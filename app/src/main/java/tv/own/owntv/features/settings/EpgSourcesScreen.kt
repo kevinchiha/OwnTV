@@ -57,6 +57,8 @@ fun EpgSourcesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, startOnA
     val autoRefreshMap by vm.autoRefresh.collectAsStateWithLifecycle()
     val useLogosIds by vm.useLogos.collectAsStateWithLifecycle()
     val deletingIds by vm.deletingIds.collectAsStateWithLifecycle()
+    // KevBox: the automatic guide's ids; null until known, and until then no feed offers Delete (AC-26).
+    val automaticIds by vm.automaticIds.collectAsStateWithLifecycle()
     val colors = OwnTVTheme.colors
 
     var editing by remember { mutableStateOf<EpgSource?>(null) }
@@ -109,7 +111,10 @@ fun EpgSourcesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, startOnA
     if (adding || editing != null) {
         EpgSourceForm(
             initial = editing,
-            initialAutoRefresh = editing?.let { autoRefreshMap[it.id] } ?: EpgRefresh.OFF,
+            // KevBox: a new guide starts on 24 hours; an edit keeps OFF as its fallback, as its row shows (AC-27).
+            initialAutoRefresh = editing?.let { autoRefreshMap[it.id] ?: EpgRefresh.OFF } ?: EpgRefresh(EpgAutoRefresh.HOURS_24),
+            // KevBox: the automatic guide edits only its refresh and logos (AC-26).
+            managed = editing?.let { e -> automaticIds?.contains(e.id) != false } ?: false,
             initialUseLogos = editing?.let { it.id in useLogosIds } ?: false,
             loadPlaylistOptions = { vm.playlistEpgOptions() },
             onSave = { name, url, ua, autoRefresh, useLogos ->
@@ -149,6 +154,9 @@ fun EpgSourcesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, startOnA
                 counts = { vm.counts(source.id) },
                 syncState = syncState,
                 deleting = source.id in deletingIds,
+                // KevBox: tag the automatic guide and hold back Delete for it, or for all until the set loads (AC-26).
+                automatic = automaticIds?.contains(source.id) == true,
+                canDelete = automaticIds?.contains(source.id) == false,
                 // Bind contextFocus to the acted-on row (restore target), firstRowFocus to row 0.
                 rowFocus = when {
                     source.id == contextId -> contextFocus
@@ -206,6 +214,9 @@ private fun EpgRow(
     counts: suspend () -> Triple<Int, Int, Int>,
     syncState: EpgSyncState,
     deleting: Boolean,
+    // KevBox: automatic shows the "set up for you" tag; canDelete offers Delete (AC-26).
+    automatic: Boolean,
+    canDelete: Boolean,
     rowFocus: FocusRequester?,
     actionsFocus: FocusRequester,
     keepPanel: Boolean,
@@ -277,15 +288,19 @@ private fun EpgRow(
     }
     val back = rowFocus ?: remember { FocusRequester() }
     // While the guide data is being deleted the actions go: the row is on its way out.
-    val actions = if (deleting) emptyList() else listOf(
+    // KevBox: listOfNotNull, so Delete can drop out for the automatic guide (AC-26).
+    val actions = if (deleting) emptyList() else listOfNotNull(
         StageAction(
             OwnTVIcon.REFRESH,
             stringResource(if (syncState.isActive) R.string.common_cancel else R.string.settings_sources_resync),
             if (syncState.isActive) onCancelSync else onResync,
         ),
         StageAction(OwnTVIcon.PENCIL, stringResource(R.string.common_edit), onEdit),
-        StageAction(OwnTVIcon.TRASH, stringResource(R.string.common_delete), onDelete, danger = true),
+        // KevBox: only a guide the member added by hand can be deleted (AC-26).
+        StageAction(OwnTVIcon.TRASH, stringResource(R.string.common_delete), onDelete, danger = true).takeIf { canDelete },
     )
+    // KevBox: the automatic guide's tag, shown before the row's value (AC-26).
+    val automaticTag = if (automatic) stringResource(R.string.kevbox_epg_automatic) else null
     StageSettingRow(
         icon = OwnTVIcon.EPG,
         title = source.name,
@@ -293,7 +308,13 @@ private fun EpgRow(
         desc = if (failed) subtitle else status,
         value = when {
             failed -> SettingValue.Custom {
+                automaticTag?.let { tv.own.owntv.ui.stage.StageTag(it) } // KevBox: AC-26.
                 Text(status, style = tv.own.owntv.ui.theme.stageText(18, 700), color = tv.own.owntv.ui.theme.StageColors.Danger, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 360.mpx))
+            }
+            // KevBox: the tag, then the badge as SettingValue.Action draws it (AC-26).
+            automaticTag != null -> SettingValue.Custom {
+                tv.own.owntv.ui.stage.StageTag(automaticTag)
+                badge?.let { Text(it, style = tv.own.owntv.ui.theme.stageText(18, 700), color = tv.own.owntv.ui.theme.StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             badge != null -> SettingValue.Action(badge)
             else -> null
@@ -320,6 +341,9 @@ private fun EpgRow(
     )
 }
 
+// KevBox: false hides "Fill from playlist" and its picker; GuideFeeds adds the playlist's own guide (AC-25).
+private const val SHOW_FILL_FROM_PLAYLIST = false
+
 @Composable
 internal fun EpgSourceForm(
     initial: EpgSource?,
@@ -329,6 +353,8 @@ internal fun EpgSourceForm(
     onSave: (name: String, url: String, userAgent: String?, autoRefresh: EpgRefresh, useLogos: Boolean) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    // KevBox: the automatic guide's edit: only Auto refresh and Use logos, no name, URL or user agent (AC-26).
+    managed: Boolean = false,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     // KevBox: a guide URL that carries credentials (filled from a playlist, or saved that way) lives in
@@ -380,6 +406,8 @@ internal fun EpgSourceForm(
         rowsFocus = firstFocus,
         settingsRoot = false,
     ) {
+      // KevBox: the name, URL, fill and user agent rows are hidden for the automatic guide (AC-26).
+      if (!managed) {
         val nameLabel = stringResource(R.string.settings_epg_sources_name)
         StageFieldRow(
             OwnTVIcon.PENCIL, nameLabel, name, { name = it },
@@ -395,6 +423,8 @@ internal fun EpgSourceForm(
             placeholder = filledUrl?.let { HttpClient.redactUrl(it) } ?: stringResource(R.string.settings_epg_sources_url_hint), keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
             backLabel = parent, submitHint = submitHint, modifier = toSubmit,
         )
+        // KevBox: no "Fill from playlist" row; the playlist's own guide is added for the member (AC-25).
+        if (SHOW_FILL_FROM_PLAYLIST) {
         val fillTitle = stringResource(R.string.settings_epg_sources_fill_playlist)
         val fillLine = stringResource(R.string.settings_line_fill_from_playlist)
         StageSettingRow(
@@ -406,12 +436,14 @@ internal fun EpgSourceForm(
             modifier = Modifier.focusRequester(fillFocus).then(toSubmit),
             help = SettingHelp(fillTitle, fillLine, hints = keys(ok to stringResource(R.string.settings_key_open), back to parent), extra = submitButton),
         )
+        } // KevBox: end of the hidden fill row.
         val uaLabel = stringResource(R.string.settings_epg_sources_user_agent)
         StageFieldRow(
             OwnTVIcon.PENCIL, uaLabel, ua, { ua = it },
             SettingHelp(uaLabel, fieldHelp, extra = submitButton),
             placeholder = stringResource(R.string.settings_epg_sources_user_agent_hint), backLabel = parent, submitHint = submitHint, modifier = toSubmit,
         )
+      } // KevBox: end of the rows the automatic guide does not show.
         val refreshTitle = stringResource(R.string.settings_epg_sources_auto_refresh_title)
         StageSettingRow(
             icon = OwnTVIcon.REFRESH,
@@ -441,7 +473,8 @@ internal fun EpgSourceForm(
         )
     }
 
-    if (showPlaylistPicker) {
+    // KevBox: the picker never opens, its row is hidden (AC-25).
+    if (SHOW_FILL_FROM_PLAYLIST && showPlaylistPicker) {
         PlaylistEpgPicker(
             load = loadPlaylistOptions,
             onPick = { opt ->
