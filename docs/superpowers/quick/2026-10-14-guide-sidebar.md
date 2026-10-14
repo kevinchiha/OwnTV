@@ -87,3 +87,4 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt` (with its tes
 - review: minor LiveStage.kt search field: Right with text in the search can move focus into the collapsed grid with no GRID_ENTERED. Decision: fix (it leaves a focused row in the collapsed layout).
 - review: minor GuideSidebar unused events DIALOG_OPENED / GRID_FOCUSED_DURING_COLUMN_ENTRY with a comment at :569-572 that reads as if applied. Decision: fix the comment.
 - review: minor stale comment at EpgScreen.kt:664-665. Decision: fix.
+- fix round 1: 6e4f5846 "the layout follows focus" (one rule: focus decides the layout; a started move outranks focus passing through). All 6 items reported fixed; gate green.
