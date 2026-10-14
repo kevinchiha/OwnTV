@@ -1,0 +1,1 @@
+- Task 5: done. No Interfaces deviations. Both screens hide their upstream controls behind LiveOnly.browseSections (one section in Live) instead of a new constant, so no file outside the brief changed.
