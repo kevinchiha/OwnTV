@@ -373,8 +373,14 @@ class LiveVideoStageTest {
     }
 
     @Test
-    fun notBackToGridOutsideLiveTv() {
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SEARCH, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false))
+    fun backToSearchWhenAllHold() = assertTrue(
+        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SEARCH, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false),
+    )
+
+    @Test
+    fun notBackToGridOutsideLiveTvAndSearch() {
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.HOME, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.EPG, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false))
         assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.MOVIES, liveOnExo = true, catchupActive = false, rewound = false))
         assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, null, liveOnExo = true, catchupActive = false, rewound = false))
     }

@@ -27,9 +27,11 @@
     <string name="kevbox_cancel">Cancel</string>
     <!-- Live TV grid key hint: OK puts the channel in the preview box (a second OK watches it full screen). -->
     <string name="kevbox_key_preview">Preview</string>
+    <!-- Search key hint, after "Hold OK": holding OK on a channel opens it in the Live TV guide, in its category. -->
+    <string name="kevbox_key_guide">Guide</string>
     <!-- Search finds channels and TV programs only (no movies or series in KevBox Live). -->
     <string name="kevbox_search_field_hint">Channels and TV programs</string>
-    <string name="kevbox_search_card_body">Channels from your playlist, and TV programs on now or later today by their title. Pick a result to go straight to its channel.</string>
+    <string name="kevbox_search_card_body">Channels from your playlist, and TV programs on now or later today by their title. OK plays a result here; hold OK to open it in the guide.</string>
     <string name="kevbox_search_nothing_found_body">Search looks in channel names and in the program titles of the downloaded guide. Hidden categories are not searched.</string>
     <!-- 0.2 AC-4: the "Watching & recording" group and its headings, with recording gone. -->
     <string name="kevbox_settings_group_watching">Watching</string>

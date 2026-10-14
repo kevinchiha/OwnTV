@@ -591,19 +591,21 @@ fun OwnTVShell(
         liveVm.hideCategoryBrowser()
         if (backToGrid) {
             // KevBox: the box takes the channel now playing, sound on; after CH+/CH− the grid's cursor
-            // moves to its row.
-            liveVideoStage.boxChannel = playingChannel
+            // moves to its row. Search moves its own cursor (SearchScreen's restoreFocus), so the grid's
+            // reveal, which also changes Live TV's category, is for the grid alone.
+            if (playingChannel != null) liveVideoStage.putInBox(playingChannel, selectedSection) else liveVideoStage.clearBox()
             liveVm.onFullscreenExited(keepStream = true)
             // KevBox: the box channel becomes core's previewed one, so OK on it opens full screen at once.
             if (playingChannel != null) liveVm.keepInBox(playingChannel)
-            if (playingChannel != null && playingChannel.id != openedChannel?.id) liveVm.revealChannel(playingChannel)
+            if (selectedSection == MainSection.LIVE_TV && playingChannel != null && playingChannel.id != openedChannel?.id) liveVm.revealChannel(playingChannel)
         } else {
-            liveVideoStage.boxChannel = null // KevBox: any other exit empties the grid's box, as before
+            liveVideoStage.clearBox() // KevBox: any other exit empties the box, as before
             liveVm.onFullscreenExited() // no longer full-screen on ExoPlayer → let the preview re-take the engine
         }
         player.stop()
         subtitleController.clear() // leaving the player drops the OpenSubtitles item context
-        if (selectedSection != MainSection.LIVE_TV) liveVm.clearLiveOnExo()
+        // KevBox: `!backToGrid`: Back to Search keeps the stream for its box; this would stop ExoPlayer.
+        if (selectedSection != MainSection.LIVE_TV && !backToGrid) liveVm.clearLiveOnExo()
         restoreFocus = true
         focusRail()
         Unit
@@ -648,7 +650,7 @@ fun OwnTVShell(
         }
         if (playerMode != PlayerMode.NONE) exitPlayerWith(false) // KevBox: a stop, never Back to the grid.
         liveVm.stopPreview()
-        liveVideoStage.boxChannel = null // KevBox: the stream Back kept for the grid's box stops too
+        liveVideoStage.clearBox() // KevBox: the stream Back kept for the box stops too
     }
     DisposableEffect(sleepTimer) {
         sleepTimer.stopPlayback = { stopForSleep() }
@@ -891,11 +893,13 @@ fun OwnTVShell(
     // The preview runs on the ExoPlayer live engine, not mpv: stopping only mpv here (as when the preview
     // was mpv) left it decoding and holding a provider connection after a shortcut or deep link out.
     LaunchedEffect(selectedSection, playerMode) {
-        if (selectedSection != MainSection.LIVE_TV && selectedSection != MainSection.EPG && playerMode == PlayerMode.NONE) liveVm.stopPreview()
+        // KevBox: the box channel lives on the video stage, not the screen, so leaving the screen that
+        // filled it (Live TV's grid or Search) empties it here, as leaving used to forget it. Its own
+        // screen keeps it playing, Search included (kevbox/live/LiveVideoStage.kt sectionShown).
+        val shown = tv.own.owntv.kevbox.live.sectionShown(selectedSection, playerMode == PlayerMode.NONE, liveVideoStage.boxSection)
+        if (shown.stopPreview) liveVm.stopPreview()
         if (selectedSection != MainSection.HOME || playerMode != PlayerMode.NONE) homeVm.stopPreview()
-        // KevBox: the grid's box channel lives on the video stage, not the grid, so leaving Live TV
-        // empties it here, as leaving used to forget it.
-        if (selectedSection != MainSection.LIVE_TV && playerMode == PlayerMode.NONE) liveVideoStage.boxChannel = null
+        if (shown.clearBox) liveVideoStage.clearBox()
     }
 
     LaunchedEffect(selectedSection, playerMode, activeProfileId, activePlaylistId) {
@@ -909,6 +913,9 @@ fun OwnTVShell(
     // so for a series the return follows the show closing.
     fun returnToSearch() {
         searchReturn = null
+        // KevBox: from Live TV's guide (Hold OK in Search), the channel in the guide's box comes back to
+        // Search's box still playing, before the section change would stop it (sectionShown).
+        if (selectedSection == MainSection.LIVE_TV) liveVideoStage.moveBox(MainSection.LIVE_TV, MainSection.SEARCH)
         onSelectSection(MainSection.SEARCH)
     }
     LaunchedEffect(selectedSection) {
@@ -1089,8 +1096,9 @@ fun OwnTVShell(
       val browseShown = playerMode != PlayerMode.FULLSCREEN || (livePlayerOnExo && !livePlayerSettled)
       // KevBox: Live TV keeps its grid composed behind full screen, laid out but not placed: not drawn,
       // and out of D-pad focus search. Upstream drops it, and Back then rebuilt the whole grid before the
-      // video could shrink into its box: about a second on Kevin's TV (2026-10-13).
-      if (browseShown || selectedSection == MainSection.LIVE_TV) {
+      // video could shrink into its box: about a second on Kevin's TV (2026-10-13). Search does the same,
+      // so Back lands on the same results, query and row (2026-10-14).
+      if (browseShown || selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.SEARCH) {
         Column(
             modifier = Modifier.fillMaxSize()
                 .then(if (browseShown) Modifier else tv.own.owntv.kevbox.ui.KeptHidden)
@@ -1169,8 +1177,9 @@ fun OwnTVShell(
                     restoreFocus = false
                     // KevBox: the box channel full screen opens from. Back compares it with the channel then
                     // playing, to move the grid's cursor after CH+/CH−. Set here too because with the focus
-                    // preview on, one OK opens full screen without the grid writing it.
-                    if (selectedSection == MainSection.LIVE_TV) liveVideoStage.boxChannel = ch
+                    // preview on, one OK opens full screen without the grid writing it. Search opens its
+                    // channels here too (2026-10-14), with CH+/CH− in the channel's own category.
+                    if (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.SEARCH) liveVideoStage.putInBox(ch, selectedSection)
                     liveVm.watchFromGuide(ch)
                     zapSource = MainSection.LIVE_TV
                     homeVm.stopPreview()
@@ -1336,14 +1345,21 @@ fun OwnTVShell(
                                 searchReturn = MainSection.SERIES
                                 onSelectSection(MainSection.SERIES)
                             },
-                            onGoToChannel = { ch ->
+                            // KevBox: a channel no longer goes to Live TV. OK previews it in Search's own
+                            // box and OK again opens it full screen through the guide's path, so Back
+                            // shrinks it into the box here (Kevin, 2026-10-14).
+                            onWatchChannel = { ch -> guidePlayChannel(ch, emptyList()) },
+                            // KevBox: Hold OK: the guide, on the channel's category and row (EpgScreen's
+                            // reveal); its first Back comes back here (searchReturn, onBackToSearch).
+                            onOpenInGuide = { ch ->
                                 restoreFocus = false
-                                // KevBox: no switch to the list view. Live TV is always the grid, which
-                                // opens on the channel's category and row itself (EpgScreen's reveal).
                                 liveVm.revealChannel(ch)
                                 searchReturn = MainSection.LIVE_TV
                                 onSelectSection(MainSection.LIVE_TV)
                             },
+                            restoreFocus = restoreFocus,
+                            onRestored = { restoreFocus = false },
+                            onScreen = playerMode != PlayerMode.FULLSCREEN, // KevBox: kept composed behind it
                             onGoToMovie = { movie ->
                                 restoreFocus = false
                                 movieVm.revealMovie(movie)
@@ -1381,6 +1397,8 @@ fun OwnTVShell(
                                 else tv.own.owntv.core.settings.SettingsRepository.NavSize.COMPACT,
                             ),
                             onExpandedChange = { liveGuideExpanded = it },
+                            // KevBox: opened from Search by Hold OK, the first Back goes back there.
+                            onBackToSearch = if (searchReturn == MainSection.LIVE_TV) ({ returnToSearch() }) else null,
                             onListView = { liveVm.setLiveView(tv.own.owntv.core.settings.SettingsRepository.LiveView.LIST) },
                             restoreFocus = restoreFocus,
                             onRestored = { restoreFocus = false },

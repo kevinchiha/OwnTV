@@ -195,6 +195,8 @@ fun EpgScreen(
     menuInUse: Boolean = false,
     menuRoom: Dp = 0.dp,
     onExpandedChange: (Boolean) -> Unit = {},
+    // KevBox: set while the guide was opened from Search (Hold OK); the first Back returns there.
+    onBackToSearch: (() -> Unit)? = null,
 ) {
     val vm: EpgViewModel = koinViewModel()
     // Live TV's view model: its preview player (no second decoder), its category list and playlist marks.
@@ -268,7 +270,7 @@ fun EpgScreen(
     val videoStage = tv.own.owntv.kevbox.live.LocalLiveVideoStage.current
     val localBoxChannel = remember { mutableStateOf<ChannelEntity?>(null) }
     fun boxChannel(): ChannelEntity? = if (videoStage != null) videoStage.boxChannel else localBoxChannel.value
-    fun putInBox(ch: ChannelEntity) { if (videoStage != null) videoStage.boxChannel = ch else localBoxChannel.value = ch }
+    fun putInBox(ch: ChannelEntity) { if (videoStage != null) videoStage.putInBox(ch, tv.own.owntv.core.nav.MainSection.LIVE_TV) else localBoxChannel.value = ch }
     val okPreviewsFirst = liveMode && !effectivePreview
     // With the focus preview on, the focused channel is already in the box, so one OK goes full screen.
     fun inBox(ch: ChannelEntity): Boolean =
@@ -536,6 +538,11 @@ fun EpgScreen(
     // the column is cleared first: LiveCategories' own Back handler comes later and wins while it is on.
     BackHandler(enabled = liveMode && gridHasFocus && !inCellMode) { leaveRow() }
     BackHandler(enabled = liveMode && columnHasFocus) { openMenu() }
+    // KevBox: opened from Search by holding OK, the first Back from the grid or the column goes back to
+    // Search instead (Kevin, 2026-10-14). Composed after the two above, so it wins over them.
+    BackHandler(enabled = liveMode && onBackToSearch != null && ((gridHasFocus && !inCellMode) || columnHasFocus)) {
+        onBackToSearch?.invoke()
+    }
 
     // KevBox: where a pending move into the grid stands. A category change waits for a load after it: a
     // new state, as two empty lists can be one object.

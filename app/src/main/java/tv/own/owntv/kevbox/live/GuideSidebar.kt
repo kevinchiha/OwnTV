@@ -14,8 +14,11 @@ package tv.own.owntv.kevbox.live
  */
 internal object GuideSidebar {
 
-    /** The column's width, in mpx. The guide moves by the menu's room plus this. */
-    const val COLUMN_WIDTH_MPX = 420
+    /**
+     * The column's width, in mpx. The guide moves by the menu's room plus this. 320 since 2026-10-14
+     * (was 420): Kevin marked the empty space between the longest names and the counts to cut.
+     */
+    const val COLUMN_WIDTH_MPX = 320
 
     /** How long the slide takes; the menu's own slide in StageRail takes the same. */
     const val SLIDE_MS = 320
