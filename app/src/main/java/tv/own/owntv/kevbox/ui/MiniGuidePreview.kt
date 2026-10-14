@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.tv.material3.Text
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -222,8 +223,26 @@ internal class MiniGuideLoader(
  * The last guide the loader read, kept outside composition so a preview that comes back (after Popup
  * size or an editor) draws the member's channels at once instead of the sample.
  */
-private object MiniGuideMemory {
+internal object MiniGuideMemory {
     @Volatile var last: MiniGuideData? = null
+
+    /**
+     * Runs [load] and returns what the preview shows next. A guide is kept and shown. An empty load
+     * (another playlist with no synced channels) forgets the kept guide and shows [sample], so the
+     * old playlist's channels never linger. A load that fails leaves things as they were.
+     * Cancellation is rethrown, never swallowed.
+     */
+    suspend fun refresh(sample: MiniGuideData, load: suspend () -> MiniGuideData?): MiniGuideData {
+        val loaded = try {
+            load()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return last ?: sample
+        }
+        last = loaded
+        return loaded ?: sample
+    }
 }
 
 /** The sample at once (or the last loaded guide), then the member's own channels once they are read. */
@@ -251,12 +270,8 @@ internal fun rememberMiniGuideData(): MiniGuideData {
             }
         }
     }
-    val data by produceState(MiniGuideMemory.last ?: sample, loader) {
-        val loaded = runCatching { loader.load(System.currentTimeMillis()) }.getOrNull()
-        if (loaded != null) {
-            MiniGuideMemory.last = loaded
-            value = loaded
-        }
+    val data by produceState(MiniGuideMemory.last ?: sample, loader, sample) {
+        value = MiniGuideMemory.refresh(sample) { loader.load(System.currentTimeMillis()) }
     }
     return data
 }
@@ -423,6 +438,9 @@ private fun MiniGrid(data: MiniGuideData, modifier: Modifier) {
         }
         Box(Modifier.fillMaxWidth().padding(top = 18.mpx)) {
             val labelW = LABEL_WIDTH.mpx
+            // The guide's number column: wide enough for the longest number, so the name gets the rest
+            // and wraps to a second line inside GuideChannelLabel the same way.
+            val numberW = maxOf(38f, (data.rows.maxOfOrNull { it.channel.number?.toString()?.length ?: 0 } ?: 0) * 11f).mpx
             GuideRuler(
                 windowStart = data.windowStart, windowEnd = data.windowEnd, now = now, scrollPx = 0,
                 modifier = Modifier.padding(start = labelW).fillMaxWidth().height(40.mpx),
@@ -430,7 +448,7 @@ private fun MiniGrid(data: MiniGuideData, modifier: Modifier) {
             Column(Modifier.padding(top = 48.mpx).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(GuideGridDefaults.RowGap)) {
                 data.rows.forEachIndexed { i, row ->
                     Row(Modifier.fillMaxWidth().height(GuideGridDefaults.RowHeight), verticalAlignment = Alignment.CenterVertically) {
-                        GuideChannelLabel(row.channel, row.name, dot = null, selected = i == 0, numberWidth = 38.mpx, modifier = Modifier.width(labelW))
+                        GuideChannelLabel(row.channel, row.name, dot = null, selected = i == 0, numberWidth = numberW, modifier = Modifier.width(labelW))
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             ProgrammeStripCanvas(
                                 programmes = row.programmes,
@@ -463,5 +481,5 @@ private fun MiniGrid(data: MiniGuideData, modifier: Modifier) {
     }
 }
 
-/** The channel label column, of 1920: the guide's 296 narrowed for the column beside it. */
-private const val LABEL_WIDTH = 300
+/** The channel label column, of 1920: the guide's own share (424), so a name shows as it does there. */
+private const val LABEL_WIDTH = 1920f * GuideGridDefaults.ChannelColShare

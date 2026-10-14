@@ -138,9 +138,9 @@ private fun FirstRunLanguagePopup(
  * Settings › App › Language (P10B-21): System default, then every language A–Z by English name, each
  * with a radio; OK uses it. Same-script switches recompose instantly via
  * [tv.own.owntv.core.i18n.LocalizedContent]; cross-script switches trigger one
- * [android.app.Activity.recreate]. The panel explains the focused choice and carries the translation
- * project's QR code, link and language-request note.
+ * [android.app.Activity.recreate]. The panel explains the focused choice.
  */
+// KevBox: the panel no longer carries the translation project's QR code, link and request note (AC-33).
 @Composable
 fun LanguageSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val viewModel: LanguageSettingsViewModel = koinViewModel()
@@ -165,8 +165,8 @@ fun LanguageSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         stringResource(R.string.common_ok) to stringResource(R.string.settings_key_use),
         stringResource(R.string.common_back) to stringResource(R.string.settings_group_app),
     )
-    // KevBox: no Help translate panel: the rows below pass no extra, so this block is never drawn (AC-33).
-    val translate: @Composable () -> Unit = { TranslateBlock() }
+    // KevBox: no Help translate panel: the rows below pass no extra and the `translate` block that fed
+    // it is gone; TranslateBlock stays below, unused, so upstream merges stay clean (AC-33).
     StageFullPage(
         parents = listOf(stringResource(R.string.settings_group_app)),
         title = stringResource(R.string.settings_language),

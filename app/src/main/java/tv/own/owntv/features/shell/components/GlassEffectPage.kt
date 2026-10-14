@@ -1,70 +1,32 @@
 package tv.own.owntv.features.shell.components
 
-import tv.own.owntv.ui.theme.stageTone
-import tv.own.owntv.ui.theme.LocalStagePalette
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
+// KevBox: the imports only the removed Home and Live TV preview drawings used are gone (HomeViewModel,
+// AsyncImage, koinViewModel, LivePlate, …).
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.em
 import kotlin.math.roundToInt
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
-import org.koin.androidx.compose.koinViewModel
 import tv.own.owntv.R
 import tv.own.owntv.core.theme.BackgroundConfig
 import tv.own.owntv.core.theme.BackgroundStyle
 import tv.own.owntv.core.theme.PictureLook
-import tv.own.owntv.features.home.HomeViewModel
-import tv.own.owntv.features.live.LivePlate
 import tv.own.owntv.features.settings.SettingHelp
 import tv.own.owntv.features.settings.SettingValue
 import tv.own.owntv.features.settings.StageFullPage
 import tv.own.owntv.features.settings.StageSettingRow
 import tv.own.owntv.features.settings.StageSettingsHeading
-import tv.own.owntv.features.settings.backdropOf
 import tv.own.owntv.features.settings.dotSeparator
-import tv.own.owntv.ui.components.BackgroundPicture
 import tv.own.owntv.ui.components.OwnTVIcon
-import tv.own.owntv.ui.stage.drawInnerRing
-import tv.own.owntv.ui.stage.drawOuterRing
-import tv.own.owntv.ui.stage.stageBackground
-import tv.own.owntv.ui.stage.stageGlass
-import tv.own.owntv.ui.theme.LocalBackground
-import tv.own.owntv.ui.theme.LocalBlurredBackdrop
 import tv.own.owntv.ui.theme.StageColors
 import tv.own.owntv.ui.theme.mpx
-import tv.own.owntv.ui.theme.stageAccent
 import tv.own.owntv.ui.theme.stageText
 
 /**
@@ -267,10 +229,11 @@ private fun PercentRow(
 }
 
 /**
- * The panel's live preview: Live TV at a third of the screen's size, on the current background, with the
- * rail and the list drawn the Stage way and your own recent / favourite channels. Not a second Live TV —
- * nothing focusable, no player — but it follows every change on this page at once.
+ * The panel's live preview: the mini Live TV guide at a third of the screen's size, on the current
+ * background, from the page's [miniGuide] data. Nothing focusable, no player, but it follows every
+ * change on this page at once.
  */
+// KevBox: the doc above described upstream's hand-drawn rail and channel list; it now names the mini guide.
 @Composable
 // KevBox: takes the page's mini guide data; no HomeViewModel, no movie still, no black box (spec AC-35).
 private fun GlassBackgroundPreview(miniGuide: tv.own.owntv.kevbox.ui.MiniGuideData) {

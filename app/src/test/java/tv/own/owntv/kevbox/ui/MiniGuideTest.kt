@@ -1,6 +1,12 @@
+// KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.ui
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.core.database.entity.ChannelEntity
@@ -48,6 +54,55 @@ class MiniGuideTest {
         assertEquals(emptyList<EpgProgrammeEntity>(), rows[1].programmes)
         assertEquals(forC, rows[2].programmes)
     }
+
+    @After
+    fun forgetTheCachedGuide() {
+        MiniGuideMemory.last = null
+    }
+
+    @Test
+    fun `an empty load clears the cached preview`() {
+        val sample = data(sample = true, "Sample")
+        val mine = data(sample = false, "Mine")
+
+        assertSame(mine, runBlocking { MiniGuideMemory.refresh(sample) { mine } })
+        assertSame(mine, MiniGuideMemory.last)
+
+        // Another playlist with nothing synced: the sample, not the old playlist's rows.
+        assertSame(sample, runBlocking { MiniGuideMemory.refresh(sample) { null } })
+        assertEquals(null, MiniGuideMemory.last)
+    }
+
+    @Test
+    fun `a failed load keeps what was showing`() {
+        val sample = data(sample = true, "Sample")
+        val mine = data(sample = false, "Mine")
+        MiniGuideMemory.last = mine
+
+        assertSame(mine, runBlocking { MiniGuideMemory.refresh(sample) { error("database closed") } })
+        assertSame(mine, MiniGuideMemory.last)
+    }
+
+    @Test
+    fun `cancellation is not swallowed`() {
+        val sample = data(sample = true, "Sample")
+        val mine = data(sample = false, "Mine")
+        MiniGuideMemory.last = mine
+
+        assertThrows(CancellationException::class.java) {
+            runBlocking { MiniGuideMemory.refresh(sample) { throw CancellationException("left the page") } }
+        }
+        assertSame(mine, MiniGuideMemory.last)
+    }
+
+    private fun data(sample: Boolean, name: String) = MiniGuideData(
+        categories = listOf(name),
+        selected = 0,
+        rows = MiniGuide.rows(listOf(channel(1, name)), emptyMap()) { it.name },
+        windowStart = 0L,
+        windowEnd = 1L,
+        sample = sample,
+    )
 
     private fun channel(id: Long, name: String) = ChannelEntity(id = id, sourceId = 1, name = name, streamUrl = "")
 

@@ -308,6 +308,8 @@ internal fun FavouritesPage(
     onPlayChannel: (Long) -> Unit,
     onPlayMovie: (Long) -> Unit,
     onOpenSeries: (Long) -> Unit,
+    // KevBox: sends focus back to the sheet when the page has nothing left to focus (AC-31).
+    onLeave: () -> Unit = {},
 ) {
     val counts by vm.favorites.collectAsStateWithLifecycle()
     val lists by vm.favouriteLists.collectAsStateWithLifecycle()
@@ -320,8 +322,12 @@ internal fun FavouritesPage(
     val itemFocus = remember { HashMap<Pair<MediaType, Long>, FocusRequester>() }
     fun focusOf(type: MediaType, id: Long) = itemFocus.getOrPut(type to id) { FocusRequester() }
     var returnTo by remember { mutableStateOf<FocusRequester?>(null) }
+    // KevBox: set when the last favourite is removed: no card is left and the page turns into the empty
+    // note, so focus goes back to the Favorites entry on the sheet instead of onto nothing (AC-31).
+    var leaveAfter by remember { mutableStateOf(false) }
     LaunchedEffect(menu, move) {
         if (menu == null && move == null) returnTo?.let { withFrameNanos { }; runCatching { it.requestFocus() }; returnTo = null }
+        if (menu == null && move == null && leaveAfter) { withFrameNanos { }; leaveAfter = false; onLeave() } // KevBox: see leaveAfter.
     }
 
     val showLive = filter == FavFilter.ALL || filter == FavFilter.LIVE
@@ -421,6 +427,8 @@ internal fun FavouritesPage(
                         val next = if (type == MediaType.LIVE) (lists.live.getOrNull(i + 1) ?: lists.live.getOrNull(i - 1)) else null
                         vm.removeFavourite(type, id)
                         returnTo = if (KEVBOX_VOD_SHOWN) segFocus else next?.let { focusOf(MediaType.LIVE, it.id) }
+                        // KevBox: no neighbour means that was the last favourite: back to the sheet (AC-31).
+                        leaveAfter = returnTo == null
                         close()
                     }, icon = OwnTVIcon.FAVORITE, modifier = Modifier.focusRequester(first))
                     StageMenuItem(stringResource(R.string.content_move), onClick = { close(); vm.startMove(type, id) }, icon = OwnTVIcon.MOVE)
@@ -463,6 +471,8 @@ internal fun HistoryPage(
     onPlayMovie: (Long, Long) -> Unit,
     onPlayEpisode: (Long, Long, Long) -> Unit,
     onOpenSeries: (Long) -> Unit,
+    // KevBox: sends focus back to the sheet when the page has nothing left to focus (AC-29).
+    onLeave: () -> Unit = {},
 ) {
     val counts by vm.history.collectAsStateWithLifecycle()
     val lists by vm.historyLists.collectAsStateWithLifecycle()
@@ -482,7 +492,16 @@ internal fun HistoryPage(
     val rowFocus = remember { HashMap<Long, FocusRequester>() }
     fun focusOf(id: Long) = rowFocus.getOrPut(id) { FocusRequester() }
     var clearWasOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(showClear) { if (showClear) clearWasOpen = true else if (clearWasOpen) { clearWasOpen = false; withFrameNanos { }; runCatching { clearFocus.requestFocus() } } }
+    // KevBox: set by Yes on the Live TV question. The history empties, Clear history leaves the page
+    // with it, so focus goes back to the History entry on the sheet rather than onto nothing (AC-29).
+    var clearedAll by remember { mutableStateOf(false) }
+    LaunchedEffect(showClear) {
+        if (showClear) clearWasOpen = true else if (clearWasOpen) {
+            clearWasOpen = false; withFrameNanos { }
+            // KevBox: back to the sheet after clearing everything, or when Clear history is gone.
+            if (clearedAll || !runCatching { clearFocus.requestFocus() }.getOrDefault(false)) { clearedAll = false; onLeave() }
+        }
+    }
 
     val sep = stringResource(R.string.content_epg_bits_separator)
     val play: (HistoryEntry) -> Unit = { e ->
@@ -557,7 +576,8 @@ internal fun HistoryPage(
                             // The removed row takes its focus with it: the next one takes over.
                             val i = rows.indexOf(e)
                             vm.removeHistory(e)
-                            (rows.getOrNull(i + 1) ?: rows.getOrNull(i - 1))?.let { n -> runCatching { focusOf(n.id).requestFocus() } }
+                            // KevBox: the last row removed leaves nothing to focus here: back to the sheet (AC-29).
+                            (rows.getOrNull(i + 1) ?: rows.getOrNull(i - 1))?.let { n -> runCatching { focusOf(n.id).requestFocus() } } ?: onLeave()
                         },
                     ),
                 )
@@ -566,7 +586,8 @@ internal fun HistoryPage(
     }
     // KevBox: one question, Live TV only (AC-30); upstream's per-type dialog stays for when Movies and Series show.
     if (showClear && !KEVBOX_VOD_SHOWN) {
-        ClearLiveHistoryDialog(onClear = { onClearHistory(MediaType.LIVE); showClear = false }, onDismiss = { showClear = false })
+        // KevBox: clearedAll sends focus back to the sheet once the dialog closes (see clearedAll).
+        ClearLiveHistoryDialog(onClear = { onClearHistory(MediaType.LIVE); clearedAll = true; showClear = false }, onDismiss = { showClear = false })
     } else if (showClear) {
         ClearHistoryDialog(onClear = { t -> onClearHistory(t); showClear = false }, onDismiss = { showClear = false })
     }
