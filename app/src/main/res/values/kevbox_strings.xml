@@ -33,4 +33,62 @@
     <string name="kevbox_search_field_hint">Channels and TV programs</string>
     <string name="kevbox_search_card_body">Channels from your playlist, and TV programs on now or later today by their title. OK plays a result here; hold OK to open it in the guide.</string>
     <string name="kevbox_search_nothing_found_body">Search looks in channel names and in the program titles of the downloaded guide. Hidden categories are not searched.</string>
+    <!-- 0.2 AC-4: the "Watching & recording" group and its headings, with recording gone. -->
+    <string name="kevbox_settings_group_watching">Watching</string>
+    <string name="kevbox_settings_vp_cat_controls_catchup">Controls &amp; catch-up</string>
+    <string name="kevbox_settings_vp_cat_mini_player">Mini-player</string>
+    <!-- 0.2 AC-17: movie and episode rows that only act on catch-up now. -->
+    <string name="kevbox_settings_catchup_next">Catch-up: play the next programme</string>
+    <string name="kevbox_settings_catchup_next_description">When a catch-up programme ends, the next programme on the same channel starts.</string>
+    <string name="kevbox_settings_line_catchup_next">The next programme on the same channel</string>
+    <string name="kevbox_settings_seek_step">Catch-up seek step</string>
+    <string name="kevbox_settings_seek_step_description">How far rewind and forward jump in catch-up.</string>
+    <string name="kevbox_settings_line_seek_step">How far rewind and forward jump in catch-up</string>
+    <string name="kevbox_settings_help_seek_step">How far rewind and forward jump in catch-up with one press. Holding the key keeps jumping.</string>
+    <string name="kevbox_settings_catchup_buffer">Catch-up buffer</string>
+    <string name="kevbox_settings_catchup_buffer_description">How far ahead catch-up is loaded. Auto uses what suits this device. A longer buffer rides out a bad connection better; the memory of this device still sets the limit, so a high-bitrate programme may hold less than chosen.</string>
+    <string name="kevbox_settings_line_catchup_buffer">How far ahead catch-up is loaded</string>
+    <string name="kevbox_settings_catchup_timeout">Catch-up network timeout</string>
+    <string name="kevbox_settings_catchup_timeout_description">How long catch-up waits on a silent server before the connection counts as lost. Auto keeps the wait of each player: 60 seconds on mpv, 20 on ExoPlayer.</string>
+    <string name="kevbox_settings_catchup_reconnects">Catch-up reconnect attempts</string>
+    <string name="kevbox_settings_catchup_reconnects_description">How many times a catch-up programme that loses its connection is reopened where it stopped before an error is shown. A minute of steady playback earns the attempts back.</string>
+    <!-- 0.2 AC-18: App startup opens Live TV, not Home. -->
+    <string name="kevbox_settings_startup_live_tv">Live TV</string>
+    <string name="kevbox_settings_startup_channel_unavailable">The startup channel is unavailable. Live TV was opened.</string>
+    <!-- 0.2 gap settings-3: help lines for App startup and Live preview. -->
+    <string name="kevbox_settings_help_startup">What KevBox Live shows when it starts: Live TV, the last channel, Live TV on Favorites, or a channel you pick.</string>
+    <string name="kevbox_settings_help_live_preview">Plays the channel you move to in the box at the top of the guide, without pressing OK.</string>
+    <!-- 0.2 AC-11: group summaries and More › Settings card lines that name nothing hidden. -->
+    <string name="kevbox_settings_group_summary_layout">Navigation, guide width and remote shortcuts</string>
+    <string name="kevbox_settings_group_summary_appearance">Theme, glass, motion and text size</string>
+    <string name="kevbox_settings_card_layout">Navigation, guide width, remote shortcuts</string>
+    <string name="kevbox_settings_card_appearance">Theme, glass, text, motion</string>
+    <string name="kevbox_settings_card_player">Saved choices, external player, streaming</string>
+    <string name="kevbox_settings_card_watching">Skip steps, catch-up, mini-player</string>
+    <!-- 0.2 AC-5: the External player row, its dialog and its help line, with the Live TV switch alone. -->
+    <string name="kevbox_settings_external_player_description">Opens live channels in another video app installed on the TV.</string>
+    <string name="kevbox_settings_external_player_row_description">Opens live channels in another video app installed on the TV (VLC, MX Player) instead of the built-in player. Useful for a channel this app can\'t decode, or if you prefer another player. Previous and next channel are unavailable while another app plays; channels that need a custom User-Agent or referer may not play.</string>
+    <string name="kevbox_settings_line_external">VLC, MX Player… for live channels</string>
+    <!-- 0.2 AC-3: the kept "Reset saved live TV player choices" row, without the hidden Live TV player setting. -->
+    <string name="kevbox_settings_reset_live_pins_description">Switching a channel between ExoPlayer and mpv with the player button in full screen saves that choice for the channel. Reset clears these choices, so every channel starts on the default player again.</string>
+    <!-- 0.2 AC-26: the guide feed the app adds from the playlist. -->
+    <string name="kevbox_epg_automatic">Set up for you</string>
+    <!-- 0.2 AC-31: Favorites holds channels only. -->
+    <string name="kevbox_more_fav_empty_body">Hold OK on a channel and choose Add to Favorites.</string>
+    <!-- 0.2 AC-32: More › About. -->
+    <string name="kevbox_about_description">KevBox Live plays the live TV channels in your KevBox subscription, with a full programme guide, replays and favourites. Your playlist is set up for you; contact KevBox if a channel is missing.</string>
+    <!-- 0.2 AC-34, AC-35: the mini guide drawn before the first sync. -->
+    <string name="kevbox_preview_sample_category">Sample channels</string>
+    <string name="kevbox_preview_sample_channel_1" translatable="false">KevBox News</string>
+    <string name="kevbox_preview_sample_channel_2" translatable="false">KevBox Sport</string>
+    <string name="kevbox_preview_sample_channel_3" translatable="false">KevBox Cinema</string>
+    <string name="kevbox_preview_sample_channel_4" translatable="false">KevBox Kids</string>
+    <string name="kevbox_preview_sample_channel_5" translatable="false">KevBox Music</string>
+    <string name="kevbox_preview_sample_channel_6" translatable="false">KevBox Nature</string>
+    <string name="kevbox_preview_sample_programme_1">Morning news</string>
+    <string name="kevbox_preview_sample_programme_2">Live football</string>
+    <string name="kevbox_preview_sample_programme_3">Evening film</string>
+    <string name="kevbox_preview_sample_programme_4">Cartoons</string>
+    <string name="kevbox_preview_sample_programme_5">Top hits</string>
+    <string name="kevbox_preview_sample_programme_6">Wildlife</string>
 </resources>

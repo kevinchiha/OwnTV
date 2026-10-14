@@ -138,9 +138,9 @@ private fun FirstRunLanguagePopup(
  * Settings › App › Language (P10B-21): System default, then every language A–Z by English name, each
  * with a radio; OK uses it. Same-script switches recompose instantly via
  * [tv.own.owntv.core.i18n.LocalizedContent]; cross-script switches trigger one
- * [android.app.Activity.recreate]. The panel explains the focused choice and carries the translation
- * project's QR code, link and language-request note.
+ * [android.app.Activity.recreate]. The panel explains the focused choice.
  */
+// KevBox: the panel no longer carries the translation project's QR code, link and request note (AC-33).
 @Composable
 fun LanguageSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val viewModel: LanguageSettingsViewModel = koinViewModel()
@@ -165,7 +165,8 @@ fun LanguageSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         stringResource(R.string.common_ok) to stringResource(R.string.settings_key_use),
         stringResource(R.string.common_back) to stringResource(R.string.settings_group_app),
     )
-    val translate: @Composable () -> Unit = { TranslateBlock() }
+    // KevBox: no Help translate panel: the rows below pass no extra and the `translate` block that fed
+    // it is gone; TranslateBlock stays below, unused, so upstream merges stay clean (AC-33).
     StageFullPage(
         parents = listOf(stringResource(R.string.settings_group_app)),
         title = stringResource(R.string.settings_language),
@@ -181,7 +182,8 @@ fun LanguageSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             line = stringResource(R.string.settings_language_system_default_description),
             coverage = null,
             selected = currentTag.isEmpty(),
-            help = SettingHelp(systemLabel, stringResource(R.string.settings_language_system_help, systemName), hints = hints, extra = translate),
+            help = SettingHelp(systemLabel, stringResource(R.string.settings_language_system_help, systemName), hints = hints),
+            // KevBox: no extra = translate (AC-33).
             onClick = { viewModel.setLocale(SupportedLocales.SYSTEM_DEFAULT_TAG) },
             modifier = if (currentTag.isEmpty()) Modifier.focusRequester(selectedFocus) else Modifier,
         )
@@ -193,7 +195,8 @@ fun LanguageSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 line = locale.englishName,
                 coverage = coverageBadgePercent(locale),
                 selected = selected,
-                help = SettingHelp(locale.endonym, stringResource(R.string.settings_language_pick_help, locale.endonym), hints = hints, extra = translate),
+                help = SettingHelp(locale.endonym, stringResource(R.string.settings_language_pick_help, locale.endonym), hints = hints),
+                // KevBox: no extra = translate (AC-33).
                 onClick = { viewModel.setLocale(locale.languageTag) },
                 modifier = if (selected) Modifier.focusRequester(selectedFocus) else Modifier,
             )

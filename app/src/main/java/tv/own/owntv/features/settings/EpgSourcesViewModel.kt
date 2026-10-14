@@ -9,6 +9,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+// KevBox: combine, flatMapLatest, flowOf and map build automaticIds.
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -21,6 +26,9 @@ import tv.own.owntv.core.sync.work.EpgSyncState
 import tv.own.owntv.core.settings.EpgAutoRefresh
 import tv.own.owntv.core.settings.EpgRefresh
 import tv.own.owntv.core.settings.SettingsRepository
+// KevBox: the automatic guide's ids (AC-26).
+import tv.own.owntv.kevbox.epg.GuideFeed
+import tv.own.owntv.kevbox.epg.automaticGuideIds
 
 /** Manage standalone EPG (XMLTV) sources: list, add (auto-sync), edit, re-sync, delete. */
 class EpgSourcesViewModel(
@@ -122,13 +130,30 @@ class EpgSourcesViewModel(
         return Triple(channels, programmes, catchup)
     }
 
-    /** Playlists whose own EPG can pre-fill the add form (Xtream xmltv.php / M3U url-tvg). */
+    /** Playlists and their own EPG URLs (Xtream xmltv.php / M3U url-tvg), which mark the automatic feeds. */
     suspend fun playlistEpgOptions(): List<PlaylistEpg> {
-        val pid = settings.activeProfileId.first()
-        if (pid < 0) return emptyList()
-        return sourceRepository.observeSources(pid).first()
-            // A comma-separated url-tvg names several feeds; offer each one on its own.
-            .flatMap { src -> epgRepository.guideUrls(src).map { PlaylistEpg(src.name, it) } }
-
+        // KevBox: the same list now also feeds automaticIds, so its source moved to activePlaylistEpgs.
+        return activePlaylistEpgs().first()
     }
+
+    // KevBox: the active profile's playlists and their own guide URLs, live, for playlistEpgOptions
+    // and automaticIds. Follows a profile switch and a playlist's server change while the page is open.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private fun activePlaylistEpgs(): Flow<List<PlaylistEpg>> =
+        settings.activeProfileId.flatMapLatest { pid ->
+            if (pid < 0) flowOf(emptyList()) else sourceRepository.observeSources(pid).map { sources ->
+                // A comma-separated url-tvg names several feeds; offer each one on its own.
+                sources.flatMap { src -> epgRepository.guideUrls(src).map { PlaylistEpg(src.name, it) } }
+            }
+        }
+
+    /**
+     * KevBox: ids of the automatic guide, the feeds whose URL is one of the active playlists' own
+     * guide URLs (added by GuideFeeds). The page offers no Delete and no URL edit for them (AC-26).
+     * Null until loaded, so no feed offers Delete before the set is known.
+     */
+    val automaticIds: StateFlow<Set<Long>?> =
+        combine(store.sources, activePlaylistEpgs()) { feeds, playlists ->
+            automaticGuideIds(feeds.map { GuideFeed(it.id, it.url, it.lastSyncAt) }, playlists.map { it.url })
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 }

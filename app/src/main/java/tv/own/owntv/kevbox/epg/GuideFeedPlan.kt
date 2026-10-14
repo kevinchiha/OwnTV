@@ -27,3 +27,23 @@ fun planGuideFeeds(guideUrls: List<String>, feeds: List<GuideFeed>): List<GuideF
             else -> null
         }
     }
+
+/**
+ * Ids of feeds whose URL the old source used and the new one does not. When a playlist's server,
+ * username or password changes, its old guide URL stops working; this names the feeds to remove.
+ * URLs match whole and exact, as [planGuideFeeds] matches them, so a URL in both lists stays.
+ */
+fun planGuideFeedSwap(oldGuideUrls: List<String>, newGuideUrls: List<String>, feeds: List<GuideFeed>): List<Long> {
+    val dropped = oldGuideUrls.toSet() - newGuideUrls.toSet()
+    return feeds.filter { it.url in dropped }.map { it.id }
+}
+
+/**
+ * Ids of the feeds that are one of the playlists' own guide URLs: the automatic guide, which
+ * [GuideFeeds] adds and the member does not manage by hand. Whole URLs only: a feed whose URL merely
+ * starts like a playlist's is the member's own.
+ */
+fun automaticGuideIds(feeds: List<GuideFeed>, playlistGuideUrls: Collection<String>): Set<Long> {
+    val urls = playlistGuideUrls.toSet()
+    return feeds.filter { it.url in urls }.mapTo(mutableSetOf()) { it.id }
+}

@@ -78,6 +78,7 @@ import tv.own.owntv.ui.theme.LocalActionSurface
 import tv.own.owntv.ui.theme.OwnTVTheme
 import tv.own.owntv.core.customize.MoveKind
 import tv.own.owntv.core.customize.SpanSelector
+import tv.own.owntv.kevbox.live.LiveOnly // KevBox: Live-only Customize
 
 /**
  * Settings → Customize Categories & Items: hide / rename / reorder categories per section, and unhide
@@ -126,6 +127,7 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     var confirmPinStage by remember { mutableStateOf(false) }
     var pinMismatch by remember { mutableStateOf(false) }
     val firstFocus = remember { FocusRequester() }
+    val liveOnly = LiveOnly.browseSections.size == 1 // KevBox: Live TV is the only section
     val sortFocus = remember { FocusRequester() }
     val filterFocus = remember { FocusRequester() }
     val newCategoriesFocus = remember { FocusRequester() }
@@ -151,6 +153,9 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     var listPaneFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(section) {
+        // KevBox: Live only. With no Movies / Series tabs, a view model left on another section
+        // KevBox: is put back on Live TV as the page opens.
+        if (liveOnly && section != MediaType.LIVE) vm.selectSection(MediaType.LIVE)
         listState.scrollToItem(0)
     }
     // Index (within `rows`) of the category row that currently holds focus — the paging anchor.
@@ -233,14 +238,17 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     // P10B-02: the band, the tool row above the list (owner), categories as rows and the panel with
     // the focused category's actions and the span help.
     StageFullPage(
-        parents = listOf(stringResource(R.string.settings_group_content_metadata)),
+        // KevBox: the page moved to the Live TV group (AC-7), so its breadcrumb parent follows.
+        parents = listOf(stringResource(R.string.settings_live_tv)),
         title = stringResource(R.string.settings_customize_title),
         count = "",
         onBack = onBack,
         modifier = modifier,
         handleBack = false,
         toolbar = {
-            tv.own.owntv.ui.stage.StageSegmented(
+            // KevBox: the Live TV / Movies / Series tabs only draw when the app has several browse
+            // KevBox: sections; in Live the Sort tool below takes the first focus instead.
+            if (!liveOnly) tv.own.owntv.ui.stage.StageSegmented(
                 options = listOf(stringResource(R.string.settings_live_tv), stringResource(R.string.settings_movies), stringResource(R.string.settings_series)),
                 selected = when (section) { MediaType.LIVE -> 0; MediaType.MOVIE -> 1; else -> 2 },
                 onSelect = { vm.selectSection(listOf(MediaType.LIVE, MediaType.MOVIE, MediaType.SERIES)[it]) },
@@ -250,7 +258,9 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             tv.own.owntv.ui.stage.StageTool(
                 stringResource(R.string.settings_customize_sort_button, stringResource(if (currentSort == SettingsRepository.SortMode.PLAYLIST) R.string.content_provider else R.string.settings_sort_alpha)),
                 onClick = { dialogReturn = sortFocus; showSortPicker = true },
-                icon = OwnTVIcon.SORT, boxed = true, modifier = Modifier.focusRequester(sortFocus),
+                icon = OwnTVIcon.SORT, boxed = true,
+                // KevBox: with the tabs hidden, Sort also answers firstFocus (entry and ▲ from the list).
+                modifier = (if (liveOnly) Modifier.focusRequester(firstFocus) else Modifier).focusRequester(sortFocus),
             )
             tv.own.owntv.ui.stage.StageTool(
                 stringResource(

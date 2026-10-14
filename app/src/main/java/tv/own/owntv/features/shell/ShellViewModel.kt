@@ -103,11 +103,14 @@ class ShellViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, AccentColor.TEAL)
 
     /** Custom accent hex ("#52DBC8"); blank = the preset above is in effect. */
-    val customAccent: StateFlow<String> = settings.customAccent
+    // KevBox: the accent is fixed (0.2 AC-14), read from the hide list instead of storage, so no
+    // migration is needed; the Accent row is hidden.
+    val customAccent: StateFlow<String> = flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.ACCENT_HEX)
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     /** Focus ring color hex (#121); blank = follow the accent. */
-    val focusHighlight: StateFlow<String> = settings.focusHighlight
+    // KevBox: the focus ring colour is fixed too (0.2 AC-14); its width still reads storage.
+    val focusHighlight: StateFlow<String> = flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.FOCUS_HIGHLIGHT_HEX)
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     /** Focus ring width in dp (#121). */

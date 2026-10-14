@@ -22,6 +22,7 @@ import tv.own.owntv.core.settings.SettingsRepository.NavLength
 import tv.own.owntv.core.settings.SettingsRepository.NavMenuMode
 import tv.own.owntv.core.settings.SettingsRepository.NavSize
 import tv.own.owntv.core.settings.SettingsRepository.NavStyle
+import tv.own.owntv.kevbox.live.LiveOnly // KevBox: gates the menu-items controls
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.stage.StagePopup
 import tv.own.owntv.ui.stage.StagePopupDivider
@@ -106,6 +107,9 @@ fun NavigationSettingsPopup(
             )
         }
         val static = menuMode == NavMenuMode.STATIC
+        // KevBox: the menu always shows Search, Live TV and More, so Menu items and its section
+        // KevBox: toggles only draw when the app has more than one browse section (never, in Live).
+        if (LiveOnly.browseSections.size > 1) {
         StagePopupOption(
             title = stringResource(R.string.settings_nav_menu_items),
             subtitle = stringResource(R.string.settings_nav_menu_items_desc),
@@ -132,6 +136,7 @@ fun NavigationSettingsPopup(
                 }
             }
         }
+        } // KevBox: end of the menu-items block hidden above
         if (style == NavStyle.FLOATING) {
             StagePopupOption(
                 title = stringResource(R.string.settings_nav_hide_after),

@@ -24,6 +24,9 @@ object LiveOnly {
      */
     val browseSections: Set<MainSection> = setOf(MainSection.LIVE_TV)
 
-    /** The look a fresh install starts with: dark, with this accent. Members can change both later. */
+    /**
+     * The KevBox accent. AutoSetup writes it at first run; since 0.2 the accent is fixed through
+     * [tv.own.owntv.kevbox.settings.LiveOnlySettings], so members can no longer change it.
+     */
     const val ACCENT_HEX = "#6FB0FF"
 }

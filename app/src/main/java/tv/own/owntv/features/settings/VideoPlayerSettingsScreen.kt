@@ -110,7 +110,8 @@ internal enum class VideoGroup(val titleRes: Int, val parts: List<Pair<Int, List
     PICTURE(R.string.settings_vp_cat_picture, listOf(R.string.settings_vp_cat_picture to listOf(SECTION_PICTURE), R.string.settings_vp_cat_frame_rate to listOf(SECTION_FRAME_RATE))),
     SOUND(R.string.settings_group_sound_subtitles, listOf(R.string.settings_vp_section_sound to listOf(SECTION_SOUND), R.string.settings_vp_cat_languages to listOf(SECTION_LANGUAGES))),
     LIVE(R.string.settings_live_tv, listOf(R.string.settings_live_tv to listOf(SECTION_LIVE), R.string.settings_vp_cat_live_tuning to listOf(SECTION_LIVE_TUNING))),
-    WATCHING(R.string.settings_group_watching_recording, listOf(R.string.settings_vp_cat_controls_resume to listOf(SECTION_CONTROLS, SECTION_RESUME), R.string.settings_vp_cat_multiview to listOf(SECTION_MULTIVIEW))),
+    // KevBox: named Watching, Controls & catch-up and Mini-player (AC-4): no heading names a feature KevBox Live removed.
+    WATCHING(R.string.kevbox_settings_group_watching, listOf(R.string.kevbox_settings_vp_cat_controls_catchup to listOf(SECTION_CONTROLS, SECTION_RESUME), R.string.kevbox_settings_vp_cat_mini_player to listOf(SECTION_MULTIVIEW))),
     DIAGNOSTICS(R.string.settings_group_app, listOf(R.string.settings_diagnostics to listOf(SECTION_DIAGNOSTICS))),
 }
 
@@ -136,18 +137,26 @@ internal fun videoSectionCounts(vm: SettingsViewModel): List<Int> {
     val timeshift by vm.timeshiftEnabled.collectAsStateWithLifecycle()
     val multiview by vm.multiviewEnabled.collectAsStateWithLifecycle()
     val perPlaylist = sources.isNotEmpty()
-    return listOf(
-        6 + (if (perPlaylist) 2 else 0),
-        5 + (if (vm.tunnelingSupported) 1 else 0),
-        3,
-        3,
-        4 + (if (livePreview) 1 else 0) + (if (timeshift) 1 else 0),
-        3 + (if (perPlaylist) 3 else 0),
-        2,
-        2 + (if (multiview) 1 else 0),
-        8, 3, 2, 2,
-    )
+    // KevBox: counted from the catalogue the rows, Quick and search read, so a row KevBox Live hides drops
+    // out of every count. Upstream typed the numbers here, and counted one timeshift row where two show.
+    return List(SECTION_DIAGNOSTICS + 1) { section ->
+        VIDEO_QUICK_ROWS.count { it.section == section && kevboxRowDrawn(it, perPlaylist, livePreview, timeshift, multiview) }
+    }
 }
+
+// KevBox: whether the page draws [ref] right now: KevBox Live shows it, and the switch or playlist it waits
+// for is there. Rows are told apart by catalogue title, because a new key literal would change the counts
+// in tools/i18n/safe_literals.txt. Tunneled playback needs no branch: the catalogue already drops it.
+private fun kevboxRowDrawn(ref: VideoQuickRef, perPlaylist: Boolean, livePreview: Boolean, timeshift: Boolean, multiview: Boolean): Boolean =
+    tv.own.owntv.kevbox.settings.LiveOnlySettings.shows(ref.key) && when (ref.titleRes) { // KevBox: see above
+        R.string.settings_live_engine_per_playlist, R.string.settings_vod_engine_per_playlist,
+        R.string.settings_live_latency_per_playlist, R.string.settings_live_preroll_per_playlist,
+        R.string.settings_live_tune_timeout_per_playlist -> perPlaylist // KevBox: the *_sources rows
+        R.string.settings_preview_audio -> livePreview // KevBox: drawn only with Live preview on
+        R.string.settings_timeshift_window, R.string.settings_timeshift_resume -> timeshift // KevBox: with timeshift on
+        R.string.settings_multiview_tiles_max -> multiview // KevBox: with Multiview on
+        else -> true // KevBox: every other row is always drawn
+    }
 
 /** Rows a [VideoGroup] shows right now. */
 @Composable
@@ -187,12 +196,12 @@ internal val SUBTITLE_APPEARANCE_SEARCH_ROWS: List<Int> = listOf(
 internal val VIDEO_QUICK_ROWS: List<VideoQuickRef> = listOf(
     VideoQuickRef("vp_live_engine", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_live_tv_player, R.string.settings_live_player_description),
     VideoQuickRef("vp_live_engine_sources", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_live_engine_per_playlist, R.string.settings_live_engine_per_playlist_description),
-    VideoQuickRef("vp_reset_live_pins", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_reset_live_player_choices, R.string.settings_reset_live_player_choices_description),
+    VideoQuickRef("vp_reset_live_pins", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_reset_live_player_choices, R.string.kevbox_settings_reset_live_pins_description), // KevBox: names no hidden setting (AC-3)
     VideoQuickRef("vp_vod_engine", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_movies_series_player, R.string.settings_movies_player_description),
     VideoQuickRef("vp_vod_engine_sources", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_vod_engine_per_playlist, R.string.settings_vod_engine_per_playlist_description),
     VideoQuickRef("vp_reset_pins", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_reset_player_choices, R.string.settings_reset_player_choices_description),
     VideoQuickRef("vp_forget_fixes", SECTION_PLAYER, OwnTVIcon.REFRESH, R.string.settings_forget_stream_fixes, R.string.settings_forget_stream_fixes_description),
-    VideoQuickRef("vp_external", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_external_player, R.string.settings_external_player_row_description),
+    VideoQuickRef("vp_external", SECTION_PLAYER, OwnTVIcon.PLAY, R.string.settings_external_player, R.string.kevbox_settings_external_player_row_description), // KevBox: one Live TV switch (AC-5)
     VideoQuickRef("vp_hw", SECTION_PICTURE, OwnTVIcon.VIDEO, R.string.settings_hardware_decoding, R.string.settings_hardware_decoding_description),
     VideoQuickRef("vp_hdr", SECTION_PICTURE, OwnTVIcon.VIDEO, R.string.settings_quick_hdr, R.string.settings_hdr_description),
     VideoQuickRef("vp_max_quality", SECTION_PICTURE, OwnTVIcon.VIDEO, R.string.settings_max_video_quality, R.string.settings_max_video_quality_description),
@@ -202,9 +211,10 @@ internal val VIDEO_QUICK_ROWS: List<VideoQuickRef> = listOf(
     VideoQuickRef("vp_afr", SECTION_FRAME_RATE, OwnTVIcon.VIDEO, R.string.settings_auto_frame_rate, R.string.settings_auto_frame_rate_description),
     VideoQuickRef("vp_afr_pause", SECTION_FRAME_RATE, OwnTVIcon.PAUSE, R.string.settings_afr_pause, R.string.settings_afr_pause_description),
     VideoQuickRef("vp_afr_resolution", SECTION_FRAME_RATE, OwnTVIcon.ASPECT, R.string.settings_afr_resolution, R.string.settings_afr_resolution_description),
-    VideoQuickRef("vp_vod_buffer", SECTION_STREAMING, OwnTVIcon.DOWNLOADS, R.string.settings_vod_buffer, R.string.settings_vod_buffer_description),
-    VideoQuickRef("vp_vod_timeout", SECTION_STREAMING, OwnTVIcon.NETWORK, R.string.settings_vod_network_timeout, R.string.settings_vod_network_timeout_description),
-    VideoQuickRef("vp_vod_reconnects", SECTION_STREAMING, OwnTVIcon.REFRESH, R.string.settings_vod_reconnects, R.string.settings_vod_reconnects_description),
+    // KevBox: the three streaming rows say catch-up, not film (AC-17).
+    VideoQuickRef("vp_vod_buffer", SECTION_STREAMING, OwnTVIcon.DOWNLOADS, R.string.kevbox_settings_catchup_buffer, R.string.kevbox_settings_catchup_buffer_description),
+    VideoQuickRef("vp_vod_timeout", SECTION_STREAMING, OwnTVIcon.NETWORK, R.string.kevbox_settings_catchup_timeout, R.string.kevbox_settings_catchup_timeout_description),
+    VideoQuickRef("vp_vod_reconnects", SECTION_STREAMING, OwnTVIcon.REFRESH, R.string.kevbox_settings_catchup_reconnects, R.string.kevbox_settings_catchup_reconnects_description),
     VideoQuickRef("vp_channel_numbers", SECTION_LIVE, OwnTVIcon.LIVE_TV, R.string.settings_channel_numbers, R.string.settings_channel_numbers_description),
     VideoQuickRef("vp_live_preview", SECTION_LIVE, OwnTVIcon.LIVE_TV, R.string.settings_quick_live_preview, R.string.settings_live_preview_description),
     VideoQuickRef("vp_preview_audio", SECTION_LIVE, OwnTVIcon.AUDIO, R.string.settings_preview_audio, R.string.settings_preview_audio_description),
@@ -218,7 +228,8 @@ internal val VIDEO_QUICK_ROWS: List<VideoQuickRef> = listOf(
     VideoQuickRef("vp_preroll_sources", SECTION_LIVE_TUNING, OwnTVIcon.LIVE_TV, R.string.settings_live_preroll_per_playlist, R.string.settings_live_preroll_per_playlist_description),
     VideoQuickRef("vp_tune_timeout", SECTION_LIVE_TUNING, OwnTVIcon.LIVE_TV, R.string.settings_live_tune_timeout, R.string.settings_live_tune_timeout_description),
     VideoQuickRef("vp_tune_timeout_sources", SECTION_LIVE_TUNING, OwnTVIcon.LIVE_TV, R.string.settings_live_tune_timeout_per_playlist, R.string.settings_live_tune_timeout_per_playlist_description),
-    VideoQuickRef("vp_seek_step", SECTION_CONTROLS, OwnTVIcon.FORWARD, R.string.settings_seek_step, R.string.settings_seek_step_description),
+    // KevBox: catch-up wording (AC-17).
+    VideoQuickRef("vp_seek_step", SECTION_CONTROLS, OwnTVIcon.FORWARD, R.string.kevbox_settings_seek_step, R.string.kevbox_settings_seek_step_description),
     VideoQuickRef("vp_rewind_step", SECTION_CONTROLS, OwnTVIcon.REWIND, R.string.settings_live_rewind_step, R.string.settings_live_rewind_step_description),
     VideoQuickRef("vp_multiview", SECTION_MULTIVIEW, OwnTVIcon.LIST_GRID, R.string.settings_multiview, R.string.settings_multiview_description),
     VideoQuickRef("vp_multiview_tiles", SECTION_MULTIVIEW, OwnTVIcon.LIST_GRID, R.string.settings_multiview_tiles_max, R.string.settings_multiview_description),
@@ -235,7 +246,8 @@ internal val VIDEO_QUICK_ROWS: List<VideoQuickRef> = listOf(
     VideoQuickRef("vp_sub_lang", SECTION_LANGUAGES, OwnTVIcon.SUBTITLE, R.string.settings_preferred_subtitle_language, R.string.settings_preferred_language_description),
     VideoQuickRef("vp_sub_style", SECTION_LANGUAGES, OwnTVIcon.SUBTITLE, R.string.settings_subtitle_appearance, R.string.settings_subtitle_appearance_description),
     VideoQuickRef("vp_resume", SECTION_RESUME, OwnTVIcon.PLAY, R.string.settings_resume_playback, R.string.settings_resume_playback_description),
-    VideoQuickRef("vp_autoplay", SECTION_RESUME, OwnTVIcon.AUTOPLAY_NEXT, R.string.settings_autoplay_next, R.string.settings_autoplay_next_description),
+    // KevBox: catch-up wording (AC-17).
+    VideoQuickRef("vp_autoplay", SECTION_RESUME, OwnTVIcon.AUTOPLAY_NEXT, R.string.kevbox_settings_catchup_next, R.string.kevbox_settings_catchup_next_description),
     VideoQuickRef("vp_measured_stats", SECTION_DIAGNOSTICS, OwnTVIcon.VIDEO, R.string.settings_measured_stats, R.string.settings_measured_stats_description),
     VideoQuickRef("vp_logging", SECTION_DIAGNOSTICS, OwnTVIcon.INFO, R.string.settings_detailed_playback_logging, R.string.settings_detailed_playback_logging_description),
     // N19 — no row, so nothing to find or pin, on a TV whose decoders cannot tunnel.
@@ -341,7 +353,8 @@ internal fun videoQuickBinding(key: String, vm: SettingsViewModel): VideoQuickBi
             val live by vm.externalPlayerLive.collectAsStateWithLifecycle()
             val movies by vm.externalPlayerMovies.collectAsStateWithLifecycle()
             val series by vm.externalPlayerSeries.collectAsStateWithLifecycle()
-            link(externalPlayerChip(live, movies, series), live || movies || series)
+            // KevBox: Live TV is the only section KevBox Live has (AC-5); stored Movies and Series values are not read.
+            link(externalPlayerChip(live, movies = false, series = false), live)
         }
         "vp_zoom" -> {
             val zoom by vm.defaultZoom.collectAsStateWithLifecycle()
@@ -816,7 +829,7 @@ internal fun VideoPlayerGroupRows(
             quickKey = "vp_reset_live_pins",
             saved = true,
             icon = OwnTVIcon.PLAY, title = stringResource(R.string.settings_reset_live_player_choices),
-            desc = stringResource(R.string.settings_reset_live_player_choices_description),
+            desc = stringResource(R.string.kevbox_settings_reset_live_pins_description), // KevBox: names no hidden setting, no movies or episodes (AC-3)
             chip = if (livePins == 0) stringResource(R.string.settings_reset_player_choices_none)
             else pluralStringResource(R.plurals.settings_reset_player_choices_count, livePins, livePins),
             primaryChip = livePins > 0,
@@ -878,9 +891,10 @@ internal fun VideoPlayerGroupRows(
             quickKey = "vp_external",
             opens = true,
             icon = OwnTVIcon.PLAY, title = stringResource(R.string.settings_external_player),
-            desc = stringResource(R.string.settings_external_player_row_description),
-            chip = externalPlayerChip(externalLive, externalMovies, externalSeries), chevron = true,
-            primaryChip = externalLive || externalMovies || externalSeries,
+            desc = stringResource(R.string.kevbox_settings_external_player_row_description), // KevBox: one Live TV switch, no sections (AC-5)
+            // KevBox: the chip reads the Live TV switch alone (AC-5); stored Movies and Series values stay untouched.
+            chip = externalPlayerChip(externalLive, movies = false, series = false), chevron = true,
+            primaryChip = externalLive,
             modifier = Modifier.focusRequester(dialogRowFocus.getValue(Dialog.EXTERNAL_PLAYER)),
             onClick = { savedScroll = scrollState.value; dialog = Dialog.EXTERNAL_PLAYER },
         )
@@ -974,8 +988,8 @@ internal fun VideoPlayerGroupRows(
         Row2(
             quickKey = "vp_vod_buffer",
             choices = vm.vodBufferChoicesSecs.map { vodAutoOrSeconds(it) }, chosen = vm.vodBufferChoicesSecs.indexOf(vodBufferSecs), recommended = vm.vodBufferChoicesSecs.indexOf(0),
-            icon = OwnTVIcon.DOWNLOADS, title = stringResource(R.string.settings_vod_buffer),
-            desc = stringResource(R.string.settings_vod_buffer_description),
+            icon = OwnTVIcon.DOWNLOADS, title = stringResource(R.string.kevbox_settings_catchup_buffer), // KevBox: catch-up wording (AC-17)
+            desc = stringResource(R.string.kevbox_settings_catchup_buffer_description),
             chip = vodAutoOrSeconds(vodBufferSecs), primaryChip = vodBufferSecs > 0, chevron = true,
             modifier = Modifier.focusRequester(dialogRowFocus.getValue(Dialog.VOD_BUFFER)),
             onClick = { savedScroll = scrollState.value; dialog = Dialog.VOD_BUFFER },
@@ -983,8 +997,8 @@ internal fun VideoPlayerGroupRows(
         Row2(
             quickKey = "vp_vod_timeout",
             choices = vm.vodNetworkTimeoutChoicesSecs.map { vodAutoOrSeconds(it) }, chosen = vm.vodNetworkTimeoutChoicesSecs.indexOf(vodNetworkTimeoutSecs), recommended = vm.vodNetworkTimeoutChoicesSecs.indexOf(0),
-            icon = OwnTVIcon.NETWORK, title = stringResource(R.string.settings_vod_network_timeout),
-            desc = stringResource(R.string.settings_vod_network_timeout_description),
+            icon = OwnTVIcon.NETWORK, title = stringResource(R.string.kevbox_settings_catchup_timeout), // KevBox: catch-up wording (AC-17)
+            desc = stringResource(R.string.kevbox_settings_catchup_timeout_description),
             chip = vodAutoOrSeconds(vodNetworkTimeoutSecs), primaryChip = vodNetworkTimeoutSecs > 0, chevron = true,
             modifier = Modifier.focusRequester(dialogRowFocus.getValue(Dialog.VOD_TIMEOUT)),
             onClick = { savedScroll = scrollState.value; dialog = Dialog.VOD_TIMEOUT },
@@ -992,8 +1006,8 @@ internal fun VideoPlayerGroupRows(
         Row2(
             quickKey = "vp_vod_reconnects",
             choices = vm.vodReconnectChoices.map { stringResource(R.string.settings_vod_reconnects_value, it) }, chosen = vm.vodReconnectChoices.indexOf(vodReconnects),
-            icon = OwnTVIcon.REFRESH, title = stringResource(R.string.settings_vod_reconnects),
-            desc = stringResource(R.string.settings_vod_reconnects_description),
+            icon = OwnTVIcon.REFRESH, title = stringResource(R.string.kevbox_settings_catchup_reconnects), // KevBox: catch-up wording (AC-17)
+            desc = stringResource(R.string.kevbox_settings_catchup_reconnects_description),
             chip = stringResource(R.string.settings_vod_reconnects_value, vodReconnects), primaryChip = vodReconnects > 1, chevron = true,
             modifier = Modifier.focusRequester(dialogRowFocus.getValue(Dialog.VOD_RECONNECTS)),
             onClick = { savedScroll = scrollState.value; dialog = Dialog.VOD_RECONNECTS },
@@ -1162,8 +1176,8 @@ internal fun VideoPlayerGroupRows(
         Row2(
             quickKey = "vp_seek_step",
             choices = tv.own.owntv.core.settings.SeekSteps.SEEK_CHOICES.map { stringResource(R.string.settings_live_buffer_seconds, it) }, chosen = tv.own.owntv.core.settings.SeekSteps.SEEK_CHOICES.indexOf(seekStep), recommended = tv.own.owntv.core.settings.SeekSteps.SEEK_CHOICES.indexOf(tv.own.owntv.core.settings.SeekSteps.DEFAULT_SEEK_STEP_SEC),
-            icon = OwnTVIcon.FORWARD, title = stringResource(R.string.settings_seek_step),
-            desc = stringResource(R.string.settings_seek_step_description),
+            icon = OwnTVIcon.FORWARD, title = stringResource(R.string.kevbox_settings_seek_step), // KevBox: catch-up wording (AC-17)
+            desc = stringResource(R.string.kevbox_settings_seek_step_description),
             chip = stringResource(R.string.settings_live_buffer_seconds, seekStep), chevron = true,
             modifier = Modifier.focusRequester(dialogRowFocus.getValue(Dialog.SEEK_STEP)),
             onClick = { savedScroll = scrollState.value; dialog = Dialog.SEEK_STEP },
@@ -1330,8 +1344,8 @@ internal fun VideoPlayerGroupRows(
         )
         Row2(
             quickKey = "vp_autoplay",
-            icon = OwnTVIcon.AUTOPLAY_NEXT, title = stringResource(R.string.settings_autoplay_next),
-            desc = stringResource(R.string.settings_autoplay_next_description),
+            icon = OwnTVIcon.AUTOPLAY_NEXT, title = stringResource(R.string.kevbox_settings_catchup_next), // KevBox: catch-up wording (AC-17)
+            desc = stringResource(R.string.kevbox_settings_catchup_next_description),
             chip = stringResource(if (autoPlayNext) R.string.common_on else R.string.common_off), primaryChip = autoPlayNext,
             onClick = { vm.setAutoPlayNext(!autoPlayNext) },
         )
@@ -1740,7 +1754,7 @@ internal fun VideoPlayerGroupRows(
             onDismiss = { dialog = Dialog.NONE },
         )
         Dialog.SEEK_STEP -> PickerDialog(
-            title = stringResource(R.string.settings_seek_step),
+            title = stringResource(R.string.kevbox_settings_seek_step), // KevBox: catch-up wording (AC-17)
             options = tv.own.owntv.core.settings.SeekSteps.SEEK_CHOICES.map {
                 it.toString() to stringResource(R.string.settings_live_buffer_seconds, it)
             },
@@ -1756,14 +1770,14 @@ internal fun VideoPlayerGroupRows(
             onDismiss = { dialog = Dialog.NONE },
         )
         Dialog.VOD_BUFFER -> PickerDialog(
-            title = stringResource(R.string.settings_vod_buffer),
+            title = stringResource(R.string.kevbox_settings_catchup_buffer), // KevBox: catch-up wording (AC-17)
             options = vm.vodBufferChoicesSecs.map { it.toString() to vodAutoOrSeconds(it) },
             selected = vodBufferSecs.toString(),
             onSelect = { vm.setVodBufferSecs(it.toIntOrNull() ?: 0); dialog = Dialog.NONE },
             onDismiss = { dialog = Dialog.NONE },
         )
         Dialog.VOD_TIMEOUT -> PickerDialog(
-            title = stringResource(R.string.settings_vod_network_timeout),
+            title = stringResource(R.string.kevbox_settings_catchup_timeout), // KevBox: catch-up wording (AC-17)
             options = vm.vodNetworkTimeoutChoicesSecs.map { it.toString() to vodAutoOrSeconds(it) },
             selected = vodNetworkTimeoutSecs.toString(),
             onSelect = { vm.setVodNetworkTimeoutSecs(it.toIntOrNull() ?: 0); dialog = Dialog.NONE },
@@ -1786,7 +1800,7 @@ internal fun VideoPlayerGroupRows(
             onDismiss = { dialog = Dialog.NONE },
         )
         Dialog.VOD_RECONNECTS -> PickerDialog(
-            title = stringResource(R.string.settings_vod_reconnects),
+            title = stringResource(R.string.kevbox_settings_catchup_reconnects), // KevBox: catch-up wording (AC-17)
             options = vm.vodReconnectChoices.map { it.toString() to stringResource(R.string.settings_vod_reconnects_value, it) },
             selected = vodReconnects.toString(),
             onSelect = { vm.setVodReconnects(it.toIntOrNull() ?: 1); dialog = Dialog.NONE },
@@ -1993,9 +2007,15 @@ private fun engineOptions(default: EnginePreference): List<Pair<String, String>>
         }
     }
 
-/** Row chip for the External player row: "Off", "On" (all three), or the sections that are on. */
+/**
+ * Row chip for the External player row: "Off", "On" (all three), or the sections that are on.
+ * KevBox: with Movies and Series off (KevBox Live passes false for both), the Live TV switch alone
+ * gives "On" or "Off" (AC-5).
+ */
 @Composable
 private fun externalPlayerChip(live: Boolean, movies: Boolean, series: Boolean): String {
+    // KevBox: one switch left, so On and Off follow it instead of naming the section (AC-5).
+    if (!movies && !series) return stringResource(if (live) R.string.common_on else R.string.common_off)
     val on = buildList {
         if (live) add(stringResource(R.string.common_nav_live_tv))
         if (movies) add(stringResource(R.string.common_nav_movies))
@@ -2090,6 +2110,8 @@ internal fun Row2(
     saved: Boolean = false,
     onClick: () -> Unit,
 ) {
+    // KevBox: the one place Video player rows hide (AC-3). A row KevBox Live does not show draws nothing, on every page.
+    if (quickKey != null && !tv.own.owntv.kevbox.settings.LiveOnlySettings.shows(quickKey)) return
     val colors = OwnTVTheme.colors
     val pin = if (quickKey != null) LocalQuickPin.current else null
     // Inside a popup (Local sync's steps, …) the row is a Stage popup row, so old popups follow the new design.
@@ -2332,13 +2354,13 @@ private fun ExternalPlayerDialog(
         tv.own.owntv.core.settings.SettingsRepository.ExternalPlayerSection.LIVE_TV to (stringResource(R.string.common_nav_live_tv) to live),
         tv.own.owntv.core.settings.SettingsRepository.ExternalPlayerSection.MOVIES to (stringResource(R.string.common_nav_movies) to movies),
         tv.own.owntv.core.settings.SettingsRepository.ExternalPlayerSection.SERIES to (stringResource(R.string.common_nav_series) to series),
-    )
+    ).filter { it.first == tv.own.owntv.core.settings.SettingsRepository.ExternalPlayerSection.LIVE_TV } // KevBox: Live TV switch only (AC-5)
     val switches: @Composable () -> Unit = {
         PanelSwitches(sections.map { (section, v) -> Triple(v.first, v.second) { onToggle(section, !v.second) } }, onDone = onDismiss)
     }
     // Three switches: in the page's panel (owner, P12), a Stage popup elsewhere.
     if (panelEditor(onDismiss) { switches() }) return
-    tv.own.owntv.ui.stage.StagePopup(onDismiss = onDismiss, title = stringResource(R.string.settings_external_player), body = stringResource(R.string.settings_external_player_description)) { switches() }
+    tv.own.owntv.ui.stage.StagePopup(onDismiss = onDismiss, title = stringResource(R.string.settings_external_player), body = stringResource(R.string.kevbox_settings_external_player_description)) { switches() } // KevBox: one Live TV switch, no sections (AC-5)
 }
 
 /** A +/- stepper dialog for an integer value. */

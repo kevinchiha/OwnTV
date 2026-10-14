@@ -457,6 +457,9 @@ internal fun GuideProgrammeMenu(title: String, subtitle: String, actions: GuideP
                 actions.onCatchupPlayer(all[(all.indexOf(player) + 1) % all.size])
             },
         )
+        // KevBox: KevBox Live does not record, so the RECORD group is not drawn at all (AC-21). Nulling
+        // its actions would still draw them greyed. The code stays for upstream merges.
+        if (GUIDE_MENU_RECORD_GROUP) { // KevBox: see above
         StageGroupLabel(stringResource(R.string.content_menu_group_record).uppercase(locale))
         StageMenuItem(
             text = actions.recordLabel, icon = OwnTVIcon.REC, iconFilled = true,
@@ -474,6 +477,7 @@ internal fun GuideProgrammeMenu(title: String, subtitle: String, actions: GuideP
             enabled = actions.onRecordFromCatchup != null,
             onClick = { actions.onRecordFromCatchup?.invoke(); onDismiss() },
         )
+        } // KevBox: end of the hidden RECORD group
         StageGroupLabel(stringResource(R.string.content_menu_group_channel).uppercase(locale))
         StageMenuItem(
             text = stringResource(if (actions.isFavorite) R.string.content_epg_remove_favourite else R.string.content_epg_add_favourite),
@@ -494,6 +498,9 @@ internal fun GuideProgrammeMenu(title: String, subtitle: String, actions: GuideP
         }
     }
 }
+
+// KevBox: false hides the programme menu's RECORD group in KevBox Live (AC-21).
+private const val GUIDE_MENU_RECORD_GROUP = false // KevBox: see above
 
 /** Record ▾ under the programme: Record (or Stop / Cancel), and Record every showing (or its stop). */
 @Composable

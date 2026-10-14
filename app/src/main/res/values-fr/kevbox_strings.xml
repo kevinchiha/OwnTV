@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KevBox Live fork only: French member-facing text added in 0.2. Other languages fall back to English. -->
+<resources>
+    <!-- 0.2 AC-4 -->
+    <string name="kevbox_settings_group_watching">Lecture</string>
+    <string name="kevbox_settings_vp_cat_controls_catchup">Commandes et replay</string>
+    <string name="kevbox_settings_vp_cat_mini_player">Mini-lecteur</string>
+    <!-- 0.2 AC-17 -->
+    <string name="kevbox_settings_catchup_next">Replay : lire le programme suivant</string>
+    <string name="kevbox_settings_catchup_next_description">Quand un programme en replay se termine, le programme suivant de la même chaîne démarre.</string>
+    <string name="kevbox_settings_line_catchup_next">Le programme suivant de la même chaîne</string>
+    <string name="kevbox_settings_seek_step">Durée du saut en replay</string>
+    <string name="kevbox_settings_seek_step_description">De combien le retour et l’avance sautent en replay.</string>
+    <string name="kevbox_settings_line_seek_step">Saut de retour et d’avance en replay</string>
+    <string name="kevbox_settings_help_seek_step">De combien reculent et avancent les programmes en replay à chaque appui. Maintenir la touche continue de sauter.</string>
+    <string name="kevbox_settings_catchup_buffer">Mémoire tampon du replay</string>
+    <string name="kevbox_settings_catchup_buffer_description">Jusqu’où le replay est chargé à l’avance. Auto utilise ce qui convient à cet appareil. Une mémoire tampon plus longue résiste mieux à une mauvaise connexion ; la mémoire de l’appareil reste la limite, donc un programme à débit élevé peut en contenir moins que prévu.</string>
+    <string name="kevbox_settings_line_catchup_buffer">Jusqu’où le replay est chargé à l’avance</string>
+    <string name="kevbox_settings_catchup_timeout">Délai réseau du replay</string>
+    <string name="kevbox_settings_catchup_timeout_description">Combien de temps le replay attend un serveur muet avant de considérer la connexion comme perdue. Auto conserve le délai propre à chaque lecteur : 60 secondes avec mpv, 20 avec ExoPlayer.</string>
+    <string name="kevbox_settings_catchup_reconnects">Tentatives de reconnexion du replay</string>
+    <string name="kevbox_settings_catchup_reconnects_description">Combien de fois un programme en replay qui perd la connexion est rouvert là où il s’est arrêté avant qu’une erreur s’affiche. Une minute de lecture sans coupure rend les tentatives.</string>
+    <!-- 0.2 AC-18 -->
+    <string name="kevbox_settings_startup_live_tv">TV en direct</string>
+    <string name="kevbox_settings_startup_channel_unavailable">La chaîne de démarrage est indisponible. La TV en direct a été ouverte.</string>
+    <!-- 0.2 gap settings-3 -->
+    <string name="kevbox_settings_help_startup">Ce que KevBox Live affiche au démarrage : la TV en direct, la dernière chaîne, la TV en direct sur les favoris, ou une chaîne de votre choix.</string>
+    <string name="kevbox_settings_help_live_preview">Lit dans le cadre en haut du guide la chaîne sur laquelle vous vous placez, sans appuyer sur OK.</string>
+    <!-- 0.2 AC-11 -->
+    <string name="kevbox_settings_group_summary_layout">Navigation, largeur du guide et raccourcis de la télécommande</string>
+    <string name="kevbox_settings_group_summary_appearance">Thème, verre, animations et taille du texte</string>
+    <string name="kevbox_settings_card_layout">Navigation, largeur du guide, raccourcis</string>
+    <string name="kevbox_settings_card_appearance">Thème, verre, texte, animations</string>
+    <string name="kevbox_settings_card_player">Choix enregistrés, lecteur externe, streaming</string>
+    <string name="kevbox_settings_card_watching">Sauts, replay, mini-lecteur</string>
+    <!-- 0.2 AC-5 -->
+    <string name="kevbox_settings_external_player_description">Ouvre les chaînes en direct dans une autre application vidéo installée sur le téléviseur.</string>
+    <string name="kevbox_settings_external_player_row_description">Ouvre les chaînes en direct dans une autre application vidéo installée sur le téléviseur (VLC, MX Player) plutôt que dans le lecteur intégré. Utile pour une chaîne que cette application ne peut pas décoder, ou si vous préférez un autre lecteur. Les chaînes précédente et suivante ne sont pas disponibles pendant la lecture dans une autre application ; les chaînes nécessitant un User-Agent ou un en-tête Referer personnalisé risquent de ne pas être lues.</string>
+    <string name="kevbox_settings_line_external">VLC, MX Player… pour les chaînes en direct</string>
+    <!-- 0.2 AC-3 -->
+    <string name="kevbox_settings_reset_live_pins_description">Basculer une chaîne entre ExoPlayer et mpv avec le bouton du lecteur en plein écran enregistre ce choix pour la chaîne. La réinitialisation efface ces choix : chaque chaîne repart sur le lecteur par défaut.</string>
+    <!-- 0.2 AC-26 -->
+    <string name="kevbox_epg_automatic">Configuré pour vous</string>
+    <!-- 0.2 AC-31 -->
+    <string name="kevbox_more_fav_empty_body">Maintenez OK sur une chaîne, puis choisissez « Ajouter aux favoris ».</string>
+    <!-- 0.2 AC-32 -->
+    <string name="kevbox_about_description">KevBox Live diffuse les chaînes de TV en direct de votre abonnement KevBox, avec un guide des programmes complet, le replay et vos favoris. Votre playlist est configurée pour vous ; contactez KevBox s’il manque une chaîne.</string>
+    <!-- 0.2 AC-34, AC-35 -->
+    <string name="kevbox_preview_sample_category">Chaînes d’exemple</string>
+    <string name="kevbox_preview_sample_programme_1">Journal du matin</string>
+    <string name="kevbox_preview_sample_programme_2">Football en direct</string>
+    <string name="kevbox_preview_sample_programme_3">Film du soir</string>
+    <string name="kevbox_preview_sample_programme_4">Dessins animés</string>
+    <string name="kevbox_preview_sample_programme_5">Top des hits</string>
+    <string name="kevbox_preview_sample_programme_6">Vie sauvage</string>
+</resources>

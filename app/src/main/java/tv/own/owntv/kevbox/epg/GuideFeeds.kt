@@ -23,7 +23,7 @@ import tv.own.owntv.core.sync.work.EpgSyncScheduler
  * Fills the TV guide from the playlist itself. Upstream asks for this in onboarding ("Sync the guide?"
  * after the first import); KevBox Live has no onboarding and adds the playlist on its own, so this
  * does the same job without asking: once a playlist's channels have synced, its own guide feed
- * (Xtream's xmltv.php) goes into Core's EPG list and downloads, set to refresh every 12 hours.
+ * (Xtream's xmltv.php) goes into Core's EPG list and downloads, set to refresh every 24 hours.
  *
  * Only a source linked to a profile counts, so a hidden line's guide is never added. The download
  * waits for the channel sync because Core keeps only the programmes of channels it already has.
@@ -64,7 +64,7 @@ class GuideFeeds(
             when (step) {
                 is GuideFeedStep.Add -> {
                     val feed = store.add(source.name, step.url, source.userAgent)
-                    settings.setEpgAutoRefresh(feed.id, EpgRefresh(EpgAutoRefresh.HOURS_12, 0))
+                    settings.setEpgAutoRefresh(feed.id, EpgRefresh(EpgAutoRefresh.HOURS_24, 0))
                     scheduler.enqueueSync(feed.id, SYNC_REASON)
                 }
                 is GuideFeedStep.Download -> scheduler.enqueueSync(step.feedId, SYNC_REASON)
@@ -73,22 +73,47 @@ class GuideFeeds(
     }
 
     /**
-     * Takes [source]'s guide feeds out of the EPG list with their programmes, as Settings › EPG
-     * sources › Delete does. For a line that is deleted or hidden: its feed URL carries that line's
-     * login, and nothing on this TV plays its channels any more.
+     * Takes [source]'s guide feeds out of the EPG list with their programmes. For a line that is
+     * deleted or hidden: its feed URL carries that line's login, and nothing on this TV plays its
+     * channels any more.
      */
     suspend fun removeFor(source: SourceEntity) {
         val urls = epgRepository.guideUrls(source).toSet()
         if (urls.isEmpty()) return
         mutex.withLock {
-            store.getAll().filter { it.url in urls }.forEach { feed ->
-                scheduler.cancelSync(feed.id)
-                // Programmes first, then the entry: a cancelled caller must not leave programmes with no feed.
-                withContext(NonCancellable) {
-                    epgRepository.clear(feed.id)
-                    store.remove(feed.id)
-                }
-            }
+            store.getAll().filter { it.url in urls }.forEach { remove(it.id) }
+        }
+    }
+
+    /**
+     * Takes out the guide feeds [old] used and [new] does not, then runs [save], which stores [new].
+     * For when the playlist sync edits a source in place: its server, username or password changed,
+     * so the old feed URL no longer works and would keep failing to download. The new feed is added
+     * by [ensure] once the resync finishes.
+     *
+     * The save runs inside the same lock as the removal. Saved after the lock, a sync finishing in
+     * between would let [ensure] read the row with the old server and add the old feed back, and
+     * nothing would ever remove it (AC-28). Removal comes first: if it fails, the save never runs, the
+     * stored row still differs from the playlist, and the next reconcile retries both.
+     */
+    suspend fun replaceFor(old: SourceEntity, new: SourceEntity, save: suspend () -> Unit) {
+        swapGuideFeedsThenSave(
+            lock = mutex,
+            oldGuideUrls = epgRepository.guideUrls(old),
+            newGuideUrls = epgRepository.guideUrls(new),
+            feeds = { store.getAll().map { GuideFeed(it.id, it.url, it.lastSyncAt) } },
+            remove = { remove(it) },
+            save = save,
+        )
+    }
+
+    /** Call with [mutex] held. */
+    private suspend fun remove(feedId: Long) {
+        scheduler.cancelSync(feedId)
+        // Programmes first, then the entry: a cancelled caller must not leave programmes with no feed.
+        withContext(NonCancellable) {
+            epgRepository.clear(feedId)
+            store.remove(feedId)
         }
     }
 
@@ -104,4 +129,23 @@ class GuideFeeds(
     private companion object {
         const val SYNC_REASON = "kevbox"
     }
+}
+
+/**
+ * [GuideFeeds.replaceFor]'s order, apart from Core's stores so a test can drive it with fakes: under
+ * [lock], remove each feed [planGuideFeedSwap] picks, then [save]. A throw from [remove] skips the
+ * save; a throw from [save] leaves the removals done. Either way it reaches the caller.
+ */
+internal suspend fun swapGuideFeedsThenSave(
+    lock: Mutex,
+    oldGuideUrls: List<String>,
+    newGuideUrls: List<String>,
+    feeds: suspend () -> List<GuideFeed>,
+    remove: suspend (Long) -> Unit,
+    save: suspend () -> Unit,
+) = lock.withLock {
+    if (oldGuideUrls.isNotEmpty()) {
+        planGuideFeedSwap(oldGuideUrls, newGuideUrls, feeds()).forEach { remove(it) }
+    }
+    save()
 }

@@ -1,0 +1,678 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 24 finding(s) across 31 selected item(s).",
+  "summary": {
+    "files_reviewed": 31,
+    "comments": 24,
+    "total_tokens": 8912295,
+    "input_tokens": 8827337,
+    "output_tokens": 84958,
+    "cache_read_tokens": 7523612,
+    "cache_write_tokens": 1303411,
+    "elapsed": "4m44s"
+  },
+  "tool_calls": {
+    "total": 157,
+    "by_tool": {
+      "code_comment": 12,
+      "code_search": 81,
+      "file_find": 6,
+      "file_read": 56,
+      "file_read_diff": 2
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/live/GuideChannelSteps.kt",
+      "content": "Only `GuideChannelStepsTest` uses `GuideChannelSteps`. The guide grid in `EpgScreen.kt` handles CH+/CH− with `Modifier.chNavPaging(...)` and `stepTo` and never calls `target()`, so this is dead code. That makes the unit test misleading for AC-24: it passes, but none of the code it covers runs in the app. The two also behave differently. The KDoc says \"CH+ on the first row stays put\" and returns null when nothing moves. `chNavPaging` also handles JUMP_TO_FIRST/LAST and whatever actions the member bound. Either call `target()` from the grid's handler, or delete this object and test the `chNavPaging` path instead.",
+      "existing_code": "object GuideChannelSteps {\n    /** The row CH+ (towardFirst) or CH− lands on, or null when there is nowhere to go. */\n    fun target(from: Int, towardFirst: Boolean, upSkip: Int, downSkip: Int, count: Int): Int? {",
+      "start_line": 10,
+      "end_line": 12,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "tools/kevbox/tv-install.sh",
+      "content": "With `set -euo pipefail`, any failure in this pipeline makes the whole assignment fail, and the script exits with no message. That includes `head -n 1` closing the pipe early and `sed` getting SIGPIPE when there are several `versionName=` matches (for example an updated system package). When that happens the user never sees the helpful `die` on the next line. A fix is to have sed stop after the first match itself and to tolerate pipeline failure here.",
+      "suggestion_code": "version=\"${1:-$(adb -s \"$tv\" shell dumpsys package \"$pkg\" | sed -n 's/.*versionName=\\([0-9.]*\\).*/\\1/p;T;q' || true)}\"",
+      "existing_code": "version=\"${1:-$(adb -s \"$tv\" shell dumpsys package \"$pkg\" | sed -n 's/.*versionName=\\([0-9.]*\\).*/\\1/p' | head -n 1)}\"",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "tools/kevbox/tv-install.sh",
+      "content": "The Gradle home is hardcoded to `/home/kevin/.gradle`, while the keys path just above uses `$HOME`. On any other account or machine this points at a folder that doesn't exist or can't be written to. Use `$HOME/.gradle`, or let it be overridden.",
+      "suggestion_code": "  GRADLE_USER_HOME=\"${KEVBOX_GRADLE_HOME:-$HOME/.gradle}\" ./gradlew assembleStandardRelease",
+      "existing_code": "  GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew assembleStandardRelease",
+      "start_line": 36,
+      "end_line": 36,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveShortcuts.kt",
+      "content": "`CONTINUE_LAST_WATCHED` is not in `REMOVED`, so the picker still offers it and a press still reaches `continueLastWatched()` in `OwnTVShell.kt` (lines 767-781). That function resolves the newest history row of any type: `ContinueKind.MOVIE` and `ContinueKind.EPISODE` call `movieVm.playByIdAsync` and `seriesVm.playFromHomeAsync` and open full screen in MOVIES or SERIES. On a TV that still has old VOD history, one button press plays a stored movie or episode in a live-only app. That breaks the non-goal \"It stays stored and never shows\". There are two ways to fix it. One is to keep the action and make resolve/dispatch play only a LIVE target, or fall back to the last live channel. The other is to treat the action as removed and resolve it to `OPEN_LIVE_TV`.",
+      "existing_code": "    val REMOVED: Set\u003cRemoteShortcutAction\u003e = setOf(\n        RemoteShortcutAction.OPEN_HOME,\n        RemoteShortcutAction.OPEN_MOVIES,\n        RemoteShortcutAction.OPEN_SERIES,\n        RemoteShortcutAction.OPEN_DOWNLOADS,\n        RemoteShortcutAction.OPEN_GUIDE,\n    )",
+      "start_line": 14,
+      "end_line": 20,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "tools/kevbox/tv-install.sh",
+      "content": "Unlike `release.sh` (lines 95-99), this script never checks what the env files contain. If `kevbox-live.env` doesn't set `KEVBOX_SUPABASE_URL` or `KEVBOX_SUPABASE_ANON_KEY`, `export NAME` on an unset variable still succeeds, even with `set -u`. Gradle then falls back to `\"\"` (build.gradle.kts:65-68) and builds an APK with a blank Supabase config. The script installs that over the TV's working app and keeps its data, so the TV can no longer refresh the session, check playlists or get the access verdict. Add the same checks `release.sh` uses before building: an `https://` URL and a non-blank anon key, plus the NUVIO_RELEASE_* values.",
+      "suggestion_code": "  [[ \"${KEVBOX_SUPABASE_URL:-}\" == https://* \u0026\u0026 -n \"${KEVBOX_SUPABASE_ANON_KEY:-}\" ]] \\\n    || { echo \"tv-install: $supabase_env must set KEVBOX_SUPABASE_URL (https://) and KEVBOX_SUPABASE_ANON_KEY\" \u003e\u00262; exit 1; }\n  export KEVBOX_SUPABASE_URL KEVBOX_SUPABASE_ANON_KEY",
+      "existing_code": "  export KEVBOX_SUPABASE_URL KEVBOX_SUPABASE_ANON_KEY",
+      "start_line": 34,
+      "end_line": 34,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/res/values/kevbox_strings.xml",
+      "content": "This base `values/` file mixes British and American spelling. It says \"favourites\" and \"programme\" here and in the catch-up rows. But two lines above, `kevbox_more_fav_empty_body` says \"Favorites\", and the existing strings say \"TV programs\" (`kevbox_search_card_body`). The base `kevbox_brand_strings.xml` also uses \"favorites\". The project keeps British wording in `values-en-rGB/`. So the base file should use US spelling (\"favorites\", \"program\"), with British versions added under `values-en-rGB/` if you want them. As it is, the same screen shows \"Favorites\" in one place and \"favourites\" in another. The catch-up keys have the same problem: \"Catch-up: play the next programme\", \"programme\" in the descriptions, and \"replays\" here alongside \"catch-up\" everywhere else.",
+      "existing_code": "    \u003cstring name=\"kevbox_about_description\"\u003eKevBox Live plays the live TV channels in your KevBox subscription, with a full programme guide, replays and favourites. Your playlist is set up for you; contact KevBox if a channel is missing.\u003c/string\u003e",
+      "start_line": 73,
+      "end_line": 73,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+      "content": "In French, \"Pas d’avance\" only means the forward step. The setting also controls rewind, as `kevbox_settings_seek_step_description` and `kevbox_settings_line_seek_step` say. A neutral wording fits better, e.g. « Pas de saut en replay ». That also matches the card text `kevbox_settings_card_watching` (« Pas de saut »).",
+      "suggestion_code": "    \u003cstring name=\"kevbox_settings_seek_step\"\u003ePas de saut en replay\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"kevbox_settings_seek_step\"\u003ePas d’avance en replay\u003c/string\u003e",
+      "start_line": 12,
+      "end_line": 12,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+      "content": "When live history is empty, `rows` is empty, so this falls back to `clearFocus`. But the Clear history tool is only drawn when `counts.live \u003e 0`, so `clearFocus` isn't attached to anything. `requestFocus()` throws, `runCatching` swallows the exception, and `setEntry` returns false. On a new install, OK from the More sheet lands nowhere, which is the opposite of what the comment says. The same thing happens after Clear history succeeds: the `LaunchedEffect(showClear)` asks `clearFocus` for focus, but the tool has just disappeared, so focus is lost on a D-pad-only TV. Give the empty state something focusable to fall back to (for example the page head or the EmptyNote), or attach `clearFocus` to an element that is always drawn.",
+      "existing_code": "        androidx.compose.runtime.SideEffect { setEntry { runCatching { (rows.firstOrNull()?.let { r -\u003e focusOf(r.id) } ?: if (KEVBOX_VOD_SHOWN) segFocus else clearFocus).requestFocus() }.isSuccess } }",
+      "start_line": 512,
+      "end_line": 512,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+      "content": "If you remove the last live favourite, `next` is null, so `returnTo` is null and nothing gets focus back after the menu closes. The page then switches to EmptyNote and focus is lost. Also, `firstTarget` still falls back to `segFocus` when there are no favourites (line 338), but the segmented control is no longer drawn. That `requestFocus` fails quietly, so OK from the More sheet does nothing on an empty Favorites page. Both need a focusable target that is always attached.",
+      "existing_code": "                        returnTo = if (KEVBOX_VOD_SHOWN) segFocus else next?.let { focusOf(MediaType.LIVE, it.id) }",
+      "start_line": 423,
+      "end_line": 423,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+      "content": "A bare `false \u0026\u0026` makes the whole block unreachable and causes a compiler warning (\"condition is always false\"). It is also easy to miss during upstream merges. Use a named constant, as MorePages does with `KEVBOX_VOD_SHOWN` (for example `private const val KEVBOX_AFR_PROMPT = false`), so the intent can be searched for and stays consistent.",
+      "existing_code": "            if (false \u0026\u0026 isFull \u0026\u0026 playerChromeReady \u0026\u0026 !autoFrameRate \u0026\u0026 !afrPrompted) { // KevBox: playerChromeReady.",
+      "start_line": 1725,
+      "end_line": 1725,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+      "content": "Focus is lost after you confirm Clear history. When the dialog closes, the `LaunchedEffect(showClear)` at line 485 calls `clearFocus.requestFocus()`. Clearing live history sets `counts.live` to 0, so this StageTool is no longer drawn and `clearFocus` isn't attached to anything. The request fails without an error, and focus drops off the page with nothing focused on the TV. Upstream mostly avoided this because stored movie or series history usually kept `counts.total \u003e 0`. When the tool is gone after a clear, send focus to a target that still exists, such as the More sheet entry or another fallback.",
+      "existing_code": "            if (if (KEVBOX_VOD_SHOWN) counts.total \u003e 0 else counts.live \u003e 0) StageTool(stringResource(R.string.settings_clear_history), onClick = { showClear = true }, icon = OwnTVIcon.TRASH, danger = true, modifier = Modifier.focusRequester(clearFocus))",
+      "start_line": 509,
+      "end_line": 509,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+      "content": "`pinned` is now an unused parameter, so `MoreScreen` still collects `settingsVm.quickPinnedKeys` (line 136) only to pass `pinned.size` along. Remove the parameter and the collection in `MoreScreen`, or suppress the warning on purpose. Otherwise there's a dead StateFlow subscription that recomposes for nothing.",
+      "existing_code": "    // [pinned] is no longer read: the Quick card counts the Quick rows its page lists.",
+      "start_line": 243,
+      "end_line": 243,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/res/values/kevbox_strings.xml",
+      "content": "The About text calls the feature \"replays\". This same change renames every related row to \"catch-up\" (`kevbox_settings_catchup_*`, `kevbox_settings_card_watching`, the Controls \u0026 catch-up heading). So members see two names for one feature. Use \"catch-up\" here too. The French text already uses « replay » everywhere, so it needs no change.",
+      "suggestion_code": "    \u003cstring name=\"kevbox_about_description\"\u003eKevBox Live plays the live TV channels in your KevBox subscription, with a full program guide, catch-up and favorites. Your playlist is set up for you; contact KevBox if a channel is missing.\u003c/string\u003e",
+      "existing_code": "    \u003cstring name=\"kevbox_about_description\"\u003eKevBox Live plays the live TV channels in your KevBox subscription, with a full programme guide, replays and favourites. Your playlist is set up for you; contact KevBox if a channel is missing.\u003c/string\u003e",
+      "start_line": 73,
+      "end_line": 73,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/settings/LanguageSettingsScreen.kt",
+      "content": "`translate` is never read now that neither row passes `extra = translate`, so it is dead code and the compiler will warn that the variable is unused. If the aim is to keep the upstream diff small, leave a `@Suppress(\"UNUSED_VARIABLE\")` (or similar) and say why. Otherwise remove the declaration. The `TranslateBlock` composable stays reachable either way, so upstream merges are not affected.",
+      "existing_code": "    // KevBox: no Help translate panel: the rows below pass no extra, so this block is never drawn (AC-33).\n    val translate: @Composable () -\u003e Unit = { TranslateBlock() }",
+      "start_line": 168,
+      "end_line": 169,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+      "content": "`replaceFor` releases `GuideFeeds.mutex` before `updateSource` runs. In that gap the source row still has the old credentials. If `ensureAll` fires then (it runs on any `(id, lastSyncAt)` change, for example an auto-refresh finishing), `ensure` re-adds the old guide URL that was just removed. After `updateSource` commits, the stored fields match the row, so `planReconcile` never calls `update` again. The stale feed then stays for good and keeps failing to download, which is what AC-28 is meant to prevent. Fix: run the source write inside the same lock, for example `guideFeeds.replaceFor(existing, updated) { sourceRepository.updateSource(updated) }`, with the block called inside `mutex.withLock` after the removals.",
+      "suggestion_code": "guideFeeds.replaceFor(existing, updated) { sourceRepository.updateSource(updated) }",
+      "existing_code": "        guideFeeds.replaceFor(existing, updated)\n        sourceRepository.updateSource(updated)",
+      "start_line": 97,
+      "end_line": 98,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt",
+      "content": "For the automatic guide, the form only lets the member change Auto refresh and Use logos. Saving still goes through `vm.update(e, name, url, ua)`, and that always queues a full XMLTV download (reason \"update\") even though name, URL and user agent did not change. So changing the refresh interval downloads the whole guide again. For a managed feed, skip `vm.update` and only call `setAutoRefresh` and `setUseLogos`, or only call `update` when a field actually changed.",
+      "existing_code": "            managed = editing?.let { e -\u003e automaticIds?.contains(e.id) != false } ?: false,",
+      "start_line": 117,
+      "end_line": 117,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+      "content": "This comment points to `GuideChannelSteps.kt`, but the grid uses `Modifier.chNavPaging` and its own arithmetic. No production code calls `GuideChannelSteps.target`. Its unit tests check a copy of the rule, not the code that runs, so the two can drift apart without any test failing. Either fix the comment and remove the unused helper, or make the grid path use the helper.",
+      "existing_code": "    // KevBox: CH paging for the grid (kevbox/live/GuideChannelSteps.kt). The review popup reads the same",
+      "start_line": 233,
+      "end_line": 233,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesViewModel.kt",
+      "content": "Only the active profile's playlists count toward `automaticIds`. `GuideFeeds.ensureAll` adds feeds for every source linked to any profile, and EPG sources are global. A feed added for a playlist linked only to another profile is therefore shown as deletable and editable here. If the member deletes it, `GuideFeeds` adds it back on the next sync. It would be more consistent to build the set from all profile-linked sources, the same set `GuideFeeds` uses.",
+      "existing_code": "        combine(store.sources, activePlaylistEpgs()) { feeds, playlists -\u003e",
+      "start_line": 156,
+      "end_line": 156,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt",
+      "content": "To get 12 integers for More's cards, this composes a second, invisible `SettingsScreen`. The early return only comes at line ~898, after the whole root body has run: about 50 `collectAsStateWithLifecycle` subscriptions, every `stringResource`/`pluralStringResource`, `videoQuickBinding` for each pinned row, `kevboxPlaylistChoice()`, two `BackHandler`s, several `LaunchedEffect`s and the `rememberSaveable` tab/group state. All of it now lives inside More › Settings and recomposes whenever any of those flows emits. It works today only because none of those effects fire with `start = null`, `openEpgAdd = false` and `onBack = null`. Any upstream change to the screen's prologue (a new effect, an `onBack`-independent `BackHandler`, an `open(...)` on first composition) will silently run inside More. Consider pulling the root-item/slicing step into its own composable (or a pure function plus the few state values it needs) that both `SettingsScreen` and More call, instead of using the full screen as a counter.",
+      "existing_code": "    var counts by remember { mutableStateOf\u003cList\u003cInt\u003e?\u003e(null) }\n    SettingsScreen(\n        themeMode = themeMode,",
+      "start_line": 3506,
+      "end_line": 3508,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/ui/MiniGuidePreview.kt",
+      "content": "`MiniGuideMemory.last` is cached for the whole process and has no key for profile or playlist, and nothing ever clears it. Suppose the member switches playlist with Choose playlist, or the admin changes the server, and the new playlist has no synced channels yet. Then `load` returns null, so the preview keeps showing the previous playlist's channels instead of the sample (AC-34: sample only when there are no synced channels). Even when the load succeeds, the old channels flash first. Clear the cache when `load` returns null (`MiniGuideMemory.last = null; value = sample`), or key it on the active live source ids. Also, `runCatching` around a suspend call catches `CancellationException`. Rethrow it, or catch only `Exception` and check `isActive`.",
+      "suggestion_code": "    val data by produceState(MiniGuideMemory.last ?: sample, loader) {\n        val loaded = try { loader.load(System.currentTimeMillis()) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }\n        MiniGuideMemory.last = loaded\n        value = loaded ?: sample\n    }",
+      "existing_code": "    val data by produceState(MiniGuideMemory.last ?: sample, loader) {\n        val loaded = runCatching { loader.load(System.currentTimeMillis()) }.getOrNull()\n        if (loaded != null) {\n            MiniGuideMemory.last = loaded\n            value = loaded\n        }\n    }",
+      "start_line": 254,
+      "end_line": 260,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/ui/MiniGuidePreview.kt",
+      "content": "Here the stored folder is not checked against `cust.hiddenCategories`. Live TV only restores a folder that is still in its rail, so for a hidden folder it opens on All. The mini guide still reads that hidden folder's channels in `channelsFor` and labels them with `fixedLabel(Folder)`, which is \"All channels\". The preview then shows channels that Live TV does not show, under the wrong name. Fall back to `MiniGuideQuery.All` before reading channels when the folder is hidden.",
+      "existing_code": "        val folderIndex = (query as? MiniGuideQuery.Folder)?.let { q -\u003e folders.indexOfFirst { it.id == q.categoryId } } ?: -1",
+      "start_line": 178,
+      "end_line": 178,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/settings/SettingsLivePreview.kt",
+      "content": "The old preview body is gone, but its leftovers stay in this file: the private `titleOf` (never called now) and the imports `HomeViewModel`, `AsyncImage`, `koinViewModel`, `StageProgress`, `dissolveEdges`, `drawOuterRing`, `stageGlass`, `OwnTVIcon`, `ContentScale`, `em`, `collectAsStateWithLifecycle` and others. They cause unused warnings (and a build failure if warnings are errors). Remove `titleOf` and the unused imports. `backdropOf` is `internal`, so check whether anything else still uses it before removing it too.",
+      "existing_code": "    tv.own.owntv.kevbox.ui.KevBoxMiniGuidePreview()",
+      "start_line": 64,
+      "end_line": 64,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/settings/SettingsHelpTable.kt",
+      "content": "The Quick row's help line now uses catch-up wording, but its title is still `R.string.settings_quick_autoplay` (SettingsScreen.kt line ~537). The vp_autoplay row and its search entry were renamed to `kevbox_settings_catchup_next`. A member who pinned it sees the upstream \"autoplay next episode\" title above a catch-up explanation. Rename the `quick_autoplay` RootRow title too, so AC-17 applies to all three places.",
+      "existing_code": "    \"quick_autoplay\" to R.string.kevbox_settings_line_catchup_next, // KevBox: reads like the vp_autoplay row (AC-17)",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/components/GlassEffectPage.kt",
+      "content": "The old preview body was removed, but its imports are still in this file and nothing uses them now: `HomeViewModel`, `koinViewModel`, `AsyncImage`, `LivePlate`, `backdropOf`, `drawOuterRing`, `stageGlass`, `Brush`, `TransformOrigin`, `graphicsLayer`, `BoxWithConstraints`, `stageTone`, `LocalStagePalette`, `ContentScale`, `em`, and possibly `requiredSize`, `wrapContentSize`, `aspectRatio` and `Color`. The leftover `HomeViewModel` import is the worst of these. It keeps a dependency on the hidden Home feature that the spec (AC-35) says this preview no longer has, and it will cause needless conflicts in upstream merges. Please remove the unused imports, as in the matching SettingsLivePreview cleanup.",
+      "existing_code": "private fun GlassBackgroundPreview(miniGuide: tv.own.owntv.kevbox.ui.MiniGuideData) {",
+      "start_line": 276,
+      "end_line": 276,
+      "category": "maintainability",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Settings screen framework and shared shell components",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/shell/components/GlassEffectPage.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/components/SettingsGroup.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/SettingsHelpTable.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/SettingsLivePreview.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/ui/MiniGuidePreview.kt"
+      ]
+    },
+    {
+      "label": "Live-only mode settings and settings screens",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/SettingsViewModel.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/VideoPlayerSettingsScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/ChNavSettingsScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/LanguageSettingsScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/NavigationSettingsPopup.kt",
+        "app/src/main/java/tv/own/owntv/features/customize/CustomizeScreen.kt"
+      ]
+    },
+    {
+      "label": "EPG sources and guide feed plumbing",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesViewModel.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/epg/GuideFeedPlan.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/epg/GuideFeeds.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+        "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt"
+      ]
+    },
+    {
+      "label": "Live channel navigation and shortcuts",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/live/GuideChannelSteps.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/live/LiveOnly.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/live/LiveShortcuts.kt"
+      ]
+    },
+    {
+      "label": "Shell and More pages",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+        "app/src/main/java/tv/own/owntv/features/more/MoreScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt"
+      ]
+    },
+    {
+      "label": "Kevbox string resources (en/fr)",
+      "files": [
+        "app/src/main/res/values-fr/kevbox_strings.xml",
+        "app/src/main/res/values/kevbox_strings.xml"
+      ]
+    },
+    {
+      "label": "TV install tooling script",
+      "files": [
+        "tools/kevbox/tv-install.sh"
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "file": "app/src/main/res/values-fr/kevbox_strings.xml,app/src/main/res/values/kevbox_strings.xml",
+      "message": "comments arrived as a serialized string instead of an array; repaired 2 unescaped character(s)",
+      "type": "comment_args_repaired"
+    }
+  ],
+  "session_id": "940d66e6-b3e0-41ab-9e67-dc86a0d34d97",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "940d66e6-b3e0-41ab-9e67-dc86a0d34d97",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "phase/0.2-live-only-settings",
+      "resolved_base": "8741c1bc52f92d118a6251f5cbd1acb9c8234414",
+      "resolved_head": "8c73151154e464f5689591873fc9024528c34901",
+      "exact_range": "8741c1bc52f92d118a6251f5cbd1acb9c8234414..8c73151154e464f5689591873fc9024528c34901",
+      "source_artifact_sha256": "cd61e561debf22d1c2814b02ab5b1ae9f112cd06c2cf515c4435ec9919b539bd"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "0c576745d03dff529614586864d3f8d8de0d17aecbbcd845a081f1ee5e91c99f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveOnly.kt",
+          "fingerprint": "5b10d0e1d0939ad475ab76437649a82a2b86fe64311c1b75c2a9e13759f2869f"
+        },
+        {
+          "item_id": "0f6f03225684f09a2d1259ea2a152f434c1aa16de885c25b224db0bca1423a11",
+          "path": "app/src/main/java/tv/own/owntv/features/more/MoreScreen.kt",
+          "fingerprint": "69acaa94a777248276b2fa0b65745fed8738cdbc3b511ffce05549944c1607ee"
+        },
+        {
+          "item_id": "24dbb53b1b7385674e6734f1b86df7583cae28778af114cd29bb456b63bf5c3e",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/SettingsLivePreview.kt",
+          "fingerprint": "e910ed82758786d2b5c00dad47b9c7b6b0535f4e895a3bb9cc3973bde279e55d"
+        },
+        {
+          "item_id": "29193eeb42155aa211307d564c6801617f6cf43c7b0965be36b6598bdcd232ba",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/SettingsHelpTable.kt",
+          "fingerprint": "53606343f1a29516825a8b63368e4782e7d548cf35ae4a0e84b3dd41e499782d"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "283a13b98342170cff63a24ae6daf9c3965b09bccbdd6c9cf07ad8cd8f08bd28"
+        },
+        {
+          "item_id": "5767854481ddb83f341a2572499fcc4336fa31ed5f53a9fffc73bd3b9c627938",
+          "path": "tools/kevbox/tv-install.sh",
+          "fingerprint": "cc29b3c5c2cf6ebe7d30619c14999af08c91fb3e9989a79f911e7a699d21e235"
+        },
+        {
+          "item_id": "5e5144ddbaad5ea879c6e565ffe2d6dba5fcdc235d2191758d6f858567c7594c",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsGroup.kt",
+          "fingerprint": "6dca154398b6b150aaec280e98b0a5867e531cb5b957af0d160ad2bd03dd5abd"
+        },
+        {
+          "item_id": "714a0844dbcc253a5acae855d88213f1a17ee9b4a88127b6e989c1f8e1a0633a",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt",
+          "fingerprint": "fab520ea1d85e09024fc22f8db42889fb784a7e5f631b16f1ef8cc7bb8cc41c2"
+        },
+        {
+          "item_id": "80316a3733f77b261d2fdfbe9818f1ccbf3c5e078e3e75b43d88a72f7954b090",
+          "path": "app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt",
+          "fingerprint": "11eac37b8f524b6a603908b003e65418bce866f53b81b2c34db41ee045f2a480"
+        },
+        {
+          "item_id": "84513bdd21e60c79a413f8e5ca81f742198392a36959f9af0e54a771e4308769",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/SettingsViewModel.kt",
+          "fingerprint": "20d982117e8d24b42d515592558bee35cc64a5339b3380e3a9e7dde3597e20af"
+        },
+        {
+          "item_id": "8b5aeacd45efbf1196ec88abdf709829751a174c9170102c2963f8d0c679a806",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt",
+          "fingerprint": "5c3429bb7695218140f2e4772aeb14a722392ff7e72e8a05ba53d9d3ee746c2d"
+        },
+        {
+          "item_id": "8e02e2db6708146a2571cb54789cf830478dd77c12495d571cbc6ee78ab795cc",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/epg/GuideFeedPlan.kt",
+          "fingerprint": "658a978e5978f68f52247ac5badf0c7ab481e95f3fabc07437628b059c8bda03"
+        },
+        {
+          "item_id": "93fd75cbb2b80b911bdf67cd099ae54e3360824e0094b3c58cff2ef55224e904",
+          "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+          "fingerprint": "678de2682df7c12dc5fabe9ef82e7937ae4af883d271383d770a80cab5a41a71"
+        },
+        {
+          "item_id": "9590fffcff6cf7a8c7e0b5d16dfa9035dcb220590a81ec5402f8e510c77df05f",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt",
+          "fingerprint": "5d1dd7772d01e50b7544791808059d060dbd8f61da7c2ed32e9aaf77fe0eeb65"
+        },
+        {
+          "item_id": "98b67570bc3fe03ea7bf5400809ff363955fa2ef93cfe8cacbdfda5a46d94144",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/LanguageSettingsScreen.kt",
+          "fingerprint": "7852a97ebd2fccb6f69e41b6a5d7b3a570bf1f6a1c6b20edf5ca2653ccc66aaf"
+        },
+        {
+          "item_id": "9e5fd477697272d3d3f98eba0a73bd304aad4e74a9415fa4a1cf793fc5a8b778",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt",
+          "fingerprint": "20726bc07a197c001a5cd44913e511cebe4225236537de66a78541de101fe7ca"
+        },
+        {
+          "item_id": "a58bd6be208e2e3a2b8384994f16bad6f81cb75870b41edf81b8231a00959e41",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesViewModel.kt",
+          "fingerprint": "52659ccc3d2f71ffc740833bd4b95522876a7982e3bb91efedd574b1d0d67e47"
+        },
+        {
+          "item_id": "a89b919cc8911d70a883f77f4978ec4d118b5056fc8e9fb603749ec2bd6d2cf9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/GuideChannelSteps.kt",
+          "fingerprint": "ecf4a390b10c31c406a5dd02f58f7843195faa7fcd92aef9ffa609be159249f4"
+        },
+        {
+          "item_id": "ac8f67cb53751eacbd0e4299875f3963338d09358b7dc398de95aa64ab32c0f8",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+          "fingerprint": "cc1de147c927ce7dfc210593fa4930e79725b7ded3cc94864ac9d89f80c9b7b3"
+        },
+        {
+          "item_id": "af161b260cbb6ffe462c2423bc5bf588a94affa1f4ffed2aa4b877c7b5fe94af",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/GlassEffectPage.kt",
+          "fingerprint": "bbcca43f9078580a6a66ef5b379e7754ad44f44c6ea93d6d60072940e81be959"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "2a9c03dbee99950c89b4877bf6d7e6733ad6f98d4aae6098739343ecdf194066"
+        },
+        {
+          "item_id": "c73d8619797de542d9488ba38c2dcffaac32a0724d5b44732ba7b0645fccc3ce",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/MiniGuidePreview.kt",
+          "fingerprint": "939ccaa197cd4d2b254e312e3718418973a1efa9a5e4c48b143ab2bc80275b21"
+        },
+        {
+          "item_id": "ccbdee5c78a3b6e91ab5794f3a279504802cac92ba4cf1eb9bb3968f2f49cb40",
+          "path": "app/src/main/java/tv/own/owntv/features/customize/CustomizeScreen.kt",
+          "fingerprint": "317661444f70df3bb00e34ca7981c1ef2ab722f5f3d81d5ae338ffff77b2c5a7"
+        },
+        {
+          "item_id": "db78d4d9db0757e3bd6d259dd1779a665127ac3c6b1c42dce869df5dfd7a3565",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/NavigationSettingsPopup.kt",
+          "fingerprint": "805d00db265296e61a3a3c7584de5258ff3d6d372d86e6fdfc3958603cb2373a"
+        },
+        {
+          "item_id": "e317c895eb0d066f4fa454f75277bf4180ed97cc4b583c0806593e3518c8f149",
+          "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+          "fingerprint": "a1210cc558568e3e795287df659e4e72b9ad1f9236b5849529c49ebb6d5bba6d"
+        },
+        {
+          "item_id": "e56b995901edd16f32cfed492bb57f3c1c94ea931219c2dcf58a8cdbed4f3621",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/VideoPlayerSettingsScreen.kt",
+          "fingerprint": "5b4462f6a3f8a23c808e4830e304db5c870364e3e8358a4f9012e06f08c7c522"
+        },
+        {
+          "item_id": "e9a533b476872394f0142451cd9791e91cb6f9c7f2f013d00d8644b06f1bc3b4",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt",
+          "fingerprint": "e20e00afdfd070caa91c01ccc23c6394a87de604dd0b5007ddc46c3e9c4eceb9"
+        },
+        {
+          "item_id": "f6f0dfa2baf19b7c1a740d7fc2f99671ca591e272448284e86fd01e5513356e4",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/epg/GuideFeeds.kt",
+          "fingerprint": "a5bfc2351e61e5b7518ebb929f61d8b32571e3288e98a6613093bd709d272584"
+        },
+        {
+          "item_id": "fb227493713ab2fa5e2c33b18ff4b0e1c8256cd050e6bca111e30ed376ba7ab9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+          "fingerprint": "ec0aecbd06fec5c52b35ab7402a5bd32edc55d454e03b224147939de140ccbbc"
+        },
+        {
+          "item_id": "fd6889f253ded828526f1ab323f00cb92c562b2e0e73ff5fc60188a20f098939",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveShortcuts.kt",
+          "fingerprint": "9885809d70c8fc2696afae68121f7be84d04671759698fbd487a8e920af7a315"
+        },
+        {
+          "item_id": "ff707f6461316a1941d50093fdc189c629bf5e50f35bfc17c05cb921254cf7a6",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/ChNavSettingsScreen.kt",
+          "fingerprint": "b83c6585a50e0171b9209513373b138c7afa005fc981874b78a729cdd1cf0c2f"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0c576745d03dff529614586864d3f8d8de0d17aecbbcd845a081f1ee5e91c99f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveOnly.kt",
+          "fingerprint": "5b10d0e1d0939ad475ab76437649a82a2b86fe64311c1b75c2a9e13759f2869f"
+        },
+        {
+          "item_id": "0f6f03225684f09a2d1259ea2a152f434c1aa16de885c25b224db0bca1423a11",
+          "path": "app/src/main/java/tv/own/owntv/features/more/MoreScreen.kt",
+          "fingerprint": "69acaa94a777248276b2fa0b65745fed8738cdbc3b511ffce05549944c1607ee"
+        },
+        {
+          "item_id": "24dbb53b1b7385674e6734f1b86df7583cae28778af114cd29bb456b63bf5c3e",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/SettingsLivePreview.kt",
+          "fingerprint": "e910ed82758786d2b5c00dad47b9c7b6b0535f4e895a3bb9cc3973bde279e55d"
+        },
+        {
+          "item_id": "29193eeb42155aa211307d564c6801617f6cf43c7b0965be36b6598bdcd232ba",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/SettingsHelpTable.kt",
+          "fingerprint": "53606343f1a29516825a8b63368e4782e7d548cf35ae4a0e84b3dd41e499782d"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "283a13b98342170cff63a24ae6daf9c3965b09bccbdd6c9cf07ad8cd8f08bd28"
+        },
+        {
+          "item_id": "5767854481ddb83f341a2572499fcc4336fa31ed5f53a9fffc73bd3b9c627938",
+          "path": "tools/kevbox/tv-install.sh",
+          "fingerprint": "cc29b3c5c2cf6ebe7d30619c14999af08c91fb3e9989a79f911e7a699d21e235"
+        },
+        {
+          "item_id": "5e5144ddbaad5ea879c6e565ffe2d6dba5fcdc235d2191758d6f858567c7594c",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsGroup.kt",
+          "fingerprint": "6dca154398b6b150aaec280e98b0a5867e531cb5b957af0d160ad2bd03dd5abd"
+        },
+        {
+          "item_id": "714a0844dbcc253a5acae855d88213f1a17ee9b4a88127b6e989c1f8e1a0633a",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt",
+          "fingerprint": "fab520ea1d85e09024fc22f8db42889fb784a7e5f631b16f1ef8cc7bb8cc41c2"
+        },
+        {
+          "item_id": "80316a3733f77b261d2fdfbe9818f1ccbf3c5e078e3e75b43d88a72f7954b090",
+          "path": "app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt",
+          "fingerprint": "11eac37b8f524b6a603908b003e65418bce866f53b81b2c34db41ee045f2a480"
+        },
+        {
+          "item_id": "84513bdd21e60c79a413f8e5ca81f742198392a36959f9af0e54a771e4308769",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/SettingsViewModel.kt",
+          "fingerprint": "20d982117e8d24b42d515592558bee35cc64a5339b3380e3a9e7dde3597e20af"
+        },
+        {
+          "item_id": "8b5aeacd45efbf1196ec88abdf709829751a174c9170102c2963f8d0c679a806",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt",
+          "fingerprint": "5c3429bb7695218140f2e4772aeb14a722392ff7e72e8a05ba53d9d3ee746c2d"
+        },
+        {
+          "item_id": "8e02e2db6708146a2571cb54789cf830478dd77c12495d571cbc6ee78ab795cc",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/epg/GuideFeedPlan.kt",
+          "fingerprint": "658a978e5978f68f52247ac5badf0c7ab481e95f3fabc07437628b059c8bda03"
+        },
+        {
+          "item_id": "93fd75cbb2b80b911bdf67cd099ae54e3360824e0094b3c58cff2ef55224e904",
+          "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+          "fingerprint": "678de2682df7c12dc5fabe9ef82e7937ae4af883d271383d770a80cab5a41a71"
+        },
+        {
+          "item_id": "9590fffcff6cf7a8c7e0b5d16dfa9035dcb220590a81ec5402f8e510c77df05f",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt",
+          "fingerprint": "5d1dd7772d01e50b7544791808059d060dbd8f61da7c2ed32e9aaf77fe0eeb65"
+        },
+        {
+          "item_id": "98b67570bc3fe03ea7bf5400809ff363955fa2ef93cfe8cacbdfda5a46d94144",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/LanguageSettingsScreen.kt",
+          "fingerprint": "7852a97ebd2fccb6f69e41b6a5d7b3a570bf1f6a1c6b20edf5ca2653ccc66aaf"
+        },
+        {
+          "item_id": "9e5fd477697272d3d3f98eba0a73bd304aad4e74a9415fa4a1cf793fc5a8b778",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt",
+          "fingerprint": "20726bc07a197c001a5cd44913e511cebe4225236537de66a78541de101fe7ca"
+        },
+        {
+          "item_id": "a58bd6be208e2e3a2b8384994f16bad6f81cb75870b41edf81b8231a00959e41",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/EpgSourcesViewModel.kt",
+          "fingerprint": "52659ccc3d2f71ffc740833bd4b95522876a7982e3bb91efedd574b1d0d67e47"
+        },
+        {
+          "item_id": "a89b919cc8911d70a883f77f4978ec4d118b5056fc8e9fb603749ec2bd6d2cf9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/GuideChannelSteps.kt",
+          "fingerprint": "ecf4a390b10c31c406a5dd02f58f7843195faa7fcd92aef9ffa609be159249f4"
+        },
+        {
+          "item_id": "ac8f67cb53751eacbd0e4299875f3963338d09358b7dc398de95aa64ab32c0f8",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+          "fingerprint": "cc1de147c927ce7dfc210593fa4930e79725b7ded3cc94864ac9d89f80c9b7b3"
+        },
+        {
+          "item_id": "af161b260cbb6ffe462c2423bc5bf588a94affa1f4ffed2aa4b877c7b5fe94af",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/GlassEffectPage.kt",
+          "fingerprint": "bbcca43f9078580a6a66ef5b379e7754ad44f44c6ea93d6d60072940e81be959"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "2a9c03dbee99950c89b4877bf6d7e6733ad6f98d4aae6098739343ecdf194066"
+        },
+        {
+          "item_id": "c73d8619797de542d9488ba38c2dcffaac32a0724d5b44732ba7b0645fccc3ce",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/ui/MiniGuidePreview.kt",
+          "fingerprint": "939ccaa197cd4d2b254e312e3718418973a1efa9a5e4c48b143ab2bc80275b21"
+        },
+        {
+          "item_id": "ccbdee5c78a3b6e91ab5794f3a279504802cac92ba4cf1eb9bb3968f2f49cb40",
+          "path": "app/src/main/java/tv/own/owntv/features/customize/CustomizeScreen.kt",
+          "fingerprint": "317661444f70df3bb00e34ca7981c1ef2ab722f5f3d81d5ae338ffff77b2c5a7"
+        },
+        {
+          "item_id": "db78d4d9db0757e3bd6d259dd1779a665127ac3c6b1c42dce869df5dfd7a3565",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/NavigationSettingsPopup.kt",
+          "fingerprint": "805d00db265296e61a3a3c7584de5258ff3d6d372d86e6fdfc3958603cb2373a"
+        },
+        {
+          "item_id": "e317c895eb0d066f4fa454f75277bf4180ed97cc4b583c0806593e3518c8f149",
+          "path": "app/src/main/java/tv/own/owntv/features/more/MorePages.kt",
+          "fingerprint": "a1210cc558568e3e795287df659e4e72b9ad1f9236b5849529c49ebb6d5bba6d"
+        },
+        {
+          "item_id": "e56b995901edd16f32cfed492bb57f3c1c94ea931219c2dcf58a8cdbed4f3621",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/VideoPlayerSettingsScreen.kt",
+          "fingerprint": "5b4462f6a3f8a23c808e4830e304db5c870364e3e8358a4f9012e06f08c7c522"
+        },
+        {
+          "item_id": "e9a533b476872394f0142451cd9791e91cb6f9c7f2f013d00d8644b06f1bc3b4",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt",
+          "fingerprint": "e20e00afdfd070caa91c01ccc23c6394a87de604dd0b5007ddc46c3e9c4eceb9"
+        },
+        {
+          "item_id": "f6f0dfa2baf19b7c1a740d7fc2f99671ca591e272448284e86fd01e5513356e4",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/epg/GuideFeeds.kt",
+          "fingerprint": "a5bfc2351e61e5b7518ebb929f61d8b32571e3288e98a6613093bd709d272584"
+        },
+        {
+          "item_id": "fb227493713ab2fa5e2c33b18ff4b0e1c8256cd050e6bca111e30ed376ba7ab9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt",
+          "fingerprint": "ec0aecbd06fec5c52b35ab7402a5bd32edc55d454e03b224147939de140ccbbc"
+        },
+        {
+          "item_id": "fd6889f253ded828526f1ab323f00cb92c562b2e0e73ff5fc60188a20f098939",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveShortcuts.kt",
+          "fingerprint": "9885809d70c8fc2696afae68121f7be84d04671759698fbd487a8e920af7a315"
+        },
+        {
+          "item_id": "ff707f6461316a1941d50093fdc189c629bf5e50f35bfc17c05cb921254cf7a6",
+          "path": "app/src/main/java/tv/own/owntv/features/settings/ChNavSettingsScreen.kt",
+          "fingerprint": "b83c6585a50e0171b9209513373b138c7afa005fc981874b78a729cdd1cf0c2f"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 283922
+  }
+}

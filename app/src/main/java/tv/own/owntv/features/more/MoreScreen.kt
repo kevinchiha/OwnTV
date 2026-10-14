@@ -54,6 +54,8 @@ import tv.own.owntv.R
 import tv.own.owntv.features.settings.DeveloperScreen
 import tv.own.owntv.features.settings.SettingsViewModel
 import tv.own.owntv.features.shell.components.RailAvatar
+// KevBox: SettingsGroup names the App group the About languages button opens.
+import tv.own.owntv.features.shell.components.SettingsGroup
 import tv.own.owntv.player.PlaybackErrorLog
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.stage.StageGroupItem
@@ -163,8 +165,9 @@ fun MoreScreen(
             }
             item(MoreItem.SETTINGS, OwnTVIcon.SETTINGS, stringResource(R.string.common_nav_settings), null, false)
             GroupLabel(stringResource(R.string.more_group_your_things))
-            item(MoreItem.FAVORITES, OwnTVIcon.FAVORITE, stringResource(R.string.content_category_favorites), favorites.total.toString(), false)
-            item(MoreItem.HISTORY, OwnTVIcon.HISTORY, stringResource(R.string.content_category_history), history.total.toString(), false)
+            // KevBox: channels only, so the sheet counts live favourites and live history (AC-29, AC-31).
+            item(MoreItem.FAVORITES, OwnTVIcon.FAVORITE, stringResource(R.string.content_category_favorites), favorites.live.toString(), false)
+            item(MoreItem.HISTORY, OwnTVIcon.HISTORY, stringResource(R.string.content_category_history), history.live.toString(), false)
             // KevBox: the "Keep safe" group (Backup & restore, Local sync) is gone; Account opens the App group.
             GroupLabel(stringResource(R.string.settings_app_group))
             item(MoreItem.ACCOUNT, OwnTVIcon.PERSON, stringResource(R.string.kevbox_account), kevboxEmail, false)
@@ -201,16 +204,21 @@ fun MoreScreen(
                 MoreItem.FAVORITES -> FavouritesPage(
                     vm = vm, setEntry = setEntry,
                     onPlayChannel = onPlayChannel, onPlayMovie = { onPlayMovie(it, 0L) }, onOpenSeries = onOpenSeries,
+                    // KevBox: the last favourite removed sends focus back to the sheet (AC-31).
+                    onLeave = backToSheet,
                 )
                 MoreItem.HISTORY -> HistoryPage(
                     vm = vm, setEntry = setEntry,
                     onClearHistory = { settingsVm.clearWatchHistory(it) },
                     onPlayChannel = onPlayChannel, onPlayMovie = onPlayMovie, onPlayEpisode = onPlayEpisode, onOpenSeries = onOpenSeries,
+                    // KevBox: a cleared or emptied history sends focus back to the sheet (AC-29).
+                    onLeave = backToSheet,
                 )
                 // KevBox: Backup and Local sync pages removed; Account shows the email and Sign out.
                 MoreItem.ACCOUNT -> tv.own.owntv.kevbox.ui.KevBoxAccountMorePage(entry = pageTarget)
                 MoreItem.ERROR_LOG -> ErrorLogPage(setEntry = setEntry, onCountChanged = { logVersion++ })
-                MoreItem.ABOUT -> AboutPage(vm = vm, entry = pageTarget, onOpenLanguage = { onOpenSettings(8, false) })
+                // KevBox: the languages button opens App, whose first row is Language (was 8, Sound & subtitles) (AC-32).
+                MoreItem.ABOUT -> AboutPage(vm = vm, entry = pageTarget, onOpenLanguage = { onOpenSettings(SettingsGroup.APP.ordinal, false) })
                 MoreItem.DEVELOPER -> Box(Modifier.focusRequester(pageTarget).focusGroup()) { DeveloperScreen(onBack = backToSheet) }
             }
         }

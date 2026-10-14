@@ -262,11 +262,25 @@ class SettingsViewModel(
     val livePreviewEnabled: StateFlow<Boolean> = settings.livePreviewEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
-    val livePreviewPanelActive: StateFlow<Boolean> = settings.livePreviewPanelActive
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+    // KevBox: always true (0.2 AC-16). The Panel widths page is hidden, so the "preview panel
+    // hidden" dialog would point at a page the member cannot open.
+    val livePreviewPanelActive: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
 
     fun setLivePreviewEnabled(enabled: Boolean) {
-        viewModelScope.launch { settings.setLivePreviewEnabled(enabled) }
+        // KevBox: Core refuses to save Live preview on while a Live width override hides the
+        // preview panel, so turning it on first switches that override off, keeping its shares.
+        viewModelScope.launch {
+            if (enabled) clearLivePanelWidthOverride()
+            settings.setLivePreviewEnabled(enabled)
+        }
+    }
+
+    // KevBox: Live TV is always the guide grid, so the Live width override changes nothing a
+    // member sees. Skips the write when the override is already off.
+    private suspend fun clearLivePanelWidthOverride() {
+        if (!settings.panelWidthEnabled(PanelSection.LIVE).first()) return
+        val shares = settings.panelShares(PanelSection.LIVE).first() ?: return
+        settings.setPanelWidths(PanelSection.LIVE, enabled = false, shares = shares)
     }
 
     val livePreviewAudio: StateFlow<Boolean> = settings.livePreviewAudio
@@ -578,8 +592,10 @@ class SettingsViewModel(
     fun setUpdateCheckOnStart(enabled: Boolean) { viewModelScope.launch { settings.setUpdateCheckOnStart(enabled) } }
 
     /** The Settings rows pinned to the Quick group, in display order. */
+    // KevBox: pins pass through the hide list (0.2 AC-9): Core's defaults become KevBox's three
+    // and hidden rows drop out. Writes still go through setQuickPinnedKeys.
     val quickPinnedKeys: StateFlow<List<String>> =
-        settings.quickPinnedKeys.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        settings.quickPinnedKeys.map(tv.own.owntv.kevbox.settings.LiveOnlySettings::quickPins).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     fun setQuickPinnedKeys(keys: List<String>) { viewModelScope.launch { settings.setQuickPinnedKeys(keys) } }
 
     /** The saved order of one long-press content menu; empty = the order the app ships with. */
