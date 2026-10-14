@@ -82,3 +82,8 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt` (with its tes
 - Task 1+2: started at 9919f735
 - Task 1+2: landed (f50cd89a). Bent: LiveCategories also gained onSearchFocus (stops the 300 ms timer when the cursor reaches the search field). Outside Files: kevbox/live/LiveVideoStage.kt + LiveVideoStageTest.kt (boxSlide, so the box video moves in the same frame as the guide layer).
 - ocr: 2 medium, 3 low (low dropped). Medium OwnTVShell.kt:1370 (menuHasFocus uses raw railHasFocus, brief focus visits collapse the guide): fix. Medium EpgScreen.kt:858 (hidden column still focusable, Up from the first row can land in it): fix.
+- review: important EpgScreen.kt:379-387/555-559 (AC-9): Back from full screen calls focusRail() before focusing the grid, so MENU_FOCUSED lands after GRID_ENTERED and the guide comes back collapsed; same risk on the reveal path (:398).
+- review: important EpgScreen.kt:856-862: the hidden column stays focusable; Up from the first row or a failed sidebarExit can leave the cursor in it (same item as the ocr medium at :858).
+- review: minor LiveStage.kt search field: Right with text in the search can move focus into the collapsed grid with no GRID_ENTERED. Decision: fix (it leaves a focused row in the collapsed layout).
+- review: minor GuideSidebar unused events DIALOG_OPENED / GRID_FOCUSED_DURING_COLUMN_ENTRY with a comment at :569-572 that reads as if applied. Decision: fix the comment.
+- review: minor stale comment at EpgScreen.kt:664-665. Decision: fix.
