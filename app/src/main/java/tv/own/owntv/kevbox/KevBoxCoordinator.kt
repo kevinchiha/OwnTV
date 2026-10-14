@@ -47,6 +47,8 @@ sealed interface GateState {
  *   An admin edit of the visible line only marks the last answer stale: its recheck goes through
  *   the tick, so it waits while something plays.
  * - Profiles: [ProfileDao.observeAll] goes to [PlaylistReconciler.watchProfiles] (AC-24).
+ * - Proxy: after each good playlist fetch, a pick and a sign-out, [proxy] sets Core's global proxy to
+ *   the one kevbox.dev holds for the playlist on screen.
  *
  * Each check is single flight: a trigger that arrives while one runs waits for that one instead of
  * starting a second fetch, unless the member changed since that one started: a flight started before
@@ -64,6 +66,8 @@ class KevBoxCoordinator(
     private val now: () -> Long,
     private val sleep: suspend (ms: Long) -> Unit = { delay(it) },
     private val tickMs: Long = TICK_MS,
+    /** The customer's proxy from kevbox.dev; null in tests that do not look at it. */
+    private val proxy: tv.own.owntv.kevbox.network.ManagedProxy? = null,
 ) {
     /** True when the store held a visible pick at [start]: an offline start opens on it. */
     private val storedPick = MutableStateFlow(false)
@@ -163,6 +167,7 @@ class KevBoxCoordinator(
 
     suspend fun choose(clientNumber: String) {
         reconciler.choose(clientNumber)
+        quietly { proxy?.apply(reconciler.rows.value, reconciler.currentClientNumber.value) }
     }
 
     /** Sign-out and a refused refresh: this TV forgets the member and every line (AC-13, AC-14). */
@@ -171,6 +176,7 @@ class KevBoxCoordinator(
         session += 1
         quietly { auth.signOut() }
         quietly { reconciler.wipe() }
+        quietly { proxy?.clear() }
         expiry.reset()
         access.reset()
         storedPick.value = false
@@ -197,7 +203,11 @@ class KevBoxCoordinator(
         // its refusal both belong to someone else now.
         if (session != startedIn) return
         when (result) {
-            is Fetch.Ok -> reconciler.apply(result.value)
+            is Fetch.Ok -> {
+                reconciler.apply(result.value)
+                // The playlist on screen decides the proxy, so this follows the reconcile.
+                quietly { proxy?.apply(result.value, reconciler.currentClientNumber.value) }
+            }
             Fetch.SessionRejected -> signOut()
             // A failed call is never "no rows": the store, the pick and playback stay as they are.
             Fetch.Failed, Fetch.SignedOut -> Unit

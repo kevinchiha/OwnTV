@@ -8,7 +8,25 @@ data class PlaylistRow(
     val serverUrl: String,
     val username: String,
     val password: String,
+    /** The HTTP proxy kevbox.dev set for this customer; [PlaylistProxy.OFF] when none. */
+    val proxy: PlaylistProxy = PlaylistProxy.OFF,
 )
+
+/**
+ * A customer's HTTP proxy as kevbox.dev stores it beside the playlist (migration 0014). The TV applies
+ * the visible playlist's proxy to Core's global proxy at each playlist check (ManagedProxy).
+ */
+data class PlaylistProxy(
+    val enabled: Boolean,
+    val host: String,
+    val port: Int,
+    val username: String,
+    val password: String,
+) {
+    companion object {
+        val OFF = PlaylistProxy(enabled = false, host = "", port = 0, username = "", password = "")
+    }
+}
 
 /** What get_access_verdict says about the signed-in member. */
 enum class AccessVerdict { ALLOWED, NO_ROW, LOCKED }

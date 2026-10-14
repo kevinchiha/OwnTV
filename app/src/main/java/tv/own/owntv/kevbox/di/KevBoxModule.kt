@@ -72,7 +72,11 @@ val kevboxModule = module {
             playbackActive = get<tv.own.owntv.player.PlaybackSession>().active,
             scope = get(),
             now = System::currentTimeMillis,
+            proxy = tv.own.owntv.kevbox.network.ManagedProxy(tv.own.owntv.kevbox.network.CoreProxyTarget(get())),
         )
+    }
+    single {
+        tv.own.owntv.kevbox.network.DnsDefault(get(), androidContext().prefs(tv.own.owntv.kevbox.network.DnsDefault.PREFS_NAME))
     }
     viewModelOf(::KevBoxViewModel)
 }

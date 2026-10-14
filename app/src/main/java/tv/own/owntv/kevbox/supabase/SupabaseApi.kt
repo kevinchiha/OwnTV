@@ -32,7 +32,11 @@ sealed interface ApiResponse {
  * Nothing here logs: tokens, passwords, emails and bodies must stay off logcat.
  */
 class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: String) {
+    // Always direct: the customer's proxy (ManagedProxy) is for the provider, never for KevBox's own
+    // server. A proxy that is down must not stop the TV from reaching kevbox.dev to fix it.
     private val client = http.newBuilder()
+        .proxy(java.net.Proxy.NO_PROXY)
+        .proxyAuthenticator(okhttp3.Authenticator.NONE)
         .retryOnConnectionFailure(true)
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -52,11 +56,14 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     }
 
     suspend fun selectPlaylists(accessToken: String): ApiResponse {
-        val query = mapOf(
-            "select" to "client_number,name,server_url,username,password",
-            "order" to "name.asc",
-        )
-        return send(PLAYLIST_PATH, query, accessToken) { get() }
+        val query = mapOf("select" to PLAYLIST_COLUMNS + PROXY_COLUMNS, "order" to "name.asc")
+        val response = send(PLAYLIST_PATH, query, accessToken) { get() }
+        // A server without migration 0014 refuses the proxy columns (PostgREST 400, code 42703):
+        // ask again without them, so the playlists still arrive and the proxy reads as off.
+        if (response is ApiResponse.Http && response.code == HTTP_BAD_REQUEST && response.body.contains(UNDEFINED_COLUMN)) {
+            return send(PLAYLIST_PATH, mapOf("select" to PLAYLIST_COLUMNS, "order" to "name.asc"), accessToken) { get() }
+        }
+        return response
     }
 
     suspend fun accessVerdict(accessToken: String): ApiResponse =
@@ -112,6 +119,10 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val TOKEN_PATH = "auth/v1/token"
         const val LOGOUT_PATH = "auth/v1/logout"
         const val PLAYLIST_PATH = "rest/v1/member_playlist"
+        const val PLAYLIST_COLUMNS = "client_number,name,server_url,username,password"
+        const val PROXY_COLUMNS = ",proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password"
+        const val HTTP_BAD_REQUEST = 400
+        const val UNDEFINED_COLUMN = "42703"
         const val VERDICT_PATH = "rest/v1/rpc/get_access_verdict"
         const val GRANT_TYPE = "grant_type"
         const val APIKEY_HEADER = "apikey"

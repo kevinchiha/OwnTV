@@ -37,7 +37,9 @@ class SettingsSearchCoverageTest {
      * Tabs deliberately absent from search. Backup and Local sync live under ⋯ More, not Settings, and
      * the code says so: a result that lands somewhere the row is not is worse than no result.
      */
-    private val notSearchable = setOf("ROOT", "BACKUP", "LOCAL_SYNC")
+    // KevBox: NETWORK (the proxy screen) too. kevbox.dev sets each customer's proxy, so the row and its
+    // search entries are gone and the screen is unreachable on purpose.
+    private val notSearchable = setOf("ROOT", "BACKUP", "LOCAL_SYNC", "NETWORK")
 
     @Test
     fun `every settings screen can be found by search`() {
@@ -176,7 +178,8 @@ class SettingsSearchCoverageTest {
         // Backup and Local sync are More pages, not Settings (see notSearchable).
         // KevBox: ManageSourcesScreen.kt is skipped too. KevBox Live hides source management (AC-33),
         // so the Playlists row and its search entry are gone and the screen is unreachable on purpose.
-        val skipped = setOf("BackupScreen.kt", "LocalSyncScreen.kt", "RemoteBackupRestoreScreen.kt", "VideoPlayerSettingsScreen.kt", "ManageSourcesScreen.kt")
+        // KevBox: NetworkSettingsScreen.kt (the proxy) too: kevbox.dev sets the proxy, the screen is unreachable.
+        val skipped = setOf("BackupScreen.kt", "LocalSyncScreen.kt", "RemoteBackupRestoreScreen.kt", "VideoPlayerSettingsScreen.kt", "ManageSourcesScreen.kt", "NetworkSettingsScreen.kt")
         val screens = File("src/main/java/tv/own/owntv/features/settings").listFiles { f ->
             f.name.endsWith("Screen.kt") && f.name !in skipped
         }.orEmpty()

@@ -14,6 +14,7 @@ import org.json.JSONTokener
 import tv.own.owntv.kevbox.supabase.AccessVerdict
 import tv.own.owntv.kevbox.supabase.ApiResponse
 import tv.own.owntv.kevbox.supabase.Fetch
+import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
@@ -222,8 +223,27 @@ class KevBoxAuth(
                 serverUrl = row.opt(SERVER_URL) as? String ?: return null,
                 username = row.opt(USERNAME) as? String ?: return null,
                 password = row.opt(PASSWORD) as? String ?: return null,
+                proxy = parseProxy(row),
             )
         }
+    }
+
+    /**
+     * The row's proxy columns. A server without them (before migration 0014), a null column or a
+     * proxy switched off all read as [PlaylistProxy.OFF]; so does one without a usable address.
+     */
+    private fun parseProxy(row: JSONObject): PlaylistProxy {
+        if (row.opt(PROXY_ENABLED) != true) return PlaylistProxy.OFF
+        val host = (row.opt(PROXY_HOST) as? String)?.trim().orEmpty()
+        val port = (row.opt(PROXY_PORT) as? Number)?.toInt() ?: 0
+        if (host.isEmpty() || port !in 1..65535) return PlaylistProxy.OFF
+        return PlaylistProxy(
+            enabled = true,
+            host = host,
+            port = port,
+            username = (row.opt(PROXY_USERNAME) as? String)?.trim().orEmpty(),
+            password = (row.opt(PROXY_PASSWORD) as? String).orEmpty(),
+        )
     }
 
     private fun parseVerdict(response: ApiResponse.Http): AccessVerdict? {
@@ -278,5 +298,10 @@ class KevBoxAuth(
         const val SERVER_URL = "server_url"
         const val USERNAME = "username"
         const val PASSWORD = "password"
+        const val PROXY_ENABLED = "proxy_enabled"
+        const val PROXY_HOST = "proxy_host"
+        const val PROXY_PORT = "proxy_port"
+        const val PROXY_USERNAME = "proxy_username"
+        const val PROXY_PASSWORD = "proxy_password"
     }
 }

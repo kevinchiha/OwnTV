@@ -818,15 +818,11 @@ fun SettingsScreen(
             chipTone = if (updateCheckOnStart) TileTone.PRIMARY else TileTone.SECONDARY,
             onClick = { settingsVm.setUpdateCheckOnStart(!updateCheckOnStart) },
         ),
-        RootRow(
-            tabRowKey(SettingsTab.NETWORK), TileTone.SECONDARY, OwnTVIcon.NETWORK,
-            heading = stringResource(R.string.settings_group_network),
-            title = stringResource(R.string.common_proxy), desc = stringResource(R.string.settings_proxy_description),
-            focus = rowFocus.getValue(SettingsTab.NETWORK),
-            onClick = { open(SettingsTab.NETWORK) },
-        ),
+        // KevBox: no Proxy row. kevbox.dev sets each customer's proxy and the TV applies it at each
+        // check (kevbox/network/ManagedProxy.kt); DNS stays, under the Network heading.
         RootRow(
             tabRowKey(SettingsTab.DNS), TileTone.SECONDARY, OwnTVIcon.DNS,
+            heading = stringResource(R.string.settings_group_network),
             title = stringResource(R.string.settings_dns),
             desc = stringResource(R.string.settings_dns_description),
             focus = rowFocus.getValue(SettingsTab.DNS),
@@ -988,7 +984,7 @@ fun SettingsScreen(
         val entries = listOfNotNull(
             SettingsSearchEntry(stringResource(R.string.settings_app_group), stringResource(R.string.settings_language), stringResource(R.string.settings_search_keywords_language), OwnTVIcon.LANGUAGE, TileTone.PRIMARY,
                 chip = languageChip, chipTone = TileTone.PRIMARY) { open(SettingsTab.LANGUAGE) },
-            SettingsSearchEntry(stringResource(R.string.settings_group_profile), stringResource(R.string.profiles_title), stringResource(R.string.settings_search_keywords_profiles), OwnTVIcon.PERSON, TileTone.SECONDARY) { searchQuery = ""; selectedGroup = SettingsGroup.PROFILE.ordinal },
+            // KevBox: no Profiles entry; KevBox Live keeps one hidden profile and no profile pages.
             // KevBox: Choose playlist in place of the Playlists entry, and only while its row shows.
             if (kevboxChoice != null) SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.kevbox_choose_playlist), stringResource(R.string.settings_search_keywords_playlists), OwnTVIcon.PLAYLIST, TileTone.PRIMARY,
                 chip = kevboxChoice.currentName, chipTone = TileTone.PRIMARY) { open(SettingsTab.CHOOSE_PLAYLIST) } else null,
@@ -1084,7 +1080,7 @@ fun SettingsScreen(
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_live_latency"), stringResource(R.string.settings_live_latency), stringResource(R.string.settings_search_keywords_latency), OwnTVIcon.LIVE_TV, TileTone.TERTIARY) { jumpVideo("vp_live_latency", false) },
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_preroll"), stringResource(R.string.settings_live_preroll), stringResource(R.string.settings_search_keywords_live_preroll), OwnTVIcon.LIVE_TV, TileTone.TERTIARY) { jumpVideo("vp_preroll", false) },
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_logging"), stringResource(R.string.settings_detailed_playback_logging), stringResource(R.string.settings_search_keywords_detailed_logging), OwnTVIcon.INFO, TileTone.SECONDARY) { jumpVideo("vp_logging", false) },
-            SettingsSearchEntry(stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_group_app), stringResource(R.string.settings_group_network)), stringResource(R.string.common_proxy), stringResource(R.string.settings_search_keywords_proxy), OwnTVIcon.NETWORK, TileTone.SECONDARY) { open(SettingsTab.NETWORK) },
+            // KevBox: no Proxy entry; the proxy is set in kevbox.dev.
             SettingsSearchEntry(stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_group_app), stringResource(R.string.settings_group_network)), stringResource(R.string.settings_dns), stringResource(R.string.settings_search_keywords_dns), OwnTVIcon.DNS, TileTone.SECONDARY) { open(SettingsTab.DNS) },
             // Settings inside a sub-screen, by their own names (kept out of line: this function is at the JVM size limit).
             *subScreenSearchEntries { t -> open(t) }.toTypedArray(),
@@ -1144,8 +1140,7 @@ fun SettingsScreen(
                 tv.own.owntv.features.settings.RECORDING_SEARCH_ROWS, R.string.settings_search_keywords_recording, OwnTVIcon.LIVE_TV) { searchQuery = ""; selectedGroup = SettingsGroup.WATCHING.ordinal } +
             rowsOf(stringResource(R.string.settings_breadcrumb, tv.own.owntv.features.settings.videoRowPath("vp_sub_style"), stringResource(R.string.settings_subtitle_appearance)),
                 tv.own.owntv.features.settings.SUBTITLE_APPEARANCE_SEARCH_ROWS, R.string.settings_search_keywords_subtitle_appearance, OwnTVIcon.SUBTITLE, jumpTo(subStyleRef)) +
-            rowsOf(stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_group_app), stringResource(R.string.settings_group_network)), stringResource(R.string.common_proxy)),
-                tv.own.owntv.features.settings.PROXY_SEARCH_ROWS, R.string.settings_search_keywords_proxy, OwnTVIcon.NETWORK) { open(SettingsTab.NETWORK) } +
+            // KevBox: no proxy rows in search; the proxy is set in kevbox.dev.
             rowsOf(stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_group_app), stringResource(R.string.settings_group_network)), stringResource(R.string.settings_dns)),
                 tv.own.owntv.features.settings.DNS_SEARCH_ROWS, R.string.settings_search_keywords_dns, OwnTVIcon.DNS) { open(SettingsTab.DNS) } +
             // The Catch-up popup's second row; its first (the time zone) is the Catch-up entry above.

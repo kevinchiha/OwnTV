@@ -47,6 +47,7 @@ import tv.own.owntv.kevbox.session.KevBoxAuth
 import tv.own.owntv.kevbox.session.SessionStore
 import tv.own.owntv.kevbox.session.StoredSession
 import tv.own.owntv.kevbox.supabase.AccessVerdict
+import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
@@ -159,6 +160,14 @@ class KevBoxCoordinatorTest {
     }
 
     private class MemoryExpiryPrefs : ExpiryPrefs { override var lastWarnedDay: String? = null }
+
+    /** Core's global proxy, in memory; [saves] counts the writes. */
+    private class FakeProxyTarget : tv.own.owntv.kevbox.network.ProxyTarget {
+        @Volatile var stored: PlaylistProxy = PlaylistProxy.OFF
+        @Volatile var saves = 0
+        override suspend fun current() = stored
+        override suspend fun save(proxy: PlaylistProxy) { stored = proxy; saves += 1 }
+    }
     private class MemoryVerdictPrefs : VerdictPrefs { override var last: AccessVerdict? = null }
 
     // --- harness -------------------------------------------------------------------------------
@@ -170,6 +179,7 @@ class KevBoxCoordinatorTest {
         val store = MemoryStore()
         val reconciler = PlaylistReconciler(core, store)
         val playing = MutableStateFlow(false)
+        val proxyTarget = FakeProxyTarget()
         val tests = MutableStateFlow(0)
         @Volatile var testResult: SourceTestResult = SourceTestResult.Ok()
         var clock = 1_000_000_000_000L
@@ -211,6 +221,7 @@ class KevBoxCoordinatorTest {
                 scope = scope,
                 now = { clock },
                 sleep = { idle.send(Unit); go.receive() },
+                proxy = tv.own.owntv.kevbox.network.ManagedProxy(proxyTarget),
             )
             coordinator.start()
             idle.receive()
@@ -240,8 +251,12 @@ class KevBoxCoordinatorTest {
 
     private fun rowsBody(vararg rows: PlaylistRow) = rows.joinToString(",", "[", "]") {
         """{"client_number":"${it.clientNumber}","name":"${it.name}","server_url":"${it.serverUrl}",""" +
-            """"username":"${it.username}","password":"${it.password}"}"""
+            """"username":"${it.username}","password":"${it.password}",""" +
+            """"proxy_enabled":${it.proxy.enabled},"proxy_host":"${it.proxy.host}","proxy_port":${it.proxy.port},""" +
+            """"proxy_username":"${it.proxy.username}","proxy_password":"${it.proxy.password}"}"""
     }
+
+    private val proxyA = PlaylistProxy(enabled = true, host = "proxy.example", port = 3128, username = "pu", password = "pp")
 
     private fun tokenBody(access: String, refresh: String) = JSONObject()
         .put("access_token", access)
@@ -256,6 +271,49 @@ class KevBoxCoordinatorTest {
     private val minute = 60_000L
 
     // --- tests ---------------------------------------------------------------------------------
+
+    @Test
+    fun `a good playlist check sets Core's proxy to the playlist's, and writes it only when it changes`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA))))
+        start()
+        waitFor { proxyTarget.stored == proxyA }
+        assertEquals(1, proxyTarget.saves)
+
+        advance(15 * minute)
+
+        assertEquals(2, server.calls(PLAYLIST))
+        assertEquals(proxyA, proxyTarget.stored)
+        assertEquals(1, proxyTarget.saves)
+    }
+
+    @Test
+    fun `a proxy switched off in kevbox dot dev turns Core's proxy off at the next check, and a failed check changes nothing`() = harness {
+        signedIn()
+        proxyTarget.stored = proxyA
+        server.once(PLAYLIST, Canned(500, "oops"))
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        assertEquals(proxyA, proxyTarget.stored)
+        assertEquals(0, proxyTarget.saves)
+
+        advance(15 * minute)
+
+        waitFor { proxyTarget.stored == PlaylistProxy.OFF }
+        assertEquals(1, proxyTarget.saves)
+    }
+
+    @Test
+    fun `signing out turns Core's proxy off`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA))))
+        start()
+        waitFor { proxyTarget.stored == proxyA }
+
+        coordinator.signOut()
+
+        assertEquals(PlaylistProxy.OFF, proxyTarget.stored)
+    }
 
     @Test
     fun `a failed playlist check leaves the managed store, the pick and the gate as they were`() = harness {

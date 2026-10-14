@@ -272,13 +272,51 @@ class KevBoxAuthTest {
             val read = server.requests[1]
             assertEquals("Bearer new-access", read.header("Authorization"))
             assertEquals(ANON, read.header("apikey"))
-            assertEquals("client_number,name,server_url,username,password", read.url.queryParameter("select"))
+            assertEquals(
+                "client_number,name,server_url,username,password,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password",
+                read.url.queryParameter("select"),
+            )
             assertEquals("name.asc", read.url.queryParameter("order"))
             val saved = store.load()!!
             assertEquals("new-refresh", saved.refreshToken)
             assertEquals("new-access", saved.accessToken)
             assertEquals(clock + 3_600_000, saved.expiresAtMs)
         }
+
+    @Test
+    fun `a row's proxy columns become its proxy, and an off, blank or bad one reads as OFF`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        val body = """[{"client_number":"C1","name":"A","server_url":"http://a","username":"u","password":"p",""" +
+            """"proxy_enabled":true,"proxy_host":" proxy.example ","proxy_port":3128,"proxy_username":"pu","proxy_password":"pp"},""" +
+            """{"client_number":"C2","name":"B","server_url":"http://b","username":"u","password":"p",""" +
+            """"proxy_enabled":false,"proxy_host":"proxy.example","proxy_port":3128,"proxy_username":null,"proxy_password":null},""" +
+            """{"client_number":"C3","name":"C","server_url":"http://c","username":"u","password":"p",""" +
+            """"proxy_enabled":true,"proxy_host":"","proxy_port":3128,"proxy_username":null,"proxy_password":null},""" +
+            """{"client_number":"C4","name":"D","server_url":"http://d","username":"u","password":"p",""" +
+            """"proxy_enabled":true,"proxy_host":"proxy.example","proxy_port":0,"proxy_username":null,"proxy_password":null}]"""
+        server.on(PLAYLIST, Canned(200, body))
+
+        val rows = (auth().playlists() as Fetch.Ok).value
+
+        assertEquals(tv.own.owntv.kevbox.supabase.PlaylistProxy(true, "proxy.example", 3128, "pu", "pp"), rows[0].proxy)
+        assertEquals(listOf(tv.own.owntv.kevbox.supabase.PlaylistProxy.OFF), rows.drop(1).map { it.proxy }.distinct())
+    }
+
+    @Test
+    fun `a server without the proxy columns is asked again without them, and the proxy reads as off`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        server.on(
+            PLAYLIST,
+            Canned(400, """{"code":"42703","message":"column member_playlist.proxy_enabled does not exist"}"""),
+            Canned(200, rowsBody),
+        )
+
+        val result = auth().playlists()
+
+        assertEquals(Fetch.Ok(listOf(PlaylistRow("C1", "Home", "http://iptv.example", "u", "p"))), result)
+        assertEquals(2, server.calls(PLAYLIST))
+        assertEquals("client_number,name,server_url,username,password", server.requests.last().url.queryParameter("select"))
+    }
 
     @Test
     fun `a token with more than 60 s left is used as it is`() = runBlocking {

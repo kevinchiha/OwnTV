@@ -121,6 +121,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         GlobalContext.get().get<tv.own.owntv.kevbox.epg.GuideFeeds>().start()
         // KevBox: an in-app update installs with its profile, so it starts compiled (UpdateProfileAttacher).
         GlobalContext.get().get<tv.own.owntv.kevbox.release.UpdateProfileAttacher>().start()
+        // KevBox: Cloudflare DNS-over-HTTPS on, once per install, unless the member set their own DNS.
+        appScope.launch { runCatching { GlobalContext.get().get<tv.own.owntv.kevbox.network.DnsDefault>().applyOnce() } }
         // A chosen icon colour ("Later", the first-run pick, a restore) reaches the launcher when the app
         // is next in the background, never while it is on screen.
         tv.own.owntv.core.brand.AppIconSwitcher.start(this, GlobalContext.get().get())
