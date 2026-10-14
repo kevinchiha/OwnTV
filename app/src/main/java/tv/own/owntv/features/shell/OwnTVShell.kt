@@ -907,6 +907,9 @@ fun OwnTVShell(
     // so for a series the return follows the show closing.
     fun returnToSearch() {
         searchReturn = null
+        // KevBox: from Live TV's guide (Hold OK in Search), the channel in the guide's box comes back to
+        // Search's box still playing, before the section change would stop it (sectionShown).
+        if (selectedSection == MainSection.LIVE_TV) liveVideoStage.moveBox(MainSection.LIVE_TV, MainSection.SEARCH)
         onSelectSection(MainSection.SEARCH)
     }
     LaunchedEffect(selectedSection) {
@@ -1340,6 +1343,14 @@ fun OwnTVShell(
                             // box and OK again opens it full screen through the guide's path, so Back
                             // shrinks it into the box here (Kevin, 2026-10-14).
                             onWatchChannel = { ch -> guidePlayChannel(ch, emptyList()) },
+                            // KevBox: Hold OK: the guide, on the channel's category and row (EpgScreen's
+                            // reveal); its first Back comes back here (searchReturn, onBackToSearch).
+                            onOpenInGuide = { ch ->
+                                restoreFocus = false
+                                liveVm.revealChannel(ch)
+                                searchReturn = MainSection.LIVE_TV
+                                onSelectSection(MainSection.LIVE_TV)
+                            },
                             restoreFocus = restoreFocus,
                             onRestored = { restoreFocus = false },
                             onScreen = playerMode != PlayerMode.FULLSCREEN, // KevBox: kept composed behind it
@@ -1380,6 +1391,8 @@ fun OwnTVShell(
                                 else tv.own.owntv.core.settings.SettingsRepository.NavSize.COMPACT,
                             ),
                             onExpandedChange = { liveGuideExpanded = it },
+                            // KevBox: opened from Search by Hold OK, the first Back goes back there.
+                            onBackToSearch = if (searchReturn == MainSection.LIVE_TV) ({ returnToSearch() }) else null,
                             onListView = { liveVm.setLiveView(tv.own.owntv.core.settings.SettingsRepository.LiveView.LIST) },
                             restoreFocus = restoreFocus,
                             onRestored = { restoreFocus = false },

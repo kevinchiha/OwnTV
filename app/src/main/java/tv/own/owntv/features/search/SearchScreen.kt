@@ -149,6 +149,8 @@ private const val ALL_TAB_CHANNELS = 4
 fun SearchScreen(
     /** OK on the channel in the box: full screen, through Live TV's own path. */
     onWatchChannel: (ChannelEntity) -> Unit,
+    /** KevBox: Hold OK on a channel: Live TV's guide, on the channel's category and row. */
+    onOpenInGuide: (ChannelEntity) -> Unit,
     onGoToMovie: (MovieEntity) -> Unit,
     onOpenSeries: (SeriesEntity) -> Unit,
     onChildFocused: () -> Unit,
@@ -299,6 +301,16 @@ fun SearchScreen(
             else -> Unit
         }
     }
+    // KevBox: Hold OK opens the channel in Live TV's guide, in its own category. The channel playing in
+    // the box goes along when it is the one held; anything else in the box stops as Search closes.
+    val openInGuide: (Entry) -> Unit = { e ->
+        e.channel()?.let { ch ->
+            vm.lastFocusKey = e.key
+            vm.rememberCurrentQuery()
+            videoStage?.moveBox(tv.own.owntv.core.nav.MainSection.SEARCH, tv.own.owntv.core.nav.MainSection.LIVE_TV, onlyChannelId = ch.id)
+            onOpenInGuide(ch)
+        }
+    }
 
     BoxWithConstraints(modifier.fillMaxSize().onFocusChanged { if (it.hasFocus) onChildFocused() }) {
         val screenW = maxWidth
@@ -441,6 +453,7 @@ fun SearchScreen(
                             SearchRow(
                                 title = name.name, line = AnnotatedString(line), tags = name.tags, mark = marks[ch.sourceId],
                                 onClick = { goTo(e) },
+                                onLongClick = { openInGuide(e) }, // KevBox
                                 leading = { LivePlate(ch.displayLogoUrl, 76.mpx, 54.mpx) },
                                 modifier = rowModifier.onPreviewKeyEvent { k ->
                                     // ▶ reaches the schedule under the preview, as on Live TV.
@@ -463,6 +476,7 @@ fun SearchScreen(
                                 ),
                                 tags = emptyList(), mark = marks[ch.sourceId],
                                 onClick = { goTo(e) },
+                                onLongClick = { openInGuide(e) }, // KevBox
                                 leading = { LivePlate(ch.displayLogoUrl, 76.mpx, 54.mpx) },
                                 modifier = rowModifier,
                             )
@@ -534,6 +548,8 @@ fun SearchScreen(
                     ),
                 )
                 if (active?.channel() != null) add("▶" to stringResource(R.string.content_key_schedule))
+                // KevBox: Hold OK opens the channel in Live TV's guide.
+                if (active?.channel() != null) add(stringResource(R.string.content_key_hold_ok) to stringResource(R.string.kevbox_key_guide))
             }
             if (showingResults) {
                 add("▲" to stringResource(R.string.common_search))
@@ -632,9 +648,10 @@ private fun SearchRow(
     onClick: () -> Unit,
     leading: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    // KevBox: Hold OK on a channel opens it in Live TV's guide (Kevin, 2026-10-14). Upstream: nothing (#233).
+    onLongClick: () -> Unit = {},
 ) {
-    // Hold OK does nothing here (owner, #233): the item's options live where OK takes you.
-    StageRow(onClick = onClick, onLongClick = {}, height = 84.mpx, horizontalPadding = 18.mpx, gap = 18.mpx, modifier = modifier.fillMaxWidth()) { focused ->
+    StageRow(onClick = onClick, onLongClick = onLongClick, height = 84.mpx, horizontalPadding = 18.mpx, gap = 18.mpx, modifier = modifier.fillMaxWidth()) { focused ->
         leading()
         Column(Modifier.weight(1f)) {
             Text(title, style = stageText(21, 700), color = if (focused) StageColors.FxText else StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)

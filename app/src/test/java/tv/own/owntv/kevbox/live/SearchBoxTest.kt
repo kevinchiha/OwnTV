@@ -58,6 +58,44 @@ class SearchBoxTest {
         assertNull(stage.boxSection)
     }
 
+    // --- Holding OK: Search's box goes to the guide, and Back brings it back ----------------------
+
+    @Test
+    fun searchsBoxMovesToTheGuideForTheSameChannel() {
+        val stage = LiveVideoStage()
+        stage.putInBox(channel(5), MainSection.SEARCH)
+        assertEquals(true, stage.moveBox(MainSection.SEARCH, MainSection.LIVE_TV, onlyChannelId = 5))
+        assertEquals(5L, stage.boxChannel?.id)
+        assertEquals(MainSection.LIVE_TV, stage.boxSection)
+    }
+
+    @Test
+    fun searchsBoxStaysWhenAnotherChannelIsHeld() {
+        val stage = LiveVideoStage()
+        stage.putInBox(channel(5), MainSection.SEARCH)
+        assertEquals(false, stage.moveBox(MainSection.SEARCH, MainSection.LIVE_TV, onlyChannelId = 9))
+        assertEquals(MainSection.SEARCH, stage.boxSection)
+    }
+
+    @Test
+    fun theGuidesBoxComesBackToSearchWhateverItPlays() {
+        val stage = LiveVideoStage()
+        stage.putInBox(channel(9), MainSection.LIVE_TV)
+        assertEquals(true, stage.moveBox(MainSection.LIVE_TV, MainSection.SEARCH))
+        assertEquals(9L, stage.boxChannel?.id)
+        assertEquals(MainSection.SEARCH, stage.boxSection)
+    }
+
+    @Test
+    fun anEmptyOrOtherBoxDoesNotMove() {
+        val stage = LiveVideoStage()
+        assertEquals(false, stage.moveBox(MainSection.LIVE_TV, MainSection.SEARCH))
+        assertNull(stage.boxSection)
+        stage.putInBox(channel(9), MainSection.SEARCH)
+        assertEquals(false, stage.moveBox(MainSection.LIVE_TV, MainSection.SEARCH))
+        assertEquals(MainSection.SEARCH, stage.boxSection)
+    }
+
     // --- Moving between screens with the player closed ------------------------------------------
 
     @Test

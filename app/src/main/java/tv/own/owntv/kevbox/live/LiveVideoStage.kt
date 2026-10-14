@@ -196,6 +196,19 @@ class LiveVideoStage(durationMs: Int = 320) {
         boxSection = null
     }
 
+    /**
+     * Hand the box from screen [from] to screen [to], stream and all, when [from] filled it (and, with
+     * [onlyChannelId], only when that is the channel in it). True when it moved. Holding OK on Search's
+     * channel takes it to Live TV's grid, and the Back that returns to Search brings the grid's box back.
+     */
+    fun moveBox(from: MainSection, to: MainSection, onlyChannelId: Long? = null): Boolean {
+        val ch = boxChannel ?: return false
+        if (boxSection != from) return false
+        if (onlyChannelId != null && ch.id != onlyChannelId) return false
+        boxSection = to
+        return true
+    }
+
     /** The window's rectangle now, in window pixels; null while there is no window. */
     var current: Rect? by mutableStateOf(null)
         private set
