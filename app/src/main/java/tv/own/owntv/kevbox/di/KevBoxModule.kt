@@ -30,6 +30,8 @@ import tv.own.owntv.kevbox.session.PrefsSessionStore
 import tv.own.owntv.kevbox.session.SessionStore
 import tv.own.owntv.kevbox.supabase.SupabaseApi
 
+private const val ERROR_QUEUE_FILE = "kevbox_live_errors.json"
+
 /** KevBox Live's bindings, on top of upstream's modules. Every store is a private prefs file. */
 val kevboxModule = module {
     fun Context.prefs(name: String) = getSharedPreferences(name, Context.MODE_PRIVATE)
@@ -42,6 +44,26 @@ val kevboxModule = module {
     single { tv.own.owntv.kevbox.errors.DeviceId(androidContext().prefs(tv.own.owntv.kevbox.errors.DeviceId.PREFS_NAME)) }
     single {
         tv.own.owntv.kevbox.usage.LiveCheckin(
+            auth = get(),
+            api = get(),
+            deviceId = get(),
+            appVersion = BuildConfig.VERSION_NAME,
+            scope = get(),
+            now = System::currentTimeMillis,
+        )
+    }
+    single {
+        // noBackupFilesDir: the queue is this TV's alone and must never ride a backup to another box.
+        val auth = get<KevBoxAuth>()
+        tv.own.owntv.kevbox.errors.ErrorQueue(
+            file = java.io.File(androidContext().noBackupFilesDir, ERROR_QUEUE_FILE),
+            now = System::currentTimeMillis,
+            currentUserId = { auth.userId.value },
+        )
+    }
+    single {
+        tv.own.owntv.kevbox.errors.ErrorSender(
+            queue = get(),
             auth = get(),
             api = get(),
             deviceId = get(),
