@@ -261,7 +261,7 @@ fun EpgScreen(
     val videoStage = tv.own.owntv.kevbox.live.LocalLiveVideoStage.current
     val localBoxChannel = remember { mutableStateOf<ChannelEntity?>(null) }
     fun boxChannel(): ChannelEntity? = if (videoStage != null) videoStage.boxChannel else localBoxChannel.value
-    fun putInBox(ch: ChannelEntity) { if (videoStage != null) videoStage.boxChannel = ch else localBoxChannel.value = ch }
+    fun putInBox(ch: ChannelEntity) { if (videoStage != null) videoStage.putInBox(ch, tv.own.owntv.core.nav.MainSection.LIVE_TV) else localBoxChannel.value = ch }
     val okPreviewsFirst = liveMode && !effectivePreview
     // With the focus preview on, the focused channel is already in the box, so one OK goes full screen.
     fun inBox(ch: ChannelEntity): Boolean =

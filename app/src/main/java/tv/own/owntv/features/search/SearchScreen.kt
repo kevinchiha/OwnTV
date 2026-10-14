@@ -137,23 +137,33 @@ private const val ALL_TAB_CHANNELS = 4
 /**
  * Global search in the Stage design (SR-01 … SR-07): the title band, the field, tabs over grouped
  * results on the left, and on the right the focused result — Live TV's own preview pane for a channel,
- * the poster panel for a movie or series. Search only shows: OK goes to the item (issue #233), where
- * playing, downloading and every option already live. Back clears the search first, then leaves.
+ * the poster panel for a movie or series. A movie or series goes to its own page (issue #233). Back
+ * clears the search first, then leaves.
+ *
+ * KevBox: a channel plays the way Live TV's grid plays one (Kevin, 2026-10-14). Moving through the
+ * results plays nothing; OK puts the channel in the box on the right, OK on the channel already there
+ * opens it full screen ([onWatchChannel]), and Back from full screen shrinks it into the box again,
+ * with this screen kept as it was (kevbox/live/SearchBox.kt).
  */
 @Composable
 fun SearchScreen(
-    /** OK on a result goes to it: the channel in Live TV, the movie in Movies, the series on its page. */
-    onGoToChannel: (ChannelEntity) -> Unit,
+    /** OK on the channel in the box: full screen, through Live TV's own path. */
+    onWatchChannel: (ChannelEntity) -> Unit,
     onGoToMovie: (MovieEntity) -> Unit,
     onOpenSeries: (SeriesEntity) -> Unit,
     onChildFocused: () -> Unit,
-    /** The channel panel is Live TV's own: its preview engine, guide data and Preview setting. */
+    /** The channel panel is Live TV's own: its preview engine and guide data. */
     liveVm: LiveViewModel,
     /** False while the fullscreen or mini player owns the picture. */
     previewEnabled: Boolean,
     vm: SearchViewModel = koinViewModel(),
     returnToHomeOnBack: Boolean = false,
     onReturnToHome: () -> Unit = {},
+    /** KevBox: false while full screen covers this screen, which stays composed behind it. */
+    onScreen: Boolean = true,
+    /** KevBox: the way back from full screen; focus goes back to the results, then [onRestored]. */
+    restoreFocus: Boolean = false,
+    onRestored: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val query by vm.query.collectAsStateWithLifecycle()
@@ -168,7 +178,6 @@ fun SearchScreen(
     val metadataMode by vm.metadataMode.collectAsStateWithLifecycle()
     val nowPlaying by liveVm.nowPlaying.collectAsStateWithLifecycle()
     val nowNext by liveVm.nowNext.collectAsStateWithLifecycle()
-    val livePreviewSetting by liveVm.livePreviewEnabled.collectAsStateWithLifecycle()
     val singleSessionBlocked by liveVm.previewBlockedSingleSession.collectAsStateWithLifecycle()
 
     val fieldFocus = remember { FocusRequester() }
@@ -188,22 +197,21 @@ fun SearchScreen(
     // The focused row drives the right side; nothing focused yet = the first result.
     var focusedKey by remember { mutableStateOf<String?>(null) }
     val active = entries.firstOrNull { it.key == focusedKey && it.isResult() } ?: entries.firstOrNull { it.isResult() }
-    // The preview plays only while the user is on a channel row (or its schedule), never just because
-    // a channel is the first result under the field.
     var listHasFocus by remember { mutableStateOf(false) }
     var scheduleHasFocus by remember { mutableStateOf(false) }
     val activeChannel = active?.channel()?.takeIf { showingResults && (listHasFocus || scheduleHasFocus) }
-    val previewOn = previewEnabled && livePreviewSetting
 
-    // A channel shows Live TV's preview: the same guide lookup, and the same 700 ms settle before playing.
-    LaunchedEffect(activeChannel?.id, previewOn) {
+    // KevBox: the channel OK put in the box. It lives on the shell's video stage, like the grid's, so it
+    // outlasts full screen; it keeps playing, and the panel keeps showing it, while focus moves on.
+    val videoStage = tv.own.owntv.kevbox.live.LocalLiveVideoStage.current
+    val box = videoStage?.boxChannel?.takeIf { videoStage.boxSection == tv.own.owntv.core.nav.MainSection.SEARCH }
+    // With the box empty, the panel follows the focused channel (its guide lookup, no video).
+    LaunchedEffect(activeChannel?.id, box == null) {
         val ch = activeChannel
-        if (ch == null) { liveVm.stopPreview(); return@LaunchedEffect }
-        liveVm.onChannelFocused(ch)
-        if (!previewOn) return@LaunchedEffect
-        delay(700)
-        liveVm.playPreview(ch)
+        if (box == null && ch != null) liveVm.onChannelFocused(ch)
     }
+    fun okOn(ch: ChannelEntity): tv.own.owntv.kevbox.live.SearchOk =
+        tv.own.owntv.kevbox.live.searchOk(ch.id, box?.id, previewAvailable = previewEnabled && videoStage != null)
     LaunchedEffect(active?.key, showingResults) {
         vm.focusVod(if (!showingResults) null else when (active) { is Entry.Movie -> active.movie; is Entry.Series -> active.series; else -> null })
     }
@@ -213,7 +221,13 @@ fun SearchScreen(
     LaunchedEffect(channelRows.map { it.id }) { liveVm.ensureNowPlaying(channelRows) }
 
     // Back clears an active query/intent (returning to the launcher) before leaving the screen.
-    BackHandler(enabled = returnToHomeOnBack || query.isNotBlank() || intent != null) {
+    // KevBox: `onScreen &&`, so Back in full screen reaches the player; and the box's channel stops with
+    // the search it came from.
+    BackHandler(enabled = onScreen && (returnToHomeOnBack || query.isNotBlank() || intent != null)) {
+        if (box != null) {
+            liveVm.stopPreview()
+            videoStage.clearBox()
+        }
         vm.setQuery("")
         vm.setIntent(null)
         if (returnToHomeOnBack) onReturnToHome()
@@ -222,21 +236,37 @@ fun SearchScreen(
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    // Back from a "Go to" lands on the row it left from; otherwise the field.
-    LaunchedEffect(Unit) {
-        val back = vm.lastFocusKey
-        if (back != null) {
+    // Focus [key]'s row once the list has it (it may still be loading); the field when there is none.
+    suspend fun focusRow(key: String?) {
+        if (key != null) {
             repeat(30) {
-                val idx = entries.indexOfFirst { it.key == back }
+                val idx = entries.indexOfFirst { it.key == key }
                 if (idx >= 0) {
                     runCatching { listState.scrollToItem(idx) }
                     withFrameNanos { }
-                    if (runCatching { requesterFor(back).requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+                    if (runCatching { requesterFor(key).requestFocus() }.getOrDefault(false)) return
                 }
                 delay(100)
             }
         }
         runCatching { fieldFocus.requestFocus() }
+    }
+    // Back from a "Go to" lands on the row it left from; otherwise the field.
+    LaunchedEffect(Unit) { focusRow(vm.lastFocusKey) }
+    // KevBox: Back from full screen lands on the row OK left from, or after CH+/CH− on the row of the
+    // channel now in the box, when it has one (kevbox/live/SearchBox.kt searchReturnKey).
+    LaunchedEffect(restoreFocus, onScreen) {
+        if (!restoreFocus || !onScreen) return@LaunchedEffect
+        val last = vm.lastFocusKey
+        focusRow(
+            tv.own.owntv.kevbox.live.searchReturnKey(
+                lastKey = last,
+                lastKeyChannelId = entries.firstOrNull { it.key == last }?.channel()?.id,
+                playingChannelId = box?.id,
+                playingRowKey = entries.firstOrNull { it is Entry.Channel && it.row.channel.id == box?.id }?.key,
+            ),
+        )
+        onRestored()
     }
     // An intent's list replaces the launcher under the cursor: land on its first row.
     LaunchedEffect(intent, entries.isNotEmpty()) {
@@ -246,12 +276,24 @@ fun SearchScreen(
         }
     }
 
+    // KevBox: OK on a channel (or a programme, for its channel) previews it in the box, or watches it
+    // full screen when it is already there.
+    fun play(ch: ChannelEntity) {
+        when (okOn(ch)) {
+            tv.own.owntv.kevbox.live.SearchOk.PREVIEW -> {
+                videoStage?.putInBox(ch, tv.own.owntv.core.nav.MainSection.SEARCH)
+                liveVm.onChannelFocused(ch)
+                liveVm.playPreview(ch)
+            }
+            tv.own.owntv.kevbox.live.SearchOk.WATCH -> onWatchChannel(ch)
+        }
+    }
     val goTo: (Entry) -> Unit = { e ->
         vm.lastFocusKey = e.key
         vm.rememberCurrentQuery()
         when (e) {
-            is Entry.Channel -> onGoToChannel(e.row.channel)
-            is Entry.Programme -> onGoToChannel(e.found.channel)
+            is Entry.Channel -> play(e.row.channel)
+            is Entry.Programme -> play(e.found.channel)
             is Entry.Movie -> onGoToMovie(e.movie)
             is Entry.Series -> onOpenSeries(e.series)
             else -> Unit
@@ -444,19 +486,21 @@ fun SearchScreen(
 
             // The right side, in one slot (x 944, w 912): Live TV's preview pane or the poster panel.
             val panelModifier = Modifier.padding(start = panelX, top = 120.mpx).width(panelW)
-            val activeCh = active?.channel()
+            // KevBox: the channel in the box, while there is one; otherwise the focused row's.
+            val activeCh = box ?: active?.channel()
             when {
-                activeCh != null -> LiveStagePane(
+                activeCh != null && active != null -> LiveStagePane(
                     channel = activeCh,
                     channelName = ProviderTags.parse(activeCh.name).name,
                     nowNext = nowNext,
                     previewEngine = liveVm.previewEngine,
-                    showVideo = previewOn,
+                    showVideo = previewEnabled && box != null,
                     singleSessionBlocked = singleSessionBlocked,
                     scheduleFocus = scheduleFocus,
-                    // Search only shows: a programme picked here goes to the channel, where its menu lives.
-                    onOpenProgramme = { goTo(active) },
+                    // A programme picked here plays its channel, as OK on the row does.
+                    onOpenProgramme = { vm.lastFocusKey = active.key; vm.rememberCurrentQuery(); play(activeCh) },
                     onBackToList = { runCatching { requesterFor(active.key).requestFocus() } },
+                    videoStage = videoStage, // KevBox: the shell's one video window, as the grid's box
                     modifier = panelModifier.onFocusChanged { scheduleHasFocus = it.hasFocus },
                 )
                 active is Entry.Movie -> PosterPanel(
@@ -477,7 +521,10 @@ fun SearchScreen(
                 add(
                     stringResource(R.string.common_ok) to stringResource(
                         when (active) {
-                            is Entry.Channel, is Entry.Programme -> R.string.search_go_to_channel
+                            // KevBox: OK previews, or watches the channel already in the box, as in Live TV.
+                            is Entry.Channel, is Entry.Programme ->
+                                if (active.channel()?.let(::okOn) == tv.own.owntv.kevbox.live.SearchOk.PREVIEW) R.string.kevbox_key_preview
+                                else R.string.content_key_watch
                             is Entry.Series -> R.string.search_open_series
                             else -> R.string.search_go_to_movie
                         },

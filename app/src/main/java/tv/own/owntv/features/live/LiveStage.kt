@@ -64,6 +64,7 @@ import tv.own.owntv.core.live.EpgNowNext
 import tv.own.owntv.core.parser.EpgDetails
 import tv.own.owntv.core.parser.XtEpgEntry
 import tv.own.owntv.features.home.timeLeftText
+import tv.own.owntv.kevbox.live.liveVideoSite // KevBox: Search's box marks where the shell's video window goes.
 import tv.own.owntv.ui.components.ChannelLogoTile
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.OwnTVSpinner
@@ -245,6 +246,12 @@ internal fun LiveStagePane(
     scheduleFocus: FocusRequester,
     onOpenProgramme: (XtEpgEntry) -> Unit,
     onBackToList: () -> Unit,
+    /**
+     * KevBox: with the shell's video stage (Search, 2026-10-14), this box draws no video of its own. It
+     * marks where the one video window goes, as the Live TV grid's box does, so OK can grow it to full
+     * screen and Back shrink it here on the same surface (kevbox/live/LiveVideoStage.kt).
+     */
+    videoStage: tv.own.owntv.kevbox.live.LiveVideoStage? = null,
     modifier: Modifier = Modifier,
 ) {
     val previewState by previewEngine.state.collectAsStateWithLifecycle()
@@ -273,7 +280,11 @@ internal fun LiveStagePane(
                     fill = Color.Transparent,
                 ) { OwnTVIcon(OwnTVIcon.LIVE_TV, tint = StageColors.Dim, modifier = Modifier.size(56.mpx)) }
             }
-            if (playing) tv.own.owntv.player.ExoPreviewSurface(engine = previewEngine, modifier = Modifier.fillMaxSize())
+            if (playing && videoStage != null) {
+                Box(Modifier.fillMaxSize().liveVideoSite(videoStage, tv.own.owntv.kevbox.live.VideoSite.BOX, videoR)) // KevBox
+            } else if (playing) {
+                tv.own.owntv.player.ExoPreviewSurface(engine = previewEngine, modifier = Modifier.fillMaxSize())
+            }
             if (loading) OwnTVSpinner(sizeDp = 28)
             // `.shade`: black 72% at the bottom, clear by 42% up — a video-sized gradient, one pass.
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.58f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.72f))))
