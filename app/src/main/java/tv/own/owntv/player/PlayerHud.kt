@@ -287,7 +287,9 @@ fun PlayerHud(
     val showNextCard = !isLive && error == null && nav.hasNext && nextUpTitle != null && !stopsAtItemEnd &&
         nextCardDue && !autoNextDismissed
 
-    var controlsVisible by remember { mutableStateOf(true) }
+    // KevBox: a channel opens on the picture alone; the controls come up on the first key press (Kevin,
+    // 2026-10-14). Upstream opened with them showing for 4.5 s.
+    var controlsVisible by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) } // stream technical-info overlay
     // Used only by "Report this stream", which writes the current readout into the playback log (F18).
     val reportContext = androidx.compose.ui.platform.LocalContext.current
@@ -340,7 +342,8 @@ fun PlayerHud(
 
     val zap: (Int) -> Unit = { d ->
         cancelDirectTune()
-        (if (d < 0) onChannelUp else onChannelDown)?.invoke(); channelFlash++
+        // KevBox: CH+ / CH- change the channel and show nothing (Kevin, 2026-10-14): no channel card.
+        (if (d < 0) onChannelUp else onChannelDown)?.invoke()
     }
 
     // Restartable timeout: each new digit restarts the ~2 s window. On expiry, submit.
