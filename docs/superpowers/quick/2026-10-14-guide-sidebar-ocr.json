@@ -1,0 +1,196 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 5 finding(s) across 6 selected item(s).",
+  "summary": {
+    "files_reviewed": 6,
+    "comments": 5,
+    "total_tokens": 1944957,
+    "input_tokens": 1910567,
+    "output_tokens": 34390,
+    "cache_read_tokens": 1651634,
+    "cache_write_tokens": 258847,
+    "elapsed": "5m2s"
+  },
+  "tool_calls": {
+    "total": 45,
+    "by_tool": {
+      "code_comment": 3,
+      "code_search": 15,
+      "file_find": 1,
+      "file_read": 22,
+      "file_read_diff": 4
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+      "content": "`edgeGlow` is turned off for the whole Live TV section, but according to the comment it should only be off while the guide is expanded. With Floating, `railIdleHidden` also hides the rail on Live TV while the column is showing. In that case the glow is gone too, and that glow is the only hint that the menu is there. It's better to tie it to the same condition that drives the HIDDEN branch.",
+      "suggestion_code": "                edgeGlow = !(selectedSection == MainSection.LIVE_TV \u0026\u0026 liveGuideExpanded), // KevBox: Live TV's expanded guide shows only the guide",
+      "existing_code": "                edgeGlow = selectedSection != MainSection.LIVE_TV, // KevBox: Live TV's expanded guide shows only the guide",
+      "start_line": 1511,
+      "end_line": 1511,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+      "content": "`railHasFocus` is raw focus. The comment above `railFocused` says focus also lands on the rail by itself for a moment (page swaps, or rows going away while a category loads; the EpgScreen sidebarExit comment describes that second case). Each of these brief visits sends `MENU_FOCUSED` to EpgScreen, which collapses the expanded guide and drops a pending `sidebarExit`. Line 730 also un-hides the rail. Using `railFocused`, which only counts intended visits, would stop these accidental collapses. The other option is to confirm this can't happen while focus is on the grid.",
+      "existing_code": "                            menuHasFocus = railHasFocus,",
+      "start_line": 1370,
+      "end_line": 1370,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+      "content": "`categoryLoadFrom` is set before anything confirms that the selection actually changes. Only the `LaunchedEffect(liveMode, liveSelected)` restart clears it, either in its `finally` or on the `from == null` path. `LiveViewModel.select()` does nothing while `lockedKey != null`, which happens while the shared VM is pinned by More → Favourites or History. In that case `liveSelected` stays the same and the effect never restarts, so `categoryLoadFrom` stays non-null. From then on `rightOrOk` returns `SELECT_THEN_ENTER` for every category, and the open one waits on a `SidebarExit` whose `oldState` may never be replaced, so ▶/OK can't enter the grid. Set the flag only after the selection really changed, for example by checking `liveVm.selectedKey.value == key` after `select`, or roll it back if it didn't change.",
+      "suggestion_code": "        liveVm.select(key)\n        if (liveVm.selectedKey.value != key) return // select() ignored (category pinned): nothing will load\n        categoryLoadFrom = state\n        selected = null",
+      "existing_code": "        categoryLoadFrom = state\n        selected = null\n        liveVm.select(key)",
+      "start_line": 361,
+      "end_line": 363,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+      "content": "When the guide is expanded, the column is only hidden: it is moved off screen and drawn at alpha 0. It is still composed and can still take focus. In Live TV the control line is gone, so ▲ on the first channel row (`onStep` returns false for `to \u003c 0`) falls back to the default focus search. The column's search field and rows sit above and to the left, so the search can pick them. Focus then ends up in an invisible column. Nothing collapses the guide, because no `GuideSidebar` event fires when the column gains focus. The rest-select effect then starts loading categories the user can't see. Make the column unfocusable while expanded, e.g. `.focusProperties { canFocus = !expanded }` on the column. Alternatively, collapse the guide when `columnHasFocus` turns true.",
+      "suggestion_code": "                    .graphicsLayer {\n                        val f = slide.value\n                        translationX = -f * slideTravelPx\n                        alpha = if (f \u003e= 1f) 0f else 1f\n                    }\n                    .focusProperties { canFocus = !expanded }",
+      "existing_code": "                    .graphicsLayer {\n                        val f = slide.value\n                        translationX = -f * slideTravelPx\n                        alpha = if (f \u003e= 1f) 0f else 1f\n                    }",
+      "start_line": 858,
+      "end_line": 862,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt",
+      "content": "EpgScreen never sends `GRID_FOCUSED_DURING_COLUMN_ENTRY` or `DIALOG_OPENED`. The only calls are `sidebar(MENU_FOCUSED / ROW_LEFT_OR_BACK / GRID_ENTERED)`. These two events are no-ops that nothing uses. The comments in EpgScreen (\"That row's focus leaves the layout alone (GuideSidebar.Event.GRID_FOCUSED_DURING_COLUMN_ENTRY)\") make it look as if the reducer handles those cases, but they are actually handled by never sending an event. Either send the events from the matching code paths or remove them, so the reducer matches what the screen really does.",
+      "existing_code": "        Event.GRID_FOCUSED_DURING_COLUMN_ENTRY, Event.DIALOG_OPENED -\u003e expanded",
+      "start_line": 46,
+      "end_line": 46,
+      "category": "maintainability",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "EPG guide sidebar integration in live video stage",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt",
+        "app/src/main/java/tv/own/owntv/features/live/LiveStage.kt",
+        "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt"
+      ]
+    },
+    {
+      "label": "Shell and stage rail navigation updates",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/components/StageRail.kt"
+      ]
+    }
+  ],
+  "session_id": "03542d1a-285d-44f2-884a-b09bbc484be3",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "03542d1a-285d-44f2-884a-b09bbc484be3",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "quick/guide-sidebar",
+      "resolved_base": "85305d8a83be43bc2fffc5e5683fb4f9349f005f",
+      "resolved_head": "197fd705049f579901afc1ebf0e22cc1e2369062",
+      "exact_range": "85305d8a83be43bc2fffc5e5683fb4f9349f005f..197fd705049f579901afc1ebf0e22cc1e2369062",
+      "source_artifact_sha256": "f5bead75e5926612c8cf1775fdacb22a9e0f7b032208c7365182b3baf847681f"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "13f503d7b572a70ff5d113247645ef0a120663c8e61253f578e7d06c513e45e7",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/StageRail.kt",
+          "fingerprint": "c1e79ae40f506df280cd573a6c101c1092507b925aef9fc8051aa3119aee2881"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "6b9b1e4921ddb07b784d0b0fa9ccdc57e747fee3ebd67977c8b737d7377efa9b"
+        },
+        {
+          "item_id": "78bb966b217f44e287068e3d7a2e8c8ac5c7ea4a9686a46f0ce0ef5ed32d02a0",
+          "path": "app/src/main/java/tv/own/owntv/features/live/LiveStage.kt",
+          "fingerprint": "07f628a8c85deb44e6eeeadba654b136f89fa378c771265bba6246d179dcd240"
+        },
+        {
+          "item_id": "7f37e61343ac52f63533abecc2ba5fdb272324a7c2dfeff83f4009747446bfdb",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt",
+          "fingerprint": "4895aa033fcd36fc312a6479aea7ac1a026988b5b7f236da556b3dda9a5471f5"
+        },
+        {
+          "item_id": "ac8f67cb53751eacbd0e4299875f3963338d09358b7dc398de95aa64ab32c0f8",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+          "fingerprint": "017217e6ded8487ec281ff4cfc71e88317457cd6458707cfb8fd57d07fa760c4"
+        },
+        {
+          "item_id": "ae85884572f5e487f64af1dcd60c448f59d94469a4438e3ebc2b8dc3c5142460",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt",
+          "fingerprint": "d3af3c10efa2180a081321d954837f2bb34786b6ad23a99bd2d0dafe41378e47"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "13f503d7b572a70ff5d113247645ef0a120663c8e61253f578e7d06c513e45e7",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/components/StageRail.kt",
+          "fingerprint": "c1e79ae40f506df280cd573a6c101c1092507b925aef9fc8051aa3119aee2881"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "6b9b1e4921ddb07b784d0b0fa9ccdc57e747fee3ebd67977c8b737d7377efa9b"
+        },
+        {
+          "item_id": "78bb966b217f44e287068e3d7a2e8c8ac5c7ea4a9686a46f0ce0ef5ed32d02a0",
+          "path": "app/src/main/java/tv/own/owntv/features/live/LiveStage.kt",
+          "fingerprint": "07f628a8c85deb44e6eeeadba654b136f89fa378c771265bba6246d179dcd240"
+        },
+        {
+          "item_id": "7f37e61343ac52f63533abecc2ba5fdb272324a7c2dfeff83f4009747446bfdb",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/LiveVideoStage.kt",
+          "fingerprint": "4895aa033fcd36fc312a6479aea7ac1a026988b5b7f236da556b3dda9a5471f5"
+        },
+        {
+          "item_id": "ac8f67cb53751eacbd0e4299875f3963338d09358b7dc398de95aa64ab32c0f8",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+          "fingerprint": "017217e6ded8487ec281ff4cfc71e88317457cd6458707cfb8fd57d07fa760c4"
+        },
+        {
+          "item_id": "ae85884572f5e487f64af1dcd60c448f59d94469a4438e3ebc2b8dc3c5142460",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt",
+          "fingerprint": "d3af3c10efa2180a081321d954837f2bb34786b6ad23a99bd2d0dafe41378e47"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 301914
+  }
+}

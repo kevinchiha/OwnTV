@@ -81,3 +81,4 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt` (with its tes
 - baseline: gate green (tests, lint, check-divergence 0 failures)
 - Task 1+2: started at 9919f735
 - Task 1+2: landed (f50cd89a). Bent: LiveCategories also gained onSearchFocus (stops the 300 ms timer when the cursor reaches the search field). Outside Files: kevbox/live/LiveVideoStage.kt + LiveVideoStageTest.kt (boxSlide, so the box video moves in the same frame as the guide layer).
+- ocr: 2 medium, 3 low (low dropped). Medium OwnTVShell.kt:1370 (menuHasFocus uses raw railHasFocus, brief focus visits collapse the guide): fix. Medium EpgScreen.kt:858 (hidden column still focusable, Up from the first row can land in it): fix.
