@@ -335,8 +335,10 @@ fun OwnTVShell(
     // In-player watch-history list (Right while controls hidden, live only).
     var showHistoryList by remember { mutableStateOf(false) }
     // Multiview: the grid, while it is up, and which tile is waiting for a channel to be picked.
-    val multiviewEnabled by settingsRepo.multiviewEnabled.collectAsStateWithLifecycle(false)
-    val recordWatchingEnabled by settingsRepo.recordWhatImWatching.collectAsStateWithLifecycle(false)
+    // KevBox: Multiview and Record are off in KevBox Live, whatever the stored settings say. Both
+    // switches are constant false, so the full-screen buttons and the Multiview auto-open never run.
+    val multiviewEnabled = false
+    val recordWatchingEnabled = false
     val liveLeftRightRewinds by settingsRepo.liveLeftRightRewinds.collectAsStateWithLifecycle(false)
     val multiviewTileCount by settingsRepo.multiviewTiles.collectAsStateWithLifecycle(
         tv.own.owntv.core.live.DEFAULT_MULTIVIEW_TILES,
@@ -454,12 +456,15 @@ fun OwnTVShell(
     val historyNowPlaying = overlayNowPlaying // one shared map; the history rail adds to it below
     LaunchedEffect(historyChannels) { liveVm.ensureNowPlaying(historyChannels) }
     // Batch 7 — the single most-recent resumable item, surfaced as a shared top-bar "Continue" chip.
-    val continueTarget by homeVm.continueTarget.collectAsStateWithLifecycle()
+    val continueTargetAny by homeVm.continueTarget.collectAsStateWithLifecycle() // KevBox: renamed, filtered below.
+    // KevBox: Continue (pill and shortcut) only acts on a live channel; a newest movie or episode shows nothing.
+    val continueTarget = continueTargetAny?.takeIf { it.kind == tv.own.owntv.features.home.ContinueKind.LIVE }
 
     // Per-profile startup action runs once when the authenticated shell first appears. With one unlocked
     // profile that is immediately; profile/PIN gates keep the shell out of composition until authorized.
     val resumeSettings = koinInject<tv.own.owntv.core.settings.SettingsRepository>()
-    val startupChannelUnavailable = androidx.compose.ui.res.stringResource(tv.own.owntv.R.string.settings_startup_channel_unavailable)
+    // KevBox: KevBox wording for the startup-channel message (Core's string names screens KevBox Live lacks).
+    val startupChannelUnavailable = androidx.compose.ui.res.stringResource(tv.own.owntv.R.string.kevbox_settings_startup_channel_unavailable)
     LaunchedEffect(Unit) {
         if (playerMode != PlayerMode.NONE) return@LaunchedEffect
         val pid = resumeSettings.activeProfileId.first()
@@ -789,7 +794,8 @@ fun OwnTVShell(
         }
     }
     val dispatchRemoteShortcut: (RemoteShortcutAction) -> Unit = { action ->
-        when (action) {
+        // KevBox: a button bound to Home, Movies, Series, Downloads or TV Guide opens Live TV.
+        when (tv.own.owntv.kevbox.live.LiveShortcuts.resolve(action)) {
             RemoteShortcutAction.OPEN_HOME -> openShortcutSection(MainSection.HOME)
             RemoteShortcutAction.OPEN_LIVE_TV -> openShortcutSection(MainSection.LIVE_TV)
             RemoteShortcutAction.OPEN_MOVIES -> openShortcutSection(MainSection.MOVIES)
@@ -1697,7 +1703,8 @@ fun OwnTVShell(
                     },
                 )
             }
-            if (isFull && playerChromeReady && !autoFrameRate && !afrPrompted) { // KevBox: playerChromeReady.
+            // KevBox: the Auto frame rate popup never shows in KevBox Live (the leading false); the setting row stays.
+            if (false && isFull && playerChromeReady && !autoFrameRate && !afrPrompted) { // KevBox: playerChromeReady.
                 // Frame rate of whichever engine is on screen. On the mpv side this is what the direct
                 // path judders on; on Exo it now survives "Measured stream stats" being off (F14).
                 val activeFps by if (liveOnExo) {

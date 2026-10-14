@@ -30,6 +30,7 @@ import tv.own.owntv.core.settings.RemoteShortcutAction
 import tv.own.owntv.core.settings.RemoteShortcutBinding
 import tv.own.owntv.core.settings.RemoteShortcutBindings
 import tv.own.owntv.core.settings.RemoteShortcutPress
+import tv.own.owntv.kevbox.live.LiveShortcuts // KevBox: live-only shortcut picker.
 import tv.own.owntv.ui.components.NumberInputDialog
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.restoreAfterDialogClose
@@ -110,9 +111,10 @@ fun ChNavSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             val title = remoteButtonLabel(binding.keyCode) + separator + pressLabel
             val value = SettingValue.Opens(null)
             StageSettingRow(
-                icon = remoteButtonIcon(binding.keyCode, binding.action),
+                // KevBox: a binding to a removed screen (Home, Movies, ...) shows as Live TV, which is what it opens.
+                icon = remoteButtonIcon(binding.keyCode, LiveShortcuts.resolve(binding.action)),
                 title = title,
-                desc = remoteActionLabel(binding.action),
+                desc = remoteActionLabel(LiveShortcuts.resolve(binding.action)), // KevBox: same as above.
                 value = value,
                 onClick = {
                     dialogReturn = focus
@@ -207,21 +209,24 @@ fun ChNavSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         )
         ChNavDialog.CAPTURE -> RemoteButtonCapturePopup(
             onCaptured = { keyCode, press ->
-                pendingBinding = RemoteShortcutBinding(keyCode, press, RemoteShortcutAction.OPEN_HOME)
+                // KevBox: a new button starts on Live TV; KevBox Live has no Home screen.
+                pendingBinding = RemoteShortcutBinding(keyCode, press, RemoteShortcutAction.OPEN_LIVE_TV)
                 dialog = ChNavDialog.ACTION
             },
             onDismiss = { dialog = ChNavDialog.NONE },
         )
         ChNavDialog.ACTION -> pendingBinding?.let { binding ->
-            val actionOptions = RemoteShortcutAction.entries.map { it.name to remoteActionLabel(it) }
+            // KevBox: the picker leaves out actions that open screens KevBox Live removed (LiveShortcuts.REMOVED).
+            val actionOptions = LiveShortcuts.offered(RemoteShortcutAction.entries).map { it.name to remoteActionLabel(it) }
             PickerDialog(
                 title = stringResource(R.string.settings_remote_shortcuts_choose_action),
                 options = if (editingExisting) listOf(String() to stringResource(R.string.common_delete)) + actionOptions else actionOptions,
-                selected = binding.action.name,
+                selected = LiveShortcuts.resolve(binding.action).name, // KevBox: a removed action is shown as Live TV.
                 searchable = true,
                 leadingIcons = buildMap {
                     if (editingExisting) put(String(), OwnTVIcon.CLOSE)
-                    RemoteShortcutAction.entries.forEach { put(it.name, remoteActionIcon(it)) }
+                    // KevBox: icons only for the offered actions.
+                    LiveShortcuts.offered(RemoteShortcutAction.entries).forEach { put(it.name, remoteActionIcon(it)) }
                 },
                 onSelect = { value ->
                     if (value.isEmpty()) vm.removeRemoteShortcutBinding(binding.keyCode, binding.press)
