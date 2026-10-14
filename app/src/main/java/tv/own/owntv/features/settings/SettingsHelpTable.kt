@@ -15,7 +15,7 @@ internal val SETTING_LINE: Map<String, Int> = mapOf(
     "quick_preview_sound" to R.string.settings_line_preview_sound,
     "quick_channel_numbers" to R.string.settings_line_quick_channel_numbers,
     "quick_hdr" to R.string.settings_line_hdr,
-    "quick_autoplay" to R.string.settings_line_quick_autoplay,
+    "quick_autoplay" to R.string.kevbox_settings_line_catchup_next, // KevBox: reads like the vp_autoplay row (AC-17)
     "quick_check_update" to R.string.settings_line_when_app_opens,
     "epg_offset" to R.string.settings_line_epg_offset,
     "reminders" to R.string.settings_line_reminders,
@@ -54,7 +54,7 @@ internal val SETTING_LINE: Map<String, Int> = mapOf(
     "vp_reset_pins" to R.string.settings_line_saved_choices,
     "vp_forget_fixes" to R.string.settings_line_learned_fixes,
     "vp_external" to R.string.settings_line_external,
-    "vp_vod_buffer" to R.string.settings_line_vod_buffer,
+    "vp_vod_buffer" to R.string.kevbox_settings_line_catchup_buffer, // KevBox: catch-up wording (AC-17)
     "vp_vod_timeout" to R.string.settings_line_vod_timeout,
     "vp_vod_reconnects" to R.string.settings_line_vod_reconnects,
     "vp_hw" to R.string.settings_line_hw,
@@ -89,10 +89,10 @@ internal val SETTING_LINE: Map<String, Int> = mapOf(
     "vp_preroll_sources" to R.string.settings_line_override_playlist,
     "vp_tune_timeout" to R.string.settings_line_tune_timeout,
     "vp_tune_timeout_sources" to R.string.settings_line_override_playlist,
-    "vp_seek_step" to R.string.settings_line_seek_step,
+    "vp_seek_step" to R.string.kevbox_settings_line_seek_step, // KevBox: catch-up wording (AC-17)
     "vp_rewind_step" to R.string.settings_line_rewind_step,
     "vp_resume" to R.string.settings_line_resume,
-    "vp_autoplay" to R.string.settings_line_autoplay,
+    "vp_autoplay" to R.string.kevbox_settings_line_catchup_next, // KevBox: catch-up wording (AC-17)
     "vp_multiview" to R.string.settings_vp_cat_multiview_summary_mobile,
     "vp_multiview_tiles" to R.string.settings_line_tiles,
     "vp_mini" to R.string.settings_line_mini,
@@ -119,7 +119,7 @@ internal val SETTING_TITLE: Map<String, Int> = mapOf(
 
 /** The context panel's explanation, where the row's own description is not already one. */
 internal val SETTING_HELP: Map<String, Int> = mapOf(
-    "quick_live_preview" to R.string.settings_help_live_preview,
+    "quick_live_preview" to R.string.kevbox_settings_help_live_preview, // KevBox: KevBox Live always has room for the preview
     "quick_preview_sound" to R.string.settings_help_preview_audio,
     "quick_channel_numbers" to R.string.settings_help_channel_numbers,
     "quick_check_update" to R.string.settings_help_update_startup,
@@ -155,7 +155,7 @@ internal val SETTING_HELP: Map<String, Int> = mapOf(
     "tab_OPEN_SUBTITLES" to R.string.settings_open_subtitles_description,
     "app_icon" to R.string.settings_help_app_icon,
     "brand_accent" to R.string.settings_help_brand_accent,
-    "app_startup" to R.string.settings_help_startup,
+    "app_startup" to R.string.kevbox_settings_help_startup, // KevBox: KevBox Live has no Home to start on
     "check_updates" to R.string.settings_help_check_updates,
     "update_startup" to R.string.settings_help_update_startup,
     "tab_NETWORK" to R.string.settings_proxy_description,
@@ -166,10 +166,10 @@ internal val SETTING_HELP: Map<String, Int> = mapOf(
     "vp_volume" to R.string.settings_help_volume,
     "vp_sub_lang" to R.string.settings_help_sub_lang,
     "vp_channel_numbers" to R.string.settings_help_channel_numbers,
-    "vp_live_preview" to R.string.settings_help_live_preview,
+    "vp_live_preview" to R.string.kevbox_settings_help_live_preview, // KevBox: KevBox Live always has room for the preview
     "vp_preview_audio" to R.string.settings_help_preview_audio,
     "vp_timeshift_window" to R.string.settings_help_timeshift_window,
-    "vp_seek_step" to R.string.settings_help_seek_step,
+    "vp_seek_step" to R.string.kevbox_settings_help_seek_step, // KevBox: catch-up wording (AC-17)
     "vp_resume" to R.string.settings_help_resume,
     "vp_mini" to R.string.settings_help_mini,
 )

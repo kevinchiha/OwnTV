@@ -209,23 +209,28 @@ private fun counted(nameRes: Int, n: Int) = stringResource(nameRes) + " " + n
 /**
  * The twelve Settings groups (P10), in the order of `SettingsGroup`: a card's index is the group it opens.
  */
-private data class SettingsGroupCard(val icon: OwnTVIcon, val nameRes: Int, val summaryRes: Int, val count: Int?)
+// KevBox: no typed count per card: each card reads its group's count from rememberSettingsGroupCounts(),
+// the same number the group page shows (AC-11).
+private data class SettingsGroupCard(val icon: OwnTVIcon, val nameRes: Int, val summaryRes: Int)
 
 private val SettingsCards = listOf(
-    SettingsGroupCard(OwnTVIcon.SPARKLE, R.string.settings_group_quick, R.string.settings_group_summary_quick, null),
-    SettingsGroupCard(OwnTVIcon.PERSON, R.string.settings_group_profile, R.string.settings_card_profile, 3),
-    // KevBox: 7 with the Playlists row hidden; SettingsPage adds 1 while Choose playlist shows (two or more playlists).
-    SettingsGroupCard(OwnTVIcon.LIST, R.string.settings_group_sources, R.string.settings_card_sources, 7),
-    SettingsGroupCard(OwnTVIcon.PALETTE, R.string.settings_group_appearance, R.string.settings_card_appearance, 9),
-    SettingsGroupCard(OwnTVIcon.GRID, R.string.settings_group_layout, R.string.settings_card_layout, 10),
-    SettingsGroupCard(OwnTVIcon.MOVIES, R.string.settings_group_content_metadata, R.string.settings_card_content, 3),
-    SettingsGroupCard(OwnTVIcon.PLAY_CIRCLE, R.string.settings_vp_cat_player, R.string.settings_card_player, 11),
-    SettingsGroupCard(OwnTVIcon.EXPAND, R.string.settings_vp_cat_picture, R.string.settings_card_picture, 9),
-    SettingsGroupCard(OwnTVIcon.HEADPHONES, R.string.settings_group_sound_subtitles, R.string.settings_card_sound, 11),
-    SettingsGroupCard(OwnTVIcon.LIVE_TV, R.string.settings_live_tv, R.string.settings_card_live, 12),
-    SettingsGroupCard(OwnTVIcon.REC, R.string.settings_group_watching_recording, R.string.settings_card_watching, 11),
-    // KevBox: 7, not 10: the App icon, Accent-colored logo and Proxy rows are hidden.
-    SettingsGroupCard(OwnTVIcon.INFO, R.string.settings_group_app, R.string.settings_card_app, 7),
+    // KevBox: the typed counts are gone from every card below; SettingsPage reads them per group.
+    SettingsGroupCard(OwnTVIcon.SPARKLE, R.string.settings_group_quick, R.string.settings_group_summary_quick),
+    SettingsGroupCard(OwnTVIcon.PERSON, R.string.settings_group_profile, R.string.settings_card_profile),
+    SettingsGroupCard(OwnTVIcon.LIST, R.string.settings_group_sources, R.string.settings_card_sources),
+    // KevBox: the Appearance, Layout, Player and Watching summaries name only what KevBox Live shows (AC-11).
+    SettingsGroupCard(OwnTVIcon.PALETTE, R.string.settings_group_appearance, R.string.kevbox_settings_card_appearance),
+    SettingsGroupCard(OwnTVIcon.GRID, R.string.settings_group_layout, R.string.kevbox_settings_card_layout),
+    SettingsGroupCard(OwnTVIcon.MOVIES, R.string.settings_group_content_metadata, R.string.settings_card_content),
+    SettingsGroupCard(OwnTVIcon.PLAY_CIRCLE, R.string.settings_vp_cat_player, R.string.kevbox_settings_card_player),
+    // KevBox: no typed count (Picture, Sound, Live TV).
+    SettingsGroupCard(OwnTVIcon.EXPAND, R.string.settings_vp_cat_picture, R.string.settings_card_picture),
+    SettingsGroupCard(OwnTVIcon.HEADPHONES, R.string.settings_group_sound_subtitles, R.string.settings_card_sound),
+    SettingsGroupCard(OwnTVIcon.LIVE_TV, R.string.settings_live_tv, R.string.settings_card_live),
+    // KevBox: named Watching, with no resume, multiview or recording in its summary (AC-11).
+    SettingsGroupCard(OwnTVIcon.REC, R.string.kevbox_settings_group_watching, R.string.kevbox_settings_card_watching),
+    // KevBox: no typed count (App).
+    SettingsGroupCard(OwnTVIcon.INFO, R.string.settings_group_app, R.string.settings_card_app),
 )
 
 /** The card last opened, so Back from its group lands on it again rather than on the search field. */
@@ -234,9 +239,9 @@ private var lastOpenedCard: Int? = null
 @Composable
 internal fun SettingsPage(entry: FocusRequester, pinned: Int, onOpenGroup: (Int) -> Unit, onSearch: () -> Unit) {
     val back = lastOpenedCard
-    val profiles = tv.own.owntv.features.settings.profileCount()
-    // KevBox: the Sources card counts the Choose playlist row only while that row shows.
-    val sourcesRows = (SettingsCards[2].count ?: 0) + (if (tv.own.owntv.kevbox.ui.kevboxPlaylistChoice() != null) 1 else 0)
+    // KevBox: every card's count, by index, from the group pages themselves; null until known (AC-11).
+    // [pinned] is no longer read: the Quick card counts the Quick rows its page lists.
+    val counts = tv.own.owntv.features.shell.components.rememberSettingsGroupCounts()
     Column(Modifier.fillMaxSize().focusGroup()) {
         PageHead(stringResource(R.string.common_nav_settings)) {
             Spacer(Modifier.weight(1f))
@@ -254,9 +259,9 @@ internal fun SettingsPage(entry: FocusRequester, pinned: Int, onOpenGroup: (Int)
             }
         }
         Column(Modifier.padding(top = 22.mpx), verticalArrangement = Arrangement.spacedBy(20.mpx)) {
-            // KevBox: no Profile card (index 1): KevBox Live keeps one hidden profile. A card still opens
-            // the group of its own index.
-            SettingsCards.filterIndexed { i, _ -> i != 1 }.chunked(3).forEach { row ->
+            // KevBox: no Profile card (index 1): KevBox Live keeps one hidden profile, and no Content card
+            // (index 5): KevBox Live has no metadata to set (AC-7). A card still opens the group of its own index.
+            SettingsCards.filterIndexed { i, _ -> i != 1 && i != 5 }.chunked(3).forEach { row ->
                 // 150 at the default font; a larger app font grows the row rather than cutting the
                 // summary, and the row's cards keep one height.
                 Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(20.mpx)) {
@@ -271,8 +276,8 @@ internal fun SettingsPage(entry: FocusRequester, pinned: Int, onOpenGroup: (Int)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     OwnTVIcon(card.icon, if (focused) StageColors.Text else StageColors.Muted, Modifier.size(28.mpx))
                                     Spacer(Modifier.weight(1f))
-                                    // KevBox: index 2 (Sources) shows sourcesRows.
-                                    Text((if (index == 1) profiles else if (index == 2) sourcesRows else card.count ?: pinned).toString(), style = stageText(17, 700), color = StageColors.Dim)
+                                    // KevBox: the group's own count, blank while it is not known yet (AC-11).
+                                    Text(counts?.getOrNull(index)?.toString() ?: String(), style = stageText(17, 700), color = StageColors.Dim)
                                 }
                                 Text(stringResource(card.nameRes), style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 14.mpx))
                                 Text(stringResource(card.summaryRes), style = stageText(16, 500), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.mpx))
@@ -291,6 +296,10 @@ internal fun SettingsPage(entry: FocusRequester, pinned: Int, onOpenGroup: (Int)
 
 private enum class FavFilter { ALL, LIVE, MOVIES, SERIES }
 
+// KevBox: KevBox Live plays channels only, so Favorites and History show no Movies or Series. The
+// upstream filters, poster rows and per-type history stay in the code behind this switch (AC-29, AC-31).
+private const val KEVBOX_VOD_SHOWN = false
+
 @Composable
 internal fun FavouritesPage(
     vm: MoreCountsViewModel,
@@ -303,7 +312,8 @@ internal fun FavouritesPage(
     val counts by vm.favorites.collectAsStateWithLifecycle()
     val lists by vm.favouriteLists.collectAsStateWithLifecycle()
     val move by vm.move.collectAsStateWithLifecycle()
-    var filter by rememberSaveable { mutableStateOf(FavFilter.ALL) }
+    // KevBox: fixed on Live TV while Movies and Series are not shown (AC-31).
+    var filter by rememberSaveable { mutableStateOf(if (KEVBOX_VOD_SHOWN) FavFilter.ALL else FavFilter.LIVE) }
     val segFocus = remember { FocusRequester() }
     // Hold OK: the item whose small menu is open, and the card to return to when it closes.
     var menu by remember { mutableStateOf<Triple<MediaType, Long, String>?>(null) }
@@ -330,7 +340,9 @@ internal fun FavouritesPage(
 
     Column(Modifier.fillMaxSize().focusGroup()) {
         PageHead(stringResource(R.string.content_category_favorites)) {
-            StageSegmented(
+            // KevBox: no All / Live / Movies / Series filter: the channel count stands beside the title (AC-31).
+            if (!KEVBOX_VOD_SHOWN) Text(counts.live.toString(), style = stageText(22, 700), color = StageColors.Muted)
+            else StageSegmented(
                 options = listOf(
                     counted(R.string.content_epg_all, counts.total), counted(R.string.common_nav_live_tv, counts.live),
                     counted(R.string.common_nav_movies, counts.movies), counted(R.string.common_nav_series, counts.series),
@@ -341,8 +353,9 @@ internal fun FavouritesPage(
             )
         }
         androidx.compose.runtime.SideEffect { setEntry { runCatching { firstTarget.requestFocus() }.isSuccess } }
-        if (counts.total == 0) {
-            EmptyNote(stringResource(R.string.more_fav_empty_title), stringResource(R.string.more_fav_empty_body))
+        // KevBox: empty when no channel is a favourite; the hint says how to add one (AC-31).
+        if ((if (KEVBOX_VOD_SHOWN) counts.total else counts.live) == 0) {
+            EmptyNote(stringResource(R.string.more_fav_empty_title), stringResource(if (KEVBOX_VOD_SHOWN) R.string.more_fav_empty_body else R.string.kevbox_more_fav_empty_body))
             return@Column
         }
         if (showLive && lists.live.isNotEmpty()) {
@@ -402,7 +415,14 @@ internal fun FavouritesPage(
             Box(Modifier.fillMaxSize().background(stageTone(Color.Black.copy(alpha = 0.45f), StageColors.Scrim)).trapAllFocusExit().focusGroup(), contentAlignment = Alignment.Center) {
                 StageMenu(Modifier.width(440.mpx)) {
                     StageMenuHeader(name, null)
-                    StageMenuItem(stringResource(R.string.content_remove_favourite), onClick = { vm.removeFavourite(type, id); returnTo = segFocus; close() }, icon = OwnTVIcon.FAVORITE, modifier = Modifier.focusRequester(first))
+                    StageMenuItem(stringResource(R.string.content_remove_favourite), onClick = {
+                        // KevBox: with no filter drawn, focus returns to the neighbouring channel instead.
+                        val i = lists.live.indexOfFirst { it.id == id }
+                        val next = if (type == MediaType.LIVE) (lists.live.getOrNull(i + 1) ?: lists.live.getOrNull(i - 1)) else null
+                        vm.removeFavourite(type, id)
+                        returnTo = if (KEVBOX_VOD_SHOWN) segFocus else next?.let { focusOf(MediaType.LIVE, it.id) }
+                        close()
+                    }, icon = OwnTVIcon.FAVORITE, modifier = Modifier.focusRequester(first))
                     StageMenuItem(stringResource(R.string.content_move), onClick = { close(); vm.startMove(type, id) }, icon = OwnTVIcon.MOVE)
                 }
             }
@@ -453,7 +473,8 @@ internal fun HistoryPage(
         lists.series.firstOrNull()?.let { MediaType.SERIES to it.watchedAt },
     ).maxByOrNull { it.second }?.first ?: MediaType.MOVIE
     var tab by rememberSaveable { mutableStateOf<MediaType?>(null) }
-    val type = tab ?: latest
+    // KevBox: always the channel list, also on a new install with nothing watched (AC-29).
+    val type = if (KEVBOX_VOD_SHOWN) tab ?: latest else MediaType.LIVE
     val rows = when (type) { MediaType.LIVE -> lists.live; MediaType.MOVIE -> lists.movies; else -> lists.series }
     var showClear by remember { mutableStateOf(false) }
     val clearFocus = remember { FocusRequester() }
@@ -475,16 +496,20 @@ internal fun HistoryPage(
     Column(Modifier.fillMaxSize().focusGroup()) {
         PageHead(stringResource(R.string.content_category_history)) {
             val order = listOf(MediaType.LIVE, MediaType.MOVIE, MediaType.SERIES)
-            StageSegmented(
+            // KevBox: no Live TV / Movies / Series control: the channel count stands beside the title (AC-29).
+            if (!KEVBOX_VOD_SHOWN) Text(counts.live.toString(), style = stageText(22, 700), color = StageColors.Muted)
+            else StageSegmented(
                 options = listOf(counted(R.string.common_nav_live_tv, counts.live), counted(R.string.common_nav_movies, counts.movies), counted(R.string.common_nav_series, counts.series)),
                 selected = order.indexOf(type),
                 onSelect = { tab = order[it] },
                 modifier = Modifier.focusRequester(segFocus),
             )
             Spacer(Modifier.weight(1f))
-            if (counts.total > 0) StageTool(stringResource(R.string.settings_clear_history), onClick = { showClear = true }, icon = OwnTVIcon.TRASH, danger = true, modifier = Modifier.focusRequester(clearFocus))
+            // KevBox: shown while there is live history; stored movie and series rows never show (AC-30).
+            if (if (KEVBOX_VOD_SHOWN) counts.total > 0 else counts.live > 0) StageTool(stringResource(R.string.settings_clear_history), onClick = { showClear = true }, icon = OwnTVIcon.TRASH, danger = true, modifier = Modifier.focusRequester(clearFocus))
         }
-        androidx.compose.runtime.SideEffect { setEntry { runCatching { (rows.firstOrNull()?.let { r -> focusOf(r.id) } ?: segFocus).requestFocus() }.isSuccess } }
+        // KevBox: the first row, else Clear history (the segmented control is not drawn), so OK from the sheet lands somewhere.
+        androidx.compose.runtime.SideEffect { setEntry { runCatching { (rows.firstOrNull()?.let { r -> focusOf(r.id) } ?: if (KEVBOX_VOD_SHOWN) segFocus else clearFocus).requestFocus() }.isSuccess } }
         if (rows.isEmpty()) {
             EmptyNote(stringResource(R.string.more_history_empty))
             return@Column
@@ -539,9 +564,30 @@ internal fun HistoryPage(
             }
         }
     }
-    if (showClear) {
+    // KevBox: one question, Live TV only (AC-30); upstream's per-type dialog stays for when Movies and Series show.
+    if (showClear && !KEVBOX_VOD_SHOWN) {
+        ClearLiveHistoryDialog(onClear = { onClearHistory(MediaType.LIVE); showClear = false }, onDismiss = { showClear = false })
+    } else if (showClear) {
         ClearHistoryDialog(onClear = { t -> onClearHistory(t); showClear = false }, onDismiss = { showClear = false })
     }
+}
+
+// KevBox: "Clear Live TV history?" with Core's own strings, translated in every locale (AC-30). Focus
+// starts on No, as in upstream's confirm step.
+@Composable
+private fun ClearLiveHistoryDialog(onClear: () -> Unit, onDismiss: () -> Unit) {
+    val noFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { noFocus.requestFocus() } }
+    tv.own.owntv.ui.stage.StagePopup(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.settings_clear_history_confirm, stringResource(R.string.settings_history_live)),
+        body = stringResource(R.string.settings_cannot_undo),
+        width = 760.mpx,
+        buttons = {
+            tv.own.owntv.ui.stage.StageButton(stringResource(R.string.settings_no), onClick = onDismiss, height = 56.mpx, textSize = 19, modifier = Modifier.focusRequester(noFocus))
+            tv.own.owntv.ui.stage.StageButton(stringResource(R.string.settings_yes_clear), onClick = onClear, height = 56.mpx, textSize = 19, tinted = true)
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -679,7 +725,8 @@ internal fun AboutPage(vm: MoreCountsViewModel, entry: FocusRequester, onOpenLan
                 )
             }
         }
-        Text(stringResource(R.string.more_about_description), style = stageText(18, 500).copy(lineHeight = 29.mpxSp), color = stageTone(Color(0xFFD3DCD8), StageColors.Body),
+        // KevBox: KevBox's own description of the app (AC-32).
+        Text(stringResource(R.string.kevbox_about_description), style = stageText(18, 500).copy(lineHeight = 29.mpxSp), color = stageTone(Color(0xFFD3DCD8), StageColors.Body),
             modifier = Modifier.padding(top = 26.mpx).widthIn(max = 860.mpx))
         // KevBox: the GitHub contributions line, the Telegram card (QR, link, scan hint) and the GitHub
         // repository chip are gone. KevBox Live members get help from the admin, not from upstream's
