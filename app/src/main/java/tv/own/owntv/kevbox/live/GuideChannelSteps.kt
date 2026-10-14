@@ -2,10 +2,11 @@
 package tv.own.owntv.kevbox.live
 
 /**
- * CH+ / CH− in the Live TV grid (AC-24). The member's Remote shortcuts bindings pick the action, as
- * [tv.own.owntv.ui.components.chNavPaging] reads them; this is where each action lands. A page moves
- * by the member's skip counts and a jump uses a skip of the whole grid, so it lands on the first or
- * last row. No wrap: CH+ on the first row stays put.
+ * Where CH+ / CH− land in the Live TV grid (AC-24, AC-37). The grid does not call this: it pages
+ * through upstream's [tv.own.owntv.ui.components.chNavPaging], which reads the member's Remote
+ * shortcuts bindings and skip counts. This object mirrors chNavPaging's step-and-clamp rule so the
+ * AC-37 tests can pin it down: a page moves by the member's skip counts and a jump uses a skip of
+ * the whole grid, so it lands on the first or last row. No wrap: CH+ on the first row stays put.
  */
 object GuideChannelSteps {
     /** The row CH+ (towardFirst) or CH− lands on, or null when there is nowhere to go. */

@@ -92,10 +92,10 @@ class CoreLocalSources(
             name = row.name, url = row.serverUrl, username = row.username, password = row.password,
             syncMovies = false, syncSeries = false,
         )
-        // Before the save: if the swap fails or is cancelled, the stored fields still differ from the
-        // row, so the next reconcile calls update again and retries both (AC-28).
-        guideFeeds.replaceFor(existing, updated)
-        sourceRepository.updateSource(updated)
+        // The save runs inside the guide lock, after the old feed is gone, so a sync finishing meanwhile
+        // cannot re-add the old feed. If the removal fails or is cancelled, the save never runs, the
+        // stored fields still differ from the row, and the next reconcile retries both (AC-28).
+        guideFeeds.replaceFor(existing, updated) { sourceRepository.updateSource(updated) }
     }
 
     override suspend fun link(sourceId: Long, profileIds: List<Long>) {

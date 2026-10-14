@@ -130,7 +130,7 @@ class EpgSourcesViewModel(
         return Triple(channels, programmes, catchup)
     }
 
-    /** Playlists whose own EPG can pre-fill the add form (Xtream xmltv.php / M3U url-tvg). */
+    /** Playlists and their own EPG URLs (Xtream xmltv.php / M3U url-tvg), which mark the automatic feeds. */
     suspend fun playlistEpgOptions(): List<PlaylistEpg> {
         // KevBox: the same list now also feeds automaticIds, so its source moved to activePlaylistEpgs.
         return activePlaylistEpgs().first()

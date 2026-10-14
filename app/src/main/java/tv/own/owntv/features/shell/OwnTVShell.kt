@@ -457,8 +457,9 @@ fun OwnTVShell(
     LaunchedEffect(historyChannels) { liveVm.ensureNowPlaying(historyChannels) }
     // Batch 7 — the single most-recent resumable item, surfaced as a shared top-bar "Continue" chip.
     val continueTargetAny by homeVm.continueTarget.collectAsStateWithLifecycle() // KevBox: renamed, filtered below.
-    // KevBox: Continue (pill and shortcut) only acts on a live channel; a newest movie or episode shows nothing.
-    val continueTarget = continueTargetAny?.takeIf { it.kind == tv.own.owntv.features.home.ContinueKind.LIVE }
+    // KevBox: Continue (pill and shortcut) only acts on a live channel; a newest movie or episode shows nothing
+    // and the shortcut does nothing (kevbox/live/LiveShortcuts.continueChannel).
+    val continueTarget = continueTargetAny?.takeIf { tv.own.owntv.kevbox.live.LiveShortcuts.continueChannel(it) != null }
 
     // Per-profile startup action runs once when the authenticated shell first appears. With one unlocked
     // profile that is immediately; profile/PIN gates keep the shell out of composition until authorized.
@@ -796,7 +797,7 @@ fun OwnTVShell(
         }
     }
     val dispatchRemoteShortcut: (RemoteShortcutAction) -> Unit = { action ->
-        // KevBox: a button bound to Home, Movies, Series, Downloads or TV Guide opens Live TV.
+        // KevBox: a button bound to Home, Movies, Series, Downloads, TV Guide or Profiles opens Live TV.
         when (tv.own.owntv.kevbox.live.LiveShortcuts.resolve(action)) {
             RemoteShortcutAction.OPEN_HOME -> openShortcutSection(MainSection.HOME)
             RemoteShortcutAction.OPEN_LIVE_TV -> openShortcutSection(MainSection.LIVE_TV)
@@ -806,7 +807,7 @@ fun OwnTVShell(
             RemoteShortcutAction.OPEN_GUIDE -> openShortcutSection(MainSection.EPG)
             RemoteShortcutAction.OPEN_SEARCH -> openShortcutSection(MainSection.SEARCH)
             RemoteShortcutAction.OPEN_SETTINGS -> openShortcutSection(MainSection.SETTINGS)
-            // KevBox: no profile switcher to open; KevBox Live keeps one hidden profile.
+            // KevBox: never reached (LiveShortcuts.resolve maps it to Live TV); KevBox Live keeps one hidden profile.
             RemoteShortcutAction.OPEN_PROFILE_SWITCHER -> Unit
             RemoteShortcutAction.OPEN_PLAYLIST_SWITCHER -> {
                 if (playerMode == PlayerMode.FULLSCREEN) dockPlayer()
