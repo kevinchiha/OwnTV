@@ -180,8 +180,10 @@ fun SearchScreen(
 
     val searching = query.trim().length >= 2
     val showingResults = searching || intent != null
-    val shown = if (searching) results else curated
-    val entries = searchEntries(shown, if (searching) tab else SearchTab.ALL, capChannels = searching)
+    // KevBox: channels and TV programmes only (Kevin, 2026-10-14). Movies and series never show, so one
+    // grouped list replaces the tabs, with every channel in it rather than the first four.
+    val shown = (if (searching) results else curated).copy(movies = emptyList(), series = emptyList())
+    val entries = searchEntries(shown, SearchTab.ALL, capChannels = false)
 
     // The focused row drives the right side; nothing focused yet = the first result.
     var focusedKey by remember { mutableStateOf<String?>(null) }
@@ -281,13 +283,22 @@ fun SearchScreen(
         StageSearchField(
             query = query,
             onQueryChange = vm::setQuery,
-            placeholder = stringResource(R.string.search_field_hint),
+            placeholder = stringResource(R.string.kevbox_search_field_hint), // KevBox: channels and programs only
             modifier = Modifier
                 .padding(start = listX, top = 118.mpx)
                 .width(listW)
                 .focusRequester(fieldFocus)
                 // ▼ lands on the open tab, not whichever tab is nearest below.
-                .focusProperties { down = if (searching) tabFocus.getValue(tab) else if (!showingResults) jumpFocus else FocusRequester.Default },
+                // KevBox: no tabs, so ▼ lands on the first result, from the pill and from the text being edited
+                // alike (the default search found nothing below the field).
+                .onPreviewKeyEvent { e ->
+                    val first = entries.firstOrNull { it.isResult() }
+                    if (showingResults && first != null && e.key == Key.DirectionDown) {
+                        if (e.type == KeyEventType.KeyDown) runCatching { requesterFor(first.key).requestFocus() }
+                        true
+                    } else false
+                }
+                .focusProperties { down = if (!showingResults) jumpFocus else FocusRequester.Default },
         )
 
         if (!showingResults) {
@@ -308,7 +319,7 @@ fun SearchScreen(
             )
         }
 
-        if (searching) {
+        if (false) { // KevBox: no tab row; with Movies and Series gone, All and Live TV were the same list.
             // Tabs (SR-01): the focused tab is the open one, so ◀ ▶ change it.
             Row(Modifier.padding(start = fx(84) - 12.mpx, top = 192.mpx), horizontalArrangement = Arrangement.spacedBy(16.mpx)) {
                 listOf(
@@ -333,16 +344,16 @@ fun SearchScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier
-                    .padding(start = listX, top = if (searching) 252.mpx else 192.mpx, bottom = 80.mpx)
+                    .padding(start = listX, top = 192.mpx, bottom = 80.mpx) // KevBox: no tab row above
                     .width(listW)
                     .fillMaxHeight()
                     .onFocusChanged { listHasFocus = it.hasFocus }
-                    // ▲ out of the results lands on the open tab, not the tab nearest the row.
+                    // ▲ out of the results lands on the search field (KevBox: there are no tabs).
                     .focusProperties {
                         onExit = {
                             if (searching && requestedFocusDirection == FocusDirection.Up) {
                                 cancelFocusChange()
-                                runCatching { tabFocus.getValue(tab).requestFocus() }
+                                runCatching { fieldFocus.requestFocus() }
                             }
                         }
                     }
@@ -684,7 +695,9 @@ private fun Launcher(
     Column(modifier.focusGroup()) {
         GroupHeading(stringResource(R.string.search_jump_to).uppercase(locale), Modifier.padding(top = 8.mpx, bottom = 10.mpx))
         Row(horizontalArrangement = Arrangement.spacedBy(10.mpx)) {
-            SearchIntent.entries.forEach { i ->
+            // KevBox: Channels only. Continue watching and Unwatched are films and episodes, which KevBox Live has none of.
+            val intents = SearchIntent.entries.filter { it == SearchIntent.CHANNELS }
+            intents.forEach { i ->
                 val icon = when (i) {
                     SearchIntent.CONTINUE -> OwnTVIcon.PLAY
                     SearchIntent.UNWATCHED -> OwnTVIcon.SPARKLE
@@ -692,7 +705,7 @@ private fun Launcher(
                 }
                 StageTool(
                     text = i.displayLabel(), icon = icon, onClick = { onIntent(i) },
-                    modifier = if (i == SearchIntent.entries.first()) Modifier.focusRequester(firstFocus) else Modifier,
+                    modifier = if (i == intents.first()) Modifier.focusRequester(firstFocus) else Modifier, // KevBox: see intents
                 )
             }
         }
@@ -737,7 +750,8 @@ private fun LauncherCard(modifier: Modifier = Modifier) {
             stringResource(R.string.search_card_title), style = stageText(30, 800), color = StageColors.Text,
             modifier = Modifier.padding(top = 14.mpx, bottom = 10.mpx),
         )
-        Text(stringResource(R.string.search_card_body), style = stageText(19, 400).copy(lineHeight = (19 * 1.55f).mpxSp), color = StageColors.Muted)
+        Text(stringResource(R.string.kevbox_search_card_body), // KevBox: channels and programs only
+            style = stageText(19, 400).copy(lineHeight = (19 * 1.55f).mpxSp), color = StageColors.Muted)
     }
 }
 
@@ -747,7 +761,8 @@ private fun NothingFound(title: String, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(title, style = stageText(30, 800), color = StageColors.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(
-            stringResource(R.string.search_nothing_found_body), style = stageText(19, 400).copy(lineHeight = (19 * 1.55f).mpxSp),
+            // KevBox: channels and programs only.
+            stringResource(R.string.kevbox_search_nothing_found_body), style = stageText(19, 400).copy(lineHeight = (19 * 1.55f).mpxSp),
             color = StageColors.Muted, modifier = Modifier.padding(top = 10.mpx),
         )
     }
