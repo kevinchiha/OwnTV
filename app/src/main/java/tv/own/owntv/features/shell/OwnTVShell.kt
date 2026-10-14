@@ -724,10 +724,11 @@ fun OwnTVShell(
     val railSize = if (widenDocked) navWiden ?: navSize else navSize
     // KevBox: Live TV's guide, expanded over its category column (EpgScreen's onExpandedChange); a new
     // section starts collapsed. While it is expanded and focus is in the guide, the menu slides fully off
-    // the screen with the column, with no edge glow (see edgeGlow below).
+    // the screen with the column, with no edge glow (see edgeGlow below). It stays off while the way back
+    // from full screen parks focus on it (restoreFocus, which the guide spends once its row has focus).
     var liveGuideExpanded by remember(selectedSection) { mutableStateOf(false) }
     val railState = when {
-        selectedSection == MainSection.LIVE_TV && liveGuideExpanded && !railHasFocus -> tv.own.owntv.features.shell.components.RailState.HIDDEN
+        selectedSection == MainSection.LIVE_TV && liveGuideExpanded && (!railHasFocus || restoreFocus) -> tv.own.owntv.features.shell.components.RailState.HIDDEN
         widenDocked -> tv.own.owntv.features.shell.components.RailState.OPEN
         navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED -> tv.own.owntv.features.shell.components.RailState.PINNED
         railFocused -> tv.own.owntv.features.shell.components.RailState.OPEN
@@ -1364,10 +1365,11 @@ fun OwnTVShell(
                             liveMode = true,
                             onEntryHook = { guideEntry = it },
                             // KevBox: Back or ◀ in the category column goes on to the main menu. The column starts
-                            // where the menu's room ends (Floating gets the Compact capsule's room), the menu
-                            // taking focus makes room for it again, and an expanded guide hides the menu.
+                            // where the menu's room ends (Floating gets the Compact capsule's room), the user
+                            // on the menu makes room for it again (railFocused: not the visits focus makes
+                            // there by itself), and an expanded guide hides the menu.
                             onOpenMenu = focusRail,
-                            menuHasFocus = railHasFocus,
+                            menuInUse = railFocused,
                             menuRoom = tv.own.owntv.features.shell.components.railDockedReserve(
                                 if (navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED) navSize
                                 else tv.own.owntv.core.settings.SettingsRepository.NavSize.COMPACT,

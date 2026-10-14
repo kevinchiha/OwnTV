@@ -6,9 +6,11 @@ package tv.own.owntv.kevbox.live
  * main menu; the guide is either collapsed (moved right to make room for the menu and the column) or
  * expanded (the menu and the column slid off to the left, the guide filling the screen).
  *
- * The guide expands only on a deliberate move into it and collapses only when the menu takes focus or
- * ◀ / Back leaves a channel row. Anything else, a row briefly taking focus while focus is being sent
- * into the column or a menu opening over the guide, leaves the layout alone.
+ * The layout follows focus ([expanded]): a channel row holding focus means expanded, the column or the
+ * menu in use means collapsed. A move the screen has started outranks where focus sits on its way, so a
+ * row that focus passes through while it is sent into the column, or the main menu holding focus while
+ * the player hands back to the grid, changes nothing. Focus anywhere else (a dialog, nothing at all, a
+ * passing visit to the menu) leaves the layout as it was.
  */
 internal object GuideSidebar {
 
@@ -21,29 +23,64 @@ internal object GuideSidebar {
     /** How long the cursor rests on a category before the guide behind shows it. */
     const val REST_SELECT_MS = 300L
 
-    enum class Event {
-        /** The main menu took focus. */
-        MENU_FOCUSED,
+    /** Where focus is, as far as the layout goes. */
+    enum class Focus {
+        /** A channel row, or a programme inside one. */
+        GRID,
 
-        /** Focus went into the grid on purpose: ▶ or OK from the column, back from the full-screen
-         *  player, or Search's "Go to channel". */
-        GRID_ENTERED,
+        /** The category column: a category or its search field. */
+        COLUMN,
 
-        /** A grid row took focus on its way elsewhere, while focus was being sent into the column. */
-        GRID_FOCUSED_DURING_COLUMN_ENTRY,
+        /** The main menu, with the user on it (not a passing visit focus makes by itself). */
+        MENU,
 
-        /** ◀ or Back on a channel row, outside its programmes. */
-        ROW_LEFT_OR_BACK,
-
-        /** A programme or channel menu, or a dialog, opened over the guide. */
-        DIALOG_OPENED,
+        /** Anywhere else: a dialog or menu over the guide, nothing, a passing visit to the main menu. */
+        ELSEWHERE,
     }
 
-    /** Whether the guide is expanded after [event], given it was [expanded] before. */
-    fun reduce(expanded: Boolean, event: Event): Boolean = when (event) {
-        Event.MENU_FOCUSED, Event.ROW_LEFT_OR_BACK -> false
-        Event.GRID_ENTERED -> true
-        Event.GRID_FOCUSED_DURING_COLUMN_ENTRY, Event.DIALOG_OPENED -> expanded
+    /** A move into the grid or the column that the screen has started and that has not landed yet. */
+    enum class Entry {
+        NONE,
+
+        /** ▶ or OK from the column once the channels are in, the way back from full screen, or a reveal
+         *  (Search's "Go to channel", CH+ / CH- then Back). */
+        INTO_GRID,
+
+        /** ▶ from the main menu, or ◀ / Back on a channel row. */
+        INTO_COLUMN,
+    }
+
+    /** Whether the guide is expanded, given it [was] before, where focus is now and the move under way. */
+    fun expanded(was: Boolean, focus: Focus, entry: Entry): Boolean = when (entry) {
+        Entry.INTO_GRID -> true
+        Entry.INTO_COLUMN -> false
+        Entry.NONE -> when (focus) {
+            Focus.GRID -> true
+            Focus.COLUMN, Focus.MENU -> false
+            Focus.ELSEWHERE -> was
+        }
+    }
+
+    /** Where a pending move into the grid stands. */
+    enum class Exit {
+        /** The guide is loading, or still shows the channels from before the category was asked for. */
+        WAIT,
+
+        /** The channels are in and there are none: nothing to land on. */
+        EMPTY,
+
+        /** The channels are in: the move can go ahead. */
+        READY,
+    }
+
+    /**
+     * Where a pending move into the grid stands. [stateIsOld] is true while the guide still shows the
+     * state from before a category change the move waits for.
+     */
+    fun exit(loading: Boolean, stateIsOld: Boolean, channels: Int): Exit = when {
+        loading || stateIsOld -> Exit.WAIT
+        channels == 0 -> Exit.EMPTY
+        else -> Exit.READY
     }
 
     /** What ▶ or OK on a category in the column does. */

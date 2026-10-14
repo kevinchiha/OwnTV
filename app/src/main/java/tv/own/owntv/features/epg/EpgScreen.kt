@@ -186,11 +186,12 @@ fun EpgScreen(
     // KevBox: moves focus to the app's main menu (the rail). Live TV's category column hands Back and ◀
     // to it, since the column is the stop between the grid and the menu.
     onOpenMenu: () -> Unit = {},
-    // KevBox: Live TV's category column; all three are ignored outside liveMode. menuHasFocus: the main menu
-    // holds focus (the guide then makes room for the menu and the column). menuRoom: the width the menu
-    // takes from the screen's left edge, where the column starts. onExpandedChange: true once the guide
-    // starts expanding over the menu and the column, false once it starts making room for them again.
-    menuHasFocus: Boolean = false,
+    // KevBox: Live TV's category column; all three are ignored outside liveMode. menuInUse: the user is on
+    // the main menu (the shell's railFocused, not the passing visits focus makes there by itself); the guide
+    // then makes room for the menu and the column. menuRoom: the width the menu takes from the screen's
+    // left edge, where the column starts. onExpandedChange: true once the guide starts expanding over the
+    // menu and the column, false once it starts making room for them again.
+    menuInUse: Boolean = false,
     menuRoom: Dp = 0.dp,
     onExpandedChange: (Boolean) -> Unit = {},
 ) {
@@ -339,19 +340,33 @@ fun EpgScreen(
     }
     // KevBox: Live TV's category column (kevbox/live/GuideSidebar.kt). It sits beside the main menu and the
     // guide is either moved right to make room for both (collapsed) or slid back over them to fill the screen
-    // (expanded). [sidebar] applies one of GuideSidebar's events; it does nothing outside Live TV.
+    // (expanded). The layout follows focus (GuideSidebar.expanded, applied below); it stays false outside
+    // Live TV.
     var expanded by remember { mutableStateOf(false) }
-    fun sidebar(event: GuideSidebar.Event) { if (liveMode) expanded = GuideSidebar.reduce(expanded, event) }
     // The cursor's row in the column (an index into the category list); null on its search field.
     var columnCursor by remember { mutableStateOf<Int?>(null) }
     var columnHasFocus by remember { mutableStateOf(false) }
     val columnFocus = remember { FocusRequester() }
-    // ▶ from the main menu bumps this: the column then asks for focus over a few frames (see below).
+    // ▶ from the main menu and ◀ / Back on a row bump this: the column then asks for focus over a few
+    // frames (see below), and columnEntering holds the layout collapsed until it has it.
     var columnEntry by remember { mutableIntStateOf(0) }
+    var columnEntering by remember { mutableStateOf(false) }
+    // KevBox: a pending move from the category column to the grid, carried out by the effect further down.
+    var sidebarExit by remember { mutableStateOf<SidebarExit?>(null) }
+    fun enterColumn() {
+        sidebarExit = null
+        columnEntering = true
+        columnEntry++
+    }
     // ◀ or Back on a channel row: back to the column, on the open category.
     fun leaveRow() {
-        sidebar(GuideSidebar.Event.ROW_LEFT_OR_BACK)
+        enterColumn()
         runCatching { columnFocus.requestFocus() }
+    }
+    // ◀ or Back in the column: on to the main menu, dropping a move to the grid still waiting for its channels.
+    fun openMenu() {
+        sidebarExit = null
+        onOpenMenu()
     }
     // The cursor came to rest on category [idx] in the column: the guide behind shows it, from its first row.
     fun showCategory(idx: Int) {
@@ -380,7 +395,15 @@ fun EpgScreen(
         if (!restoreFocus || state.loading || state.channels.isEmpty()) return@LaunchedEffect
         val idx = vm.lastTunedChannelId?.let { id -> state.channels.indexOfFirst { it.id == id } }?.takeIf { it >= 0 } ?: 0
         focusedRow = idx
-        sidebar(GuideSidebar.Event.GRID_ENTERED) // KevBox: back from full screen, Live TV's guide fills the screen
+        // KevBox: in Live TV, through the same move into the grid as ▶ from the column: the guide stays
+        // expanded while the shell parks focus on the main menu, and the one-shot is spent only once the
+        // move has landed or given up, so the shell keeps its menu hidden until then.
+        if (liveMode) {
+            sidebarExit = SidebarExit(row = idx, oldState = null)
+            androidx.compose.runtime.snapshotFlow { sidebarExit }.first { it == null }
+            onRestored()
+            return@LaunchedEffect
+        }
         delay(80)
         focusGrid(idx)
         onRestored()
@@ -395,9 +418,8 @@ fun EpgScreen(
         if (!liveMode || state.loading || liveSelected != r.key) return@LaunchedEffect
         val idx = state.channels.indexOfFirst { it.id == r.id }.takeIf { it >= 0 } ?: return@LaunchedEffect
         focusedRow = idx
-        sidebar(GuideSidebar.Event.GRID_ENTERED)
-        delay(80)
-        focusGrid(idx)
+        // Through the same move into the grid as ▶ from the column, which expands the guide and retries.
+        sidebarExit = SidebarExit(row = idx, oldState = null)
         liveVm.revealDone()
     }
 
@@ -494,7 +516,7 @@ fun EpgScreen(
             // KevBox: in Live TV ▶ from the main menu moves to the category column, never the grid, and nothing
             // on screen moves: the column is the one way between the menu and the channels, both ways (Kevin,
             // 2026-10-13). It also keeps an empty category reachable, where the grid has no row to land on.
-            if (liveMode) { columnEntry++; return@invoke true }
+            if (liveMode) { enterColumn(); return@invoke true }
             state.channels.isNotEmpty() &&
                 runCatching { rowFocus(focusedRow.coerceIn(0, state.channels.size - 1)).requestFocus() }.getOrDefault(false)
         }
@@ -506,24 +528,27 @@ fun EpgScreen(
     // Back in the column goes on to the main menu, and Back there to the exit prompt. A search typed in
     // the column is cleared first: LiveCategories' own Back handler comes later and wins while it is on.
     BackHandler(enabled = liveMode && gridHasFocus && !inCellMode) { leaveRow() }
-    BackHandler(enabled = liveMode && columnHasFocus) { onOpenMenu() }
+    BackHandler(enabled = liveMode && columnHasFocus) { openMenu() }
 
-    // KevBox: a pending move from the category column to the grid, carried out by the effect below.
-    var sidebarExit by remember { mutableStateOf<SidebarExit?>(null) }
-    // KevBox: leaving the category column for the grid (▶, or OK on a category). A plain focusGrid() lost
-    // focus to the main menu: on a new category it focused the old category's row, which went away when
-    // the new channels arrived. So after a category change this waits until the channel list is a new
-    // one, then expands the guide, focuses the row and checks over a few frames that the grid kept it.
+    // KevBox: where a pending move into the grid stands. A category change waits for a load after it: a
+    // new state, as two empty lists can be one object.
+    fun exitStatus(exit: SidebarExit): GuideSidebar.Exit =
+        GuideSidebar.exit(state.loading, exit.oldState != null && state === exit.oldState, state.channels.size)
+    // KevBox: moving into the grid (▶ or OK on a category, back from full screen, a reveal). A plain
+    // focusGrid() lost focus to the main menu: on a new category it focused the old category's row, which
+    // went away when the new channels arrived. So after a category change this waits until the channel
+    // list is a new one, then focuses the row and checks over a few frames that the grid kept it. From the
+    // moment the channels are in until it ends, the guide is expanded (see the layout rule below).
     LaunchedEffect(sidebarExit, state) {
         val exit = sidebarExit ?: return@LaunchedEffect
-        if (state.loading) return@LaunchedEffect
-        // A category change waits for a load after it: a new state, as two empty lists can be one object.
-        if (exit.oldState != null && state === exit.oldState) return@LaunchedEffect
-        // An empty category has no row to land on: the cursor stays on it in the column.
-        if (state.channels.isEmpty()) { sidebarExit = null; return@LaunchedEffect }
+        when (exitStatus(exit)) {
+            GuideSidebar.Exit.WAIT -> return@LaunchedEffect
+            // An empty category has no row to land on: the cursor stays on it in the column.
+            GuideSidebar.Exit.EMPTY -> { sidebarExit = null; return@LaunchedEffect }
+            GuideSidebar.Exit.READY -> Unit
+        }
         val i = exit.row.coerceIn(0, state.channels.size - 1)
         focusedRow = i
-        sidebar(GuideSidebar.Event.GRID_ENTERED)
         repeat(10) {
             withFrameNanos { }
             if (rowListState.layoutInfo.visibleItemsInfo.none { it.index == i }) runCatching { rowListState.scrollToItem(i) }
@@ -550,12 +575,11 @@ fun EpgScreen(
             GuideSidebar.Move.STAY -> Unit
         }
     }
-    // KevBox: the main menu taking focus makes room for it and the column again, and drops a move to the
-    // grid still waiting for its channels.
-    LaunchedEffect(menuHasFocus) {
-        if (!menuHasFocus) return@LaunchedEffect
-        sidebar(GuideSidebar.Event.MENU_FOCUSED)
-        sidebarExit = null
+    // KevBox: the user on the main menu drops a move to the grid still waiting for its channels. One that
+    // has them goes on: back from full screen the shell parks focus on the menu until the row takes it.
+    LaunchedEffect(menuInUse) {
+        val exit = sidebarExit
+        if (menuInUse && exit != null && exitStatus(exit) == GuideSidebar.Exit.WAIT) sidebarExit = null
     }
     LaunchedEffect(expanded) { if (liveMode) onExpandedChange(expanded) } // KevBox: the shell hides its menu
     // KevBox: the cursor resting on a category for a moment shows it in the guide behind. Each step restarts
@@ -568,15 +592,42 @@ fun EpgScreen(
     }
     // KevBox: asks again until the column has focus. Sent from the main menu, the first request comes in
     // from outside the shell's content, whose focus restorer sends it to the grid row last focused; from
-    // there the next request is a move inside the content and lands. That row's focus leaves the layout
-    // alone (GuideSidebar.Event.GRID_FOCUSED_DURING_COLUMN_ENTRY).
+    // there the next request is a move inside the content and lands. columnEntering stays on until then,
+    // so that row's focus leaves the layout collapsed (GuideSidebar.Entry.INTO_COLUMN).
     LaunchedEffect(columnEntry) {
         if (columnEntry == 0) return@LaunchedEffect
         repeat(6) {
             withFrameNanos { }
-            if (columnHasFocus) return@LaunchedEffect
+            if (columnHasFocus) { columnEntering = false; return@LaunchedEffect }
             runCatching { columnFocus.requestFocus() }
         }
+        withFrameNanos { }
+        columnEntering = false
+    }
+    // KevBox: the layout follows focus (GuideSidebar.expanded), and a move this screen has started outranks
+    // where focus sits on its way. A move into the grid is under way while a pending one has its channels,
+    // while the way back from full screen waits for the restore above to start its move (restoreFocus with
+    // the channels in: the frame before that effect runs), and while a reveal waits for its category to
+    // load. Through this rule alone, focus never stays in the column with the guide expanded (Up from the
+    // first row, a move that never landed) nor on a row with it collapsed (▶ out of a typed column search).
+    val gridEntryUnderWay = liveMode && (
+        sidebarExit?.let { exitStatus(it) == GuideSidebar.Exit.READY } == true ||
+            (restoreFocus && !state.loading && state.channels.isNotEmpty()) ||
+            reveal?.let { it.key == liveSelected && (state.loading || categoryLoadFrom != null) } == true
+        )
+    val focusAt = when {
+        gridHasFocus -> GuideSidebar.Focus.GRID
+        columnHasFocus -> GuideSidebar.Focus.COLUMN
+        menuInUse -> GuideSidebar.Focus.MENU
+        else -> GuideSidebar.Focus.ELSEWHERE
+    }
+    val entryUnderWay = when {
+        gridEntryUnderWay -> GuideSidebar.Entry.INTO_GRID
+        columnEntering -> GuideSidebar.Entry.INTO_COLUMN
+        else -> GuideSidebar.Entry.NONE
+    }
+    LaunchedEffect(focusAt, entryUnderWay) {
+        if (liveMode) expanded = GuideSidebar.expanded(expanded, focusAt, entryUnderWay)
     }
     // KevBox: the slide between the two layouts: 0 collapsed, 1 expanded. The guide and the column read it
     // only inside their graphicsLayer blocks, so a slide neither recomposes nor re-lays out the guide. The
@@ -662,7 +713,7 @@ fun EpgScreen(
         val viewTime = timeAt(scrollPx + timelinePx * 3f / 8f)
         val viewDay = localMidnight(viewTime)
         // KevBox: Live TV has no control line (title, day, Now, category, order, search, List view,
-        // Auto-match EPG); the category list is the sidebar Back and ◀ open. The TV Guide page keeps it.
+        // Auto-match EPG); the category list is the column beside the main menu. The TV Guide page keeps it.
         if (!liveMode) Row(
             Modifier.padding(start = fx(68), end = fx(64), top = 48.mpx).fillMaxWidth().height(48.mpx),
             horizontalArrangement = Arrangement.spacedBy(8.mpx),
@@ -797,7 +848,10 @@ fun EpgScreen(
                                         val from = stepTarget ?: index
                                         val to = from + delta
                                         when {
-                                            to < 0 -> false // ▲ from the first row: up to the control line
+                                            // ▲ from the first row: up to the control line. KevBox: Live TV has
+                                            // none, so ▲ stays on the first row (the focus search could pick the
+                                            // category column hidden off screen).
+                                            to < 0 -> liveMode
                                             to >= state.channels.size -> true
                                             else -> { stepTo(to); true }
                                         }
@@ -864,7 +918,7 @@ fun EpgScreen(
                     .onFocusChanged { columnHasFocus = it.hasFocus }
                     .onKeyEvent { e ->
                         if (e.key == Key.DirectionLeft) {
-                            if (e.type == KeyEventType.KeyDown) onOpenMenu()
+                            if (e.type == KeyEventType.KeyDown) openMenu()
                             true
                         } else false
                     },
