@@ -80,6 +80,7 @@ import tv.own.owntv.features.live.liveCategoryEntries
 import tv.own.owntv.features.live.liveEpgShiftLabel
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.OwnTVSpinner
+import tv.own.owntv.ui.components.chNavPaging // KevBox: CH+ / CH− in the grid
 import tv.own.owntv.ui.stage.StageButton
 import tv.own.owntv.ui.stage.shownColor
 import tv.own.owntv.ui.stage.stageFocusLook
@@ -227,6 +228,12 @@ fun EpgScreen(
     val guidePreview by vm.guidePreview.collectAsStateWithLifecycle()
     // KevBox: true while the playlist's first sync runs (see the grid's empty states).
     val firstSync = tv.own.owntv.kevbox.live.rememberPlaylistFirstSync()
+    // KevBox: CH paging for the grid (kevbox/live/GuideChannelSteps.kt). The review popup reads the same
+    // three settings for its own list further down, where the grid cannot see them.
+    val gridSettingsVm: tv.own.owntv.features.settings.SettingsViewModel = koinViewModel()
+    val gridChNavEnabled by gridSettingsVm.chNavEnabled.collectAsStateWithLifecycle()
+    val gridChNavUpSkip by gridSettingsVm.chNavUpSkip.collectAsStateWithLifecycle()
+    val gridChNavDownSkip by gridSettingsVm.chNavDownSkip.collectAsStateWithLifecycle()
 
     // Live TV's Guide view shows Live TV's own category; the TV Guide keeps its own choice.
     val categoryKey: LiveKey? = if (liveMode) liveSelected.takeUnless { it == LiveKey.All } else categoryFilter
@@ -810,6 +817,14 @@ fun EpgScreen(
                                         true
                                     } else false
                                 }
+                                // KevBox: CH+ / CH− (or whatever the member bound to paging) move by the skip
+                                // counts or jump to an end, with the grid's own stepTo so far rows scroll in as
+                                // ▲ ▼ do. Other shortcuts go on to the shell (AC-24).
+                                .chNavPaging(
+                                    enabled = gridChNavEnabled, upSkip = gridChNavUpSkip, downSkip = gridChNavDownSkip, // KevBox
+                                    isFocused = { gridHasFocus }, lastIndex = { state.channels.lastIndex }, // KevBox
+                                    currentTargetIndex = { stepTarget ?: focusedRow }, onJumpToIndex = { stepTo(it) }, // KevBox
+                                ) // KevBox: see above
                                 .focusProperties { onEnter = { runCatching { rowFocus(focusedRow.coerceIn(0, state.channels.size - 1)).requestFocus() } } }
                                 .focusGroup(),
                             verticalArrangement = Arrangement.spacedBy(GuideGridDefaults.RowGap),
