@@ -77,7 +77,9 @@ import tv.own.owntv.ui.theme.glass
 
 internal object GuideGridDefaults {
     /** The channel column when the guide widths are not customised (P4-01: 48 → 344 of 1920). */
-    const val ChannelColShare = 296f / 1920f
+    // KevBox: twice upstream's 296, so channel names show in full ("SAUDIA AL EKHBARIYA"); the timeline
+    // gives up the width (Kevin, 2026-10-14).
+    const val ChannelColShare = 592f / 1920f
     /** `.gcell` rows: 56 high, 62 apart. */
     val RowHeight = 56.mpx
     val RowGap = 6.mpx
