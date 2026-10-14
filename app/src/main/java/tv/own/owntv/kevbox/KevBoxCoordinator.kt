@@ -182,6 +182,9 @@ class KevBoxCoordinator(
         storedPick.value = false
     }
 
+    /** Settings › Playlists › Update now: the playlist check, now, joined to one already running. */
+    suspend fun checkPlaylistNow() = playlistCheck()
+
     /** From PlayerHud when the engine it shows reports an error. */
     fun onChannelFailed() {
         scope.launch { quietly { expiry.onChannelFailed(reconciler.currentSourceId()) } }

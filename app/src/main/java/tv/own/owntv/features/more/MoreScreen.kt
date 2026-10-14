@@ -69,8 +69,9 @@ import tv.own.owntv.ui.theme.stageText
 
 /** The sheet's items, top to bottom. [DEVELOPER] exists only in local builds (BuildConfig.DEV_TOOLS). */
 // KevBox: BACKUP and LOCAL_SYNC are gone (members restore and sync nothing; the admin assigns the
-// playlist), and ACCOUNT shows the signed-in email with Sign out (AC-14).
-private enum class MoreItem { SETTINGS, FAVORITES, HISTORY, ACCOUNT, ERROR_LOG, ABOUT, DEVELOPER }
+// playlist), and ACCOUNT shows the signed-in email with Sign out (AC-14). RESTART is KevBox's
+// Restart app, last in the App group (Kevin, 2026-10-14).
+private enum class MoreItem { SETTINGS, FAVORITES, HISTORY, ACCOUNT, ERROR_LOG, ABOUT, RESTART, DEVELOPER }
 
 /**
  * More (Stage P8-01 … P8-08): the glass section sheet, topped by the profile, and one page on the right
@@ -173,6 +174,8 @@ fun MoreScreen(
             item(MoreItem.ACCOUNT, OwnTVIcon.PERSON, stringResource(R.string.kevbox_account), kevboxEmail, false)
             item(MoreItem.ERROR_LOG, OwnTVIcon.WARNING, stringResource(R.string.settings_playback_error_log), logCount.toString(), false)
             item(MoreItem.ABOUT, OwnTVIcon.INFO, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, false)
+            // KevBox: Restart app; its page holds the Restart now button.
+            item(MoreItem.RESTART, OwnTVIcon.REFRESH, stringResource(R.string.kevbox_restart_app), null, false)
             // Maintainer-only; DEV_TOOLS is a compile-time constant, so R8 removes it from published APKs.
             if (BuildConfig.DEV_TOOLS) item(MoreItem.DEVELOPER, OwnTVIcon.GEAR, "Developer", "DEV", false)
             Spacer(Modifier.weight(1f))
@@ -219,6 +222,7 @@ fun MoreScreen(
                 MoreItem.ERROR_LOG -> ErrorLogPage(setEntry = setEntry, onCountChanged = { logVersion++ })
                 // KevBox: the languages button opens App, whose first row is Language (was 8, Sound & subtitles) (AC-32).
                 MoreItem.ABOUT -> AboutPage(vm = vm, entry = pageTarget, onOpenLanguage = { onOpenSettings(SettingsGroup.APP.ordinal, false) })
+                MoreItem.RESTART -> tv.own.owntv.kevbox.ui.KevBoxRestartMorePage(entry = pageTarget) // KevBox
                 MoreItem.DEVELOPER -> Box(Modifier.focusRequester(pageTarget).focusGroup()) { DeveloperScreen(onBack = backToSheet) }
             }
         }

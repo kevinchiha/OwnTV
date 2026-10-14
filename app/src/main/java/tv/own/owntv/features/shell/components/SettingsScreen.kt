@@ -90,6 +90,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject // KevBox: Refresh playlist and Update now
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import tv.own.owntv.R
@@ -558,10 +559,13 @@ fun SettingsScreen(
             focus = rowFocus.getValue(SettingsTab.CHOOSE_PLAYLIST),
             onClick = { open(SettingsTab.CHOOSE_PLAYLIST) },
         ) else null,
+        // KevBox: Refresh playlist and Update now; the group's heading moves to the first of them while
+        // Choose playlist is hidden.
+        *kevboxPlaylistRefreshRows(stageSettings, if (kevboxChoice == null) stringResource(R.string.settings_sources_title) else null) {
+            saveScroll(); dialogReturn = it
+        }.toTypedArray(),
         RootRow(
             tabRowKey(SettingsTab.EPG), TileTone.PRIMARY, OwnTVIcon.EPG,
-            // KevBox: the group's heading moves here while Choose playlist is hidden.
-            heading = if (kevboxChoice == null) stringResource(R.string.settings_sources_title) else null,
             title = stringResource(R.string.settings_epg_sources), desc = stringResource(R.string.settings_epg_sources_nav_description),
             focus = rowFocus.getValue(SettingsTab.EPG),
             onClick = { open(SettingsTab.EPG) },
@@ -1005,6 +1009,11 @@ fun SettingsScreen(
             // KevBox: Choose playlist in place of the Playlists entry, and only while its row shows.
             if (kevboxChoice != null) SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.kevbox_choose_playlist), stringResource(R.string.settings_search_keywords_playlists), OwnTVIcon.PLAYLIST, TileTone.PRIMARY,
                 chip = kevboxChoice.currentName, chipTone = TileTone.PRIMARY) { open(SettingsTab.CHOOSE_PLAYLIST) } else null,
+            // KevBox: Refresh playlist (its picker returns focus to the search field) and Update now, from their rows.
+            kevboxRowEntry(rootItems, KEVBOX_PLAYLIST_REFRESH, stringResource(R.string.settings_group_sources), stringResource(R.string.kevbox_refresh_playlist), stringResource(R.string.kevbox_search_keywords_refresh)) {
+                saveScroll(); dialogReturn = searchFieldFocus; stageSettings.open = StageSettingsDialog.PLAYLIST_REFRESH
+            },
+            kevboxRowEntry(rootItems, KEVBOX_PLAYLIST_UPDATE_NOW, stringResource(R.string.settings_group_sources), stringResource(R.string.kevbox_update_now), stringResource(R.string.kevbox_search_keywords_refresh)),
             SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_epg_sources), stringResource(R.string.settings_search_keywords_epg), OwnTVIcon.EPG, TileTone.PRIMARY) { open(SettingsTab.EPG) },
             SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.content_epg_time_offset), stringResource(R.string.settings_search_keywords_epg_offset), OwnTVIcon.EPG, TileTone.SECONDARY,
                 chip = epgShiftLabel(epgOffset), chipTone = if (epgOffset == 0) TileTone.SECONDARY else TileTone.PRIMARY) { saveScroll(); dialogReturn = searchFieldFocus; showEpgOffset = true },
@@ -1780,7 +1789,7 @@ private fun GuideDaysDialog(settingsVm: SettingsViewModel, guideDays: Int, onClo
     )
 }
 
-private enum class StageSettingsDialog { LIVE_OPENS_IN, REMINDERS, REMINDER_LEAD }
+private enum class StageSettingsDialog { LIVE_OPENS_IN, REMINDERS, REMINDER_LEAD, PLAYLIST_REFRESH } // KevBox: PLAYLIST_REFRESH
 
 /** Which Stage P5 picker is open, and each row's focus to come back to. */
 @androidx.compose.runtime.Stable
@@ -1814,6 +1823,7 @@ private fun StageSettingsDialogHost(settingsVm: SettingsViewModel, state: StageS
         StageSettingsDialog.LIVE_OPENS_IN -> LiveOpensInDialog(settingsVm, close)
         StageSettingsDialog.REMINDERS -> RemindersDialog(settingsVm, close)
         StageSettingsDialog.REMINDER_LEAD -> ReminderLeadDialog(settingsVm, close)
+        StageSettingsDialog.PLAYLIST_REFRESH -> KevBoxPlaylistRefreshDialog(close) // KevBox: Refresh playlist
         null -> Unit
     }
 }
@@ -3469,12 +3479,76 @@ private fun kevboxAndroidTvHomeRows(vm: SettingsViewModel): List<RootRow> {
     ).filter { on || it.key != tv.own.owntv.kevbox.settings.LiveOnlySettings.ANDROID_TV_HOME_REFRESH }
 }
 
-/** KevBox: a search entry that acts like the root row with [key], or null while that row is not shown. */
-private fun kevboxRowEntry(items: List<RootItem>, key: String, group: String, title: String, keywords: String): SettingsSearchEntry? {
+/**
+ * KevBox: Refresh playlist (opens its picker) and Update now, the Playlists rows before EPG sources.
+ * [heading] is the group's divider label when no row above carries it.
+ */
+@Composable
+private fun kevboxPlaylistRefreshRows(state: StageSettingsState, heading: String?, onOpen: (FocusRequester) -> Unit): List<RootRow> {
+    val setting = koinInject<tv.own.owntv.kevbox.refresh.PlaylistRefreshSetting>()
+    val updater = koinInject<tv.own.owntv.kevbox.refresh.PlaylistUpdater>()
+    val choice by setting.choice.collectAsStateWithLifecycle()
+    val updating by updater.running.collectAsStateWithLifecycle()
+    val f = state.focus.getValue(StageSettingsDialog.PLAYLIST_REFRESH)
+    val status = if (updating) stringResource(R.string.kevbox_updating) else null
+    return listOf(
+        RootRow(
+            KEVBOX_PLAYLIST_REFRESH, TileTone.PRIMARY, OwnTVIcon.REFRESH,
+            heading = heading,
+            title = stringResource(R.string.kevbox_refresh_playlist),
+            desc = stringResource(R.string.kevbox_refresh_playlist_description),
+            chip = stringResource(kevboxRefreshLabelRes(choice)), chipTone = TileTone.PRIMARY,
+            focus = f,
+            onClick = { onOpen(f); state.open = StageSettingsDialog.PLAYLIST_REFRESH },
+        ),
+        RootRow(
+            KEVBOX_PLAYLIST_UPDATE_NOW, TileTone.SECONDARY, OwnTVIcon.DOWNLOADS,
+            title = stringResource(R.string.kevbox_update_now),
+            desc = stringResource(R.string.kevbox_update_now_description),
+            chip = status,
+            value = status?.let { SettingValue.Action(it) },
+            onClick = updater::updateNow,
+        ),
+    )
+}
+
+private const val KEVBOX_PLAYLIST_REFRESH = "kevbox_playlist_refresh"
+private const val KEVBOX_PLAYLIST_UPDATE_NOW = "kevbox_playlist_update_now"
+
+private fun kevboxRefreshLabelRes(choice: tv.own.owntv.kevbox.refresh.RefreshChoice): Int = when (choice) {
+    tv.own.owntv.kevbox.refresh.RefreshChoice.APP_START -> R.string.kevbox_refresh_app_start
+    tv.own.owntv.kevbox.refresh.RefreshChoice.HOURS_6 -> R.string.kevbox_refresh_6h
+    tv.own.owntv.kevbox.refresh.RefreshChoice.HOURS_12 -> R.string.kevbox_refresh_12h
+    tv.own.owntv.kevbox.refresh.RefreshChoice.HOURS_24 -> R.string.kevbox_refresh_24h
+    tv.own.owntv.kevbox.refresh.RefreshChoice.DAYS_4 -> R.string.kevbox_refresh_4d
+    tv.own.owntv.kevbox.refresh.RefreshChoice.NEVER -> R.string.kevbox_refresh_never
+}
+
+/** KevBox: the Refresh playlist picker, one line per [tv.own.owntv.kevbox.refresh.RefreshChoice]. */
+@Composable
+private fun KevBoxPlaylistRefreshDialog(onClose: () -> Unit) {
+    val setting = koinInject<tv.own.owntv.kevbox.refresh.PlaylistRefreshSetting>()
+    val current by setting.choice.collectAsStateWithLifecycle()
+    tv.own.owntv.features.settings.PickerDialog(
+        title = stringResource(R.string.kevbox_refresh_playlist),
+        subtitle = stringResource(R.string.kevbox_refresh_playlist_description),
+        options = tv.own.owntv.kevbox.refresh.RefreshChoice.entries.map { it.name to stringResource(kevboxRefreshLabelRes(it)) },
+        selected = current.name,
+        onSelect = { setting.set(tv.own.owntv.kevbox.refresh.RefreshChoice.parse(it)); onClose() },
+        onDismiss = onClose,
+    )
+}
+
+/**
+ * KevBox: a search entry that acts like the root row with [key], or null while that row is not shown.
+ * [onClick] replaces the row's own click, for a row that opens a dialog: closing it from search must
+ * return focus to the search field, not to a row that search is not showing.
+ */
+private fun kevboxRowEntry(items: List<RootItem>, key: String, group: String, title: String, keywords: String, onClick: (() -> Unit)? = null): SettingsSearchEntry? {
     val row = items.firstOrNull { it.key == key } as? RootRow ?: return null
     return SettingsSearchEntry(
         group, title, keywords, row.icon, row.tone,
-        chip = row.chip, chipTone = row.chipTone, showChevron = false, key = key, onClick = row.onClick,
+        chip = row.chip, chipTone = row.chipTone, showChevron = false, key = key, onClick = onClick ?: row.onClick,
     )
 }
 
