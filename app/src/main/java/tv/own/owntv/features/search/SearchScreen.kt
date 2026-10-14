@@ -273,6 +273,11 @@ fun SearchScreen(
     val loadingNow by androidx.compose.runtime.rememberUpdatedState(loading)
     val showTabsRowNow by androidx.compose.runtime.rememberUpdatedState(showTabsRow)
     val openShowTabNow by androidx.compose.runtime.rememberUpdatedState(openShowTab)
+    val onScreenNow by androidx.compose.runtime.rememberUpdatedState(onScreen)
+    // KevBox: where focus sits, for ▼'s wait on the field and the ▲ key hint; and ▼'s pending wait.
+    var fieldHasFocus by remember { mutableStateOf(false) }
+    var tabsHaveFocus by remember { mutableStateOf(false) }
+    var downWait by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     /** KevBox: the rows of the tab that holds [key]; the open list when no tab does. */
     fun rowsHolding(key: String?): List<Entry> = when {
         !searchingNow || key == null -> entriesNow
@@ -393,6 +398,7 @@ fun SearchScreen(
                 .padding(start = listX, top = 118.mpx)
                 .width(listW)
                 .focusRequester(fieldFocus)
+                .onFocusChanged { fieldHasFocus = it.hasFocus } // KevBox: for ▼'s wait below
                 // ▼ lands on the open tab, not whichever tab is nearest below.
                 // KevBox: no tabs, so ▼ lands on the first result, from the pill and from the text being edited
                 // alike (the default search found nothing below the field).
@@ -402,13 +408,25 @@ fun SearchScreen(
                 .onPreviewKeyEvent { e ->
                     // KevBox: with the tab row up, ▼ lands on the open tab (AC-3). While this query's channels or
                     // shows are still loading it waits for them (up to 5 s), so focus does not pick a tab for the
-                    // user from half the results.
+                    // user from half the results. The wait gives up, moving nothing, once the query changes, the
+                    // field loses focus, Search leaves the screen, a new ▼ comes, or the 5 s run out.
                     if ((showTabsRow || loading) && e.key == Key.DirectionDown) {
-                        if (e.type == KeyEventType.KeyDown) scope.launch {
-                            var waited = 0 // KevBox: 100 waits of 50 ms
-                            while (loadingNow && waited++ < 100) delay(50)
-                            withFrameNanos { }
-                            if (showTabsRowNow) runCatching { showTabFocus.getValue(openShowTabNow).requestFocus() } // KevBox
+                        if (e.type == KeyEventType.KeyDown) {
+                            downWait?.cancel() // KevBox: a new ▼ replaces a pending one
+                            if (!loading) runCatching { showTabFocus.getValue(openShowTab).requestFocus() } // KevBox
+                            else {
+                                val asked = query.trim() // KevBox: the query ▼ was pressed on
+                                fun stillAsked() = vm.query.value.trim() == asked && fieldHasFocus && onScreenNow
+                                downWait = scope.launch {
+                                    var waited = 0 // KevBox: 100 waits of 50 ms
+                                    while (loadingNow && stillAsked() && waited++ < 100) delay(50)
+                                    withFrameNanos { }
+                                    // KevBox: only with both lists in for that query; a timeout moves nothing.
+                                    if (!loadingNow && stillAsked() && showTabsRowNow) {
+                                        runCatching { showTabFocus.getValue(openShowTabNow).requestFocus() }
+                                    }
+                                } // KevBox: end of the wait
+                            }
                         }
                         return@onPreviewKeyEvent true
                     }
@@ -462,8 +480,13 @@ fun SearchScreen(
         // KevBox: a typed search's own two tabs, Channels and TV guide, where the "LIVE TV · n" heading
         // was (Kevin, 2026-10-14). The focused tab is the open one, so ◀ ▶ change the list below; ▼ goes
         // to the open list's first row and ▲ back to the field.
+        // KevBox: a tab row that goes away while it has focus never reports losing it, so that is reset here.
+        LaunchedEffect(showTabsRow) { if (!showTabsRow) tabsHaveFocus = false }
         if (showTabsRow) {
-            Row(Modifier.padding(start = fx(84) - 12.mpx, top = 192.mpx), horizontalArrangement = Arrangement.spacedBy(16.mpx)) {
+            Row(
+                Modifier.padding(start = fx(84) - 12.mpx, top = 192.mpx).onFocusChanged { tabsHaveFocus = it.hasFocus }, // KevBox: for the ▲ hint
+                horizontalArrangement = Arrangement.spacedBy(16.mpx),
+            ) {
                 val tabs = listOf(
                     Triple(tv.own.owntv.kevbox.live.SearchShowTab.CHANNELS, stringResource(R.string.search_channels), shown.channels.size),
                     Triple(tv.own.owntv.kevbox.live.SearchShowTab.SHOWS, stringResource(R.string.kevbox_search_tab_guide), shows.size),
@@ -659,8 +682,8 @@ fun SearchScreen(
                 if (active?.channel() != null) add(stringResource(R.string.content_key_hold_ok) to stringResource(R.string.kevbox_key_guide))
             }
             if (showingResults) {
-                // KevBox: with the tab row up, ▲ from the list goes to the tabs first, the field after.
-                add("▲" to stringResource(if (showTabsRow) R.string.kevbox_key_tabs else R.string.common_search))
+                // KevBox: with the tab row up, ▲ from the list goes to the tabs first; from a tab, to the field.
+                add("▲" to stringResource(if (showTabsRow && !tabsHaveFocus) R.string.kevbox_key_tabs else R.string.common_search))
                 add(stringResource(R.string.common_back) to stringResource(R.string.common_clear))
             } else {
                 add(stringResource(R.string.common_ok) to stringResource(R.string.content_key_select))
