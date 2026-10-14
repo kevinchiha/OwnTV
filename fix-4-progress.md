@@ -1,1 +1,0 @@
-fix-4: done (F14 GuideCore row and KevBox: comments on LiveStage and SearchScreen; F15 tv-install.sh checks the env files as release.sh does; F16 UPSTREAM-SYNC.md proofs and note). No Interfaces deviations.

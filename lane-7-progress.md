@@ -1,1 +1,0 @@
-- Task 9: done. No Interfaces deviations. Added EpgSourcesViewModel.automaticIds: StateFlow<Set<Long>?> (null until loaded) and EpgSourceForm param managed: Boolean = false, both inside this task's own files.
