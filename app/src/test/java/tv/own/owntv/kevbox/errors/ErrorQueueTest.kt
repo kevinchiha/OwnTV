@@ -1,3 +1,4 @@
+// KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.errors
 
 import java.io.File
