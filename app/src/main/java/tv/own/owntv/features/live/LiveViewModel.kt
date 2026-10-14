@@ -966,6 +966,7 @@ class LiveViewModel(
     private val live = tv.own.owntv.player.LiveTuneController(
         scope = viewModelScope,
         engines = tv.own.owntv.player.EnginePair(previewEngine, player),
+        // KevBox: Core's host wrapped by kevBoxLiveHost (below) to fix the live player order (0.2 AC-38).
         host = kevBoxLiveHost(tv.own.owntv.player.LiveTuneController.CoreHost(
             context = appContext,
             settings = settings,
@@ -977,7 +978,7 @@ class LiveViewModel(
             sourceLookup = { id -> sourceById[id] },
             // A handover re-opens the channel at its live edge: the rewind is over.
             backToLiveEdge = { clearTimeshift() },
-        )), // KevBox: wrapped by kevBoxLiveHost so live starts on ExoPlayer whatever storage says (0.2 AC-38)
+        )), // KevBox: closes kevBoxLiveHost(...)
     )
 
     // KevBox: Core's host with the live player order fixed (0.2 AC-38): the global choice is
