@@ -1,0 +1,585 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 28 finding(s) across 19 selected item(s).",
+  "summary": {
+    "files_reviewed": 19,
+    "comments": 28,
+    "total_tokens": 1809124,
+    "input_tokens": 1756081,
+    "output_tokens": 53043,
+    "cache_read_tokens": 1243368,
+    "cache_write_tokens": 512521,
+    "elapsed": "2m34s"
+  },
+  "tool_calls": {
+    "total": 90,
+    "by_tool": {
+      "code_comment": 13,
+      "code_search": 35,
+      "file_find": 1,
+      "file_read": 35,
+      "file_read_diff": 6
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "src/app/api/live-errors/rows/route.ts",
+      "content": "This range parsing is copied word for word from `src/app/api/live-errors/route.ts`, and it repeats the `LiveRange` union by hand (core's `rangeInterval` checks it a third time). If someone adds a range in core, these routes will keep rejecting it. Both routes could share one small helper, or core could export the list of allowed values, so there is only one source of truth.",
+      "suggestion_code": "// e.g. src/server/admin/live-range.ts\nexport const LIVE_RANGES = [\"24h\", \"7d\"] as const satisfies readonly LiveRange[];\nexport function parseLiveRange(v: string | null): LiveRange | null {\n  const r = v ?? \"7d\";\n  return (LIVE_RANGES as readonly string[]).includes(r) ? (r as LiveRange) : null;\n}",
+      "existing_code": "    const raw = sp.get(\"range\") ?? \"7d\";\n    if (raw !== \"24h\" \u0026\u0026 raw !== \"7d\") {\n      return NextResponse.json({ error: \"range must be 24h or 7d\" }, { status: 400 });\n    }",
+      "start_line": 16,
+      "end_line": 19,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/kevbox-live-errors.tsx",
+      "content": "The same \"DD/MM/YYYY HH:mm\" helper now exists in three places: here, `formatStamp` in `admin/live-errors-view.tsx`, and `formatSentAt` in `kevbox-live-section.tsx`. Move it into `src/lib/utils.ts` (for example `formatDateTime`, next to `formatDate`) and import it in all three files, so the time format stays the same everywhere.",
+      "suggestion_code": "import { formatDate, formatDateTime } from \"@/lib/utils\";\n// ...use formatDateTime(d.firstSeen) etc.",
+      "existing_code": "function formatStamp(iso: string): string {\n  const d = new Date(iso);\n  const hh = String(d.getHours()).padStart(2, \"0\");\n  const mm = String(d.getMinutes()).padStart(2, \"0\");\n  return `${formatDate(iso)} ${hh}:${mm}`;\n}",
+      "start_line": 18,
+      "end_line": 23,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/kevbox-live-errors.tsx",
+      "content": "`listMemberLiveErrors` already filters to the last 7 days, orders by `last_at desc, id desc`, and applies `limit 50`. So this sort and slice repeat the server's work, and `MAX_ERRORS` is a second copy of the same limit that can drift out of step with it. Render `errors` as the server returns them, and keep the limit in one place.",
+      "suggestion_code": "  const rows = errors;",
+      "existing_code": "  const rows = [...errors]\n    .sort((a, b) =\u003e new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime() || b.id - a.id)\n    .slice(0, MAX_ERRORS);",
+      "start_line": 88,
+      "end_line": 90,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "A failed rows fetch is cached as `{ error }` in `rows[code]`. Because of this guard, collapsing the code and opening it again never retries. The error stays until the range tab changes and remounts `ByCode`. Only skip the fetch when the cached entry is loading or has data.",
+      "suggestion_code": "    const cached = rows[code];\n    if (code in rows \u0026\u0026 (cached === null || (cached !== undefined \u0026\u0026 \"data\" in cached))) return;",
+      "existing_code": "    if (code in rows) return;",
+      "start_line": 136,
+      "end_line": 136,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "This repeats `customerDeepLinkHref` from `src/lib/customer-deeplink.ts`, which that file calls the \"single source of truth for the jump to this client URL\". Import that helper so the deep-link format is defined in one place.",
+      "suggestion_code": "import { customerDeepLinkHref as customerHref } from \"@/lib/customer-deeplink\";",
+      "existing_code": "const customerHref = (clientNumber: string) =\u003e `/customers?client=${encodeURIComponent(clientNumber)}`;",
+      "start_line": 59,
+      "end_line": 59,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "This is a nested ternary (`loaded === null ? … : \"error\" in loaded ? … : …`), which the checklist doesn't allow. Move it into a `renderSummary(loaded)` helper that uses early returns.",
+      "existing_code": "      {loaded === null ? (",
+      "start_line": 347,
+      "end_line": 347,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "The row can be clicked but not reached by keyboard: it has no `tabIndex`, role or `onKeyDown`. The \"Client n\" links inside it cover most cases. Either add `tabIndex={0}` and an Enter key handler, or drop the row click and rely on the links.",
+      "existing_code": "              onClick={first === undefined ? undefined : () =\u003e router.push(customerHref(first))}",
+      "start_line": 107,
+      "end_line": 107,
+      "category": "other",
+      "severity": "low"
+    },
+    {
+      "path": "src/lib/live-error-labels.ts",
+      "content": "`LIVE_CODE_LABELS` is a plain object, so this lookup also finds keys inherited from the prototype. `live_error_write` in 0015 only checks the code against `^[a-z0-9_]{1,40}$`. That means a TV can store `constructor` or `__proto__`. Either one returns a truthy function or object here, so `fixed.label` and `fixed.cause` are `undefined`. The title then shows as \"undefined\", and `CAUSE_TEXT[cause]` and the cause grouping on the admin page get `undefined` too. Only accept own keys, so unknown codes go to the existing fallback.",
+      "suggestion_code": "  const fixed = Object.hasOwn(LIVE_CODE_LABELS, e.code) ? LIVE_CODE_LABELS[e.code] : undefined;\n  if (!fixed) return { title: e.code, cause: \"app\" };",
+      "existing_code": "  const fixed = LIVE_CODE_LABELS[e.code];\n  if (!fixed) return { title: e.code, cause: \"app\" };",
+      "start_line": 111,
+      "end_line": 112,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/lib/live-error-labels.ts",
+      "content": "This regex is a second, looser copy of `httpPattern` in `live-error-codes.json` (`^http_[1-9][0-9]{2}$`). Codes such as `http_0`, `http_0403` or `http_12345` get through the DB check (`^[a-z0-9_]{1,40}$`). Here they show as \"0 · Unusual provider status\" and similar, when they should be treated as unknown codes. Build the regex from the JSON so there is one source of truth (and keep the capture group).",
+      "suggestion_code": "import codes from \"./live-error-codes.json\";\n\nconst HTTP_CODE = new RegExp(codes.httpPattern.replace(\"http_\", \"http_(\").replace(/\\$$/, \")$\"));",
+      "existing_code": "const HTTP_CODE = /^http_(\\d+)$/;",
+      "start_line": 93,
+      "end_line": 93,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "packages/core/src/liveErrors.ts",
+      "content": "The summary filters rows by `last_at` and counts the full `repeat_count` at that time. In `record_live_errors_as`, a row keeps merging as long as each repeat begins within 5 minutes of the row's current `last_at`. So one row can cover hours or days (for example, a channel that keeps failing overnight). When that happens, all its repeats, including ones from before the window, go into the 24h/7d totals and land in the single `last_at` hour. The hourly chart then shows one false spike, and the range totals are too high.\n\nA second problem: the migration notes that `last_at` comes from the TV clock, which is often wrong. It can be up to 1 day in the future, or behind. A TV with a lagging clock can drop out of the 24h view, and one with a future clock can appear in a future hour. Two possible fixes: bucket and filter by `received_at` (server time), or cap how long a merged row can span (e.g. also require `first_at \u003e= v_first - interval '1 hour'` in the merge lookup). Either way, document what the total means.\n\nThe same applies to the `codes` CTE above and to the 7-day filter in `listMemberLiveErrors`.",
+      "existing_code": "    `select date_trunc('hour', last_at) as hour, sum(repeat_count)::bigint as total,\n            count(distinct (user_id, device_id))::int as tvs\n       from public.live_error\n      where last_at \u003e now() - $1::interval\n      group by 1\n      order by 1 desc`,",
+      "start_line": 130,
+      "end_line": 135,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/api/live-errors/rows/route.ts",
+      "content": "The route returns \"unknown code\", but `CODE_PATTERN` is a hand-written regex. It accepts any lowercase string such as `foo_bar`, even though the real list of codes already lives in `src/lib/live-error-codes.json` (`fixed` plus `httpPattern`). Because the check isn't tied to that list, made-up codes get through and simply return empty results, and the rule can drift when codes are added to or renamed in the shared file. It would be better to check against the JSON: allow a code that is in `codes.fixed` or that matches `new RegExp(codes.httpPattern)`.",
+      "suggestion_code": "import codes from \"@/lib/live-error-codes.json\";\n\nconst FIXED_CODES = new Set\u003cstring\u003e(codes.fixed);\nconst HTTP_CODE = new RegExp(codes.httpPattern);\nconst isKnownCode = (c: string) =\u003e FIXED_CODES.has(c) || HTTP_CODE.test(c);",
+      "existing_code": "const CODE_PATTERN = /^[a-z0-9_]{1,40}$/;",
+      "start_line": 9,
+      "end_line": 9,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "supabase/migrations/0015_live_error.sql",
+      "content": "The merge window only has a lower bound. A row is merged into whenever `last_at \u003e= v_first - 5 min`, so:\n- an entry queued on disk from hours ago (v_first old) is merged into today's newer row for the same code and channel, and\n- a row whose `last_at` came from a TV clock up to +1 day ahead absorbs every later matching entry for up to a day.\nSeparate incidents collapse into one row with an inflated `repeat_count`, which hides the real timeline. Bound both sides: the existing row should overlap or touch the new entry within 5 minutes. Apply the same change to the copy in schema.sql.",
+      "suggestion_code": "       and last_at \u003e= v_first - interval '5 minutes'\n       and first_at \u003c= v_last + interval '5 minutes'",
+      "existing_code": "       and last_at \u003e= v_first - interval '5 minutes'",
+      "start_line": 192,
+      "end_line": 192,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0015_live_error.sql",
+      "content": "Retention is keyed on `last_at`, which comes from the TV clock. The header of this file says that clock is unreliable, and that is why the daily cap uses `received_at`. A TV whose clock is months behind (but after 2026-01-01, so it is not replaced with now()) will have fresh rows deleted by the next nightly prune. There is also no index leading on `last_at`, so this delete scans the whole table. Use `received_at` (or `greatest(last_at, received_at)`) and add a matching index.",
+      "suggestion_code": "  delete from public.live_error where received_at \u003c now() - make_interval(days =\u003e p_days);",
+      "existing_code": "  delete from public.live_error where last_at \u003c now() - make_interval(days =\u003e p_days);",
+      "start_line": 258,
+      "end_line": 258,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0015_live_error.sql",
+      "content": "Redaction only catches text that has a scheme (`\\S*://\\S*`). Xtream credentials also show up without a scheme: `host:8080/live/\u003cuser\u003e/\u003cpass\u003e/123.ts`, `get.php?username=..\u0026password=..`, or `player_api.php?...`. Text like that in `message_short`, `error_name`, `channel` or `category` would be stored verbatim and shown to admins and the member. Also redact `(username|password)=[^\u0026\\s]*` and `/live|movie|series/\u003cx\u003e/\u003cy\u003e/` path segments, or redact any `\\S+/\\S+` token that contains `?` or `=`. Keep the schema.sql copy in sync.",
+      "existing_code": "    v_message := left(regexp_replace(case when jsonb_typeof(v_e-\u003e'message_short') = 'string' then v_e-\u003e\u003e'message_short' end, '\\S*://\\S*', '[url]', 'g'), 160);",
+      "start_line": 183,
+      "end_line": 183,
+      "category": "security",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0015_live_error.sql",
+      "content": "`record_live_checkin` is open to every authenticated member and has no cap. Each call with a new random `device_id` inserts another `live_device` row, so one member's token can grow the table without bound and flood the usage section with fake TVs. Cap the number of devices per user (for example, skip the insert when the user already has N devices and the device_id is new), or prune devices whose `last_seen` is stale.",
+      "existing_code": "  insert into public.live_device(user_id, device_id, model, android, app_version, first_seen, last_seen)",
+      "start_line": 223,
+      "end_line": 223,
+      "category": "security",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0015_live_error.sql",
+      "content": "A null or blank device id is stored as `''`, so every device-less report merges under one fake device. `record_live_checkin_as`, by contrast, rejects a blank device id. Make the two consistent: return 0 for a blank device id here, as the check-in does.",
+      "existing_code": "  v_device   text := left(coalesce(p_device_id, ''), 64);",
+      "start_line": 105,
+      "end_line": 105,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/kevbox-live-errors.tsx",
+      "content": "`lastUsedText` repeats `relativeTime` in `src/lib/admin/format.ts`. Both run the same just now / min / h / d steps, but the copies have already drifted. This one rounds down and writes \"5 min ago\". `relativeTime` rounds to nearest and writes \"5m ago\". So the same timestamp can show two different ages on different admin screens. Use `relativeTime` here, or add an option to it for the longer wording, so the logic lives in one place.",
+      "suggestion_code": "import { relativeTime } from \"@/lib/admin/format\";\n// ...\n\u003cp\u003e{`KevBox Live: ${count} · last used ${relativeTime(newest.lastSeen)} · ${newest.appVersion ?? \"—\"}`}\u003c/p\u003e",
+      "existing_code": "function lastUsedText(iso: string, now: number = Date.now()): string {",
+      "start_line": 26,
+      "end_line": 26,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "`listLiveErrorsByCode` returns at most 200 rows (`limit 200`), but this table doesn't say so. If a code has more rows in the range, Kevin sees a list that looks complete but doesn't match the code's Total. When `loaded.data.length === 200`, show a note such as \"Showing the newest 200 rows\". Better still, have the API return a `truncated` flag.",
+      "existing_code": "  if (loaded.data.length === 0) return \u003cMessage\u003eNo rows\u003c/Message\u003e;",
+      "start_line": 88,
+      "end_line": 88,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "`getLiveErrorSummary` already orders codes by `total desc, code` and hours by `hour desc`. Sorting again here and in `ByHour` repeats that rule on the client. `localeCompare` can also break ties differently from the Postgres collation. Use the server order as it comes, or keep the ordering rule in one place only.",
+      "existing_code": "  const ranked = [...codes].sort((a, b) =\u003e b.total - a.total || a.code.localeCompare(b.code));",
+      "start_line": 147,
+      "end_line": 147,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "When a version has one TV this reads \"1 TVs\". Pluralise based on the count.",
+      "suggestion_code": "            {`${v.appVersion}: ${v.tvs} ${v.tvs === 1 ? \"TV\" : \"TVs\"}`}",
+      "existing_code": "            {`${v.appVersion}: ${v.tvs} TVs`}",
+      "start_line": 268,
+      "end_line": 268,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "packages/core/src/liveErrors.ts",
+      "content": "Every time window in this file (here, in `getLiveErrorSummary`, and in `listLiveErrorsByCode`) filters on `last_at`, and `last_at` comes from the TV's clock. The migration says that clock \"is often wrong on TV boxes\". That's the reason the daily cap uses `received_at` instead. `live_error_ts` only fixes times before 2026-01-01. So if a TV's clock is a week or more behind, its errors are stored but never appear in the 24h/7d views, and `prune_live_errors` may delete them almost as soon as they're stored. If the clock is ahead (up to +1 day is accepted), the rows stay in the \"24h\" window for too long. Consider filtering (and possibly bucketing by hour) on `received_at`, or `greatest(last_at, received_at)`, and adding an index for that column. You could keep `last_at` only for display.",
+      "existing_code": "      where e.user_id = $1 and e.last_at \u003e now() - interval '7 days'",
+      "start_line": 78,
+      "end_line": 78,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "packages/core/src/liveErrors.ts",
+      "content": "The three usage queries (`seen`, `neverSeen`, `versions`) don't depend on each other but run one after another, and the two queries in `getLiveErrorSummary` do the same. If `db` is a pool, running them with `Promise.all` would cut page latency. Also, because these are separate snapshots, a TV that checks in between `seen` and `versions` is quietly dropped from `members` by the `byUser` filter. That's harmless, but you could avoid it by running all three in one statement.",
+      "existing_code": "  const versions = await db.query\u003c{ app_version: string; tvs: number; user_ids: string[] }\u003e(",
+      "start_line": 186,
+      "end_line": 186,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/prove-live-error.sh",
+      "content": "These refusal checks pass on any non-2xx response. A 404 PGRST202 (wrong parameter names, or a schema cache that has not reloaded yet; the wait loop above can time out without saying so) or a 400 from a bad payload would also print PASS for AC-26, even though the EXECUTE revoke was never tested. 0015 revokes EXECUTE on both `_as` functions from `authenticated`, so the real refusal is Postgres error `42501`. Assert that code, the same way the direct-POST check does. The `record_live_checkin_as` check further down has the same gap.",
+      "suggestion_code": "  if [[ ! \"$code\" =~ ^2 \u0026\u0026 \"$(jq -r '.code // empty' \"$WORK/body\" 2\u003e/dev/null)\" == 42501 ]]; then\n    pass \"A's rpc/record_live_errors_as with B's id is refused (HTTP $code, 42501)\"",
+      "existing_code": "  if [[ ! \"$code\" =~ ^2 ]]; then\n    pass \"A's rpc/record_live_errors_as with B's id is refused (HTTP $code, $(jq -r '.code // \"?\"' \"$WORK/body\" 2\u003e/dev/null))\"",
+      "start_line": 329,
+      "end_line": 330,
+      "category": "test",
+      "severity": "medium"
+    },
+    {
+      "path": "scripts/prove-live-error.sh",
+      "content": "The KevBox TV snapshot hashes only the function bodies and column lists. If 0015 changed EXECUTE grants on `record_error`/`prune_telemetry`, or changed the policies or grants on `member_event`/`member_heartbeat`, this check would still pass and claim AC-28/AC-37 \"byte-identical\". Add `coalesce(p.proacl::text,'')` and `p.prosecdef` to this select. Also snapshot `pg_policies` and the table grants for the two TV tables, as `live_snapshot` already does for the new tables.",
+      "suggestion_code": "select 'fn', p.oid::regprocedure::text, coalesce(p.proacl::text, ''), p.prosecdef, md5(pg_get_functiondef(p.oid))\n  from pg_proc p\n where p.pronamespace = 'public'::regnamespace\n   and p.proname in ('record_error', 'record_error_event', 'record_heartbeat', 'accrue_heartbeat', 'prune_telemetry')",
+      "existing_code": "select 'fn', p.oid::regprocedure::text, md5(pg_get_functiondef(p.oid))\n  from pg_proc p\n where p.pronamespace = 'public'::regnamespace\n   and p.proname in ('record_error', 'record_error_event', 'record_heartbeat', 'accrue_heartbeat', 'prune_telemetry')",
+      "start_line": 141,
+      "end_line": 144,
+      "category": "test",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/prove-live-error.sh",
+      "content": "The rollback snippet also replaces `record_live_checkin`, but section e only checks `record_live_errors`. Nothing confirms that the no-op `record_live_checkin` writes no `live_device` row for signed-in member A. Nothing checks that the real function (prosecdef = t) is back after the rollback either. Add the same before/after count and prosecdef checks for `record_live_checkin`.",
+      "existing_code": "  if [[ \"$(psql_q -c \"select prosecdef from pg_proc where pronamespace = 'public'::regnamespace and proname = 'record_live_errors';\" 2\u003e/dev/null)\" == t ]]; then",
+      "start_line": 448,
+      "end_line": 448,
+      "category": "test",
+      "severity": "low"
+    },
+    {
+      "path": "supabase/migrations/0015_live_error.sql",
+      "content": "No index fits this merge lookup. It runs once for each of up to 50 entries, while the per-user advisory lock is held. The closest index is `live_error_user_last (user_id, last_at desc)`, so Postgres walks every row for that user in the time window and filters on device_id, code and channel. When nothing matches, which is the usual case for a new code, it scans the whole window. A member can have up to about 180k rows (2,000 a day kept for 90 days), and an old queued `v_first` widens the window, so one batch can cost millions of row visits. Add a matching index, and add it to test/schema.sql as well.",
+      "suggestion_code": "create index if not exists live_error_merge on public.live_error (user_id, device_id, code, last_at desc);",
+      "existing_code": "     where user_id = p_user_id and device_id = v_device and code = v_code\n       and channel is not distinct from v_channel\n       and last_at \u003e= v_first - interval '5 minutes'\n     order by last_at desc, id desc\n     limit 1;",
+      "start_line": 190,
+      "end_line": 194,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0015_live_error.sql",
+      "content": "`p_days` is never checked. If it is 0 or negative, the cutoff falls at or after now, so every row is deleted (with -1, even rows whose `last_at` is up to a day in the future are caught). If it is null, nothing is deleted and nothing is reported. Reject values outside a safe range, or clamp them, before running the delete.",
+      "suggestion_code": "  if p_days is null or p_days \u003c 1 then\n    raise exception 'prune_live_errors: p_days must be \u003e= 1 (got %)', p_days;\n  end if;\n  delete from public.live_error where last_at \u003c now() - make_interval(days =\u003e p_days);",
+      "existing_code": "  delete from public.live_error where last_at \u003c now() - make_interval(days =\u003e p_days);",
+      "start_line": 258,
+      "end_line": 258,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/prove-live-error.sh",
+      "content": "The local-only guard can be bypassed with percent-encoding. libpq percent-decodes URI query keywords as well as their values (`conninfo_uri_decode`), so `postgresql://localhost/postgres?%68ost=db.example.com` or `?%68ostaddr=1.2.3.4` gets through this regex, and psql then connects to the remote host. The script would apply 0015, grant roles to postgres and create users there. Fail closed instead: refuse any `%` in the query string, or allow only known-safe keys (`sslmode`, `connect_timeout`, `application_name`).",
+      "suggestion_code": "if [[ \"$db_query\" == *%* ]] || [[ \"\u0026${db_query,,}\" =~ \\\u0026(host|hostaddr|service)= ]] || [[ \"$db_authority\" == *,* ]]; then",
+      "existing_code": "if [[ \"\u0026${db_query,,}\" =~ \\\u0026(host|hostaddr|service)= ]] || [[ \"$db_authority\" == *,* ]]; then",
+      "start_line": 105,
+      "end_line": 105,
+      "category": "security",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Live error database schema and migration",
+      "files": [
+        "packages/core/test/schema.sql",
+        "supabase/migrations/0015_live_error.sql",
+        "src/app/api/cron/telemetry-prune/route.ts"
+      ]
+    },
+    {
+      "label": "Core live error module and exports",
+      "files": [
+        "packages/core/src/index.ts",
+        "packages/core/src/liveErrors.ts"
+      ]
+    },
+    {
+      "label": "Live error API routes and server actions",
+      "files": [
+        "src/app/api/live-errors/route.ts",
+        "src/app/api/live-errors/rows/route.ts",
+        "src/app/api/live-errors/usage/route.ts",
+        "src/app/api/members/[userId]/live-errors/route.ts",
+        "src/app/live-actions.ts"
+      ]
+    },
+    {
+      "label": "Live error codes and labels",
+      "files": [
+        "src/lib/live-error-codes.json",
+        "src/lib/live-error-labels.ts"
+      ]
+    },
+    {
+      "label": "Live errors admin dashboard UI and navigation",
+      "files": [
+        "src/app/(dashboard)/live-errors/page.tsx",
+        "src/components/admin/live-errors-view.tsx",
+        "src/components/header-content.tsx",
+        "src/lib/nav-items.ts"
+      ]
+    },
+    {
+      "label": "Kevbox live section error display",
+      "files": [
+        "src/components/kevbox-live-errors.tsx",
+        "src/components/kevbox-live-section.tsx"
+      ]
+    },
+    {
+      "label": "Live error proof script",
+      "files": [
+        "scripts/prove-live-error.sh"
+      ]
+    }
+  ],
+  "session_id": "80f037b4-e1a6-4716-9666-4debbd48426b",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "80f037b4-e1a6-4716-9666-4debbd48426b",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "ccceca6c26772eb6a35665f87c7d1d792e920ec1a3b2f775b43ee33116435647"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "main",
+      "requested_head": "phase/0.3-error-reporting",
+      "resolved_base": "5136eae97107e74d75fbcb7bf2d044bf91152401",
+      "resolved_head": "a711834fa6d47881a257312110f359da40c7b3f3",
+      "exact_range": "5136eae97107e74d75fbcb7bf2d044bf91152401..a711834fa6d47881a257312110f359da40c7b3f3",
+      "source_artifact_sha256": "dfacd524a9da2d10b35d899a4294deed54cb4dc9fffeba914e233aeb9a8c1608"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "041f46bfe34ce909ab14ec14d5c2ee30f8b8284229869b49d607179421042883",
+          "path": "src/app/api/live-errors/route.ts",
+          "fingerprint": "e909ece49eb6c57da05b0448059a8d09f5550f39c2b2fa5717d2501dae57c340"
+        },
+        {
+          "item_id": "1cae4c6066821bc2fc0c6825e946c50b6c22c954ba48fb42c72275930ea878c5",
+          "path": "src/lib/nav-items.ts",
+          "fingerprint": "810b5a3c81ced1c140b5486623e8ee58b7fec3c561f2674ee2c294f7f7c87674"
+        },
+        {
+          "item_id": "23c88552a1e18e3c059c75da3945bc55efe85d835dc70ff889ec214f1763ab61",
+          "path": "packages/core/test/schema.sql",
+          "fingerprint": "079614ceae1185a8ef3b133c3d5684869c8993c73eb9699ce20c74f373dc483e"
+        },
+        {
+          "item_id": "303ac6c7524971e638e50fe4fb80c298c6ca7c037662160de850d3a5c8e879e9",
+          "path": "src/app/api/members/[userId]/live-errors/route.ts",
+          "fingerprint": "8b09c567037b82876fb1574dcbeca070c6790de82bbb900940415dd977d00b3d"
+        },
+        {
+          "item_id": "32e61024e2624bb790f000ec29cf331eed690e0f8ac0b630b4fe98a2435faf3a",
+          "path": "src/components/admin/live-errors-view.tsx",
+          "fingerprint": "e6a44854c40fa1123573d9766427c38831d48f855f2fb796760e58eb38ed594e"
+        },
+        {
+          "item_id": "43a0281ba465c103e680383b3e0511b4ee1dd5a7fe2cb34171c579d8d6967a27",
+          "path": "src/lib/live-error-labels.ts",
+          "fingerprint": "4c6220c3baa431d3fb93fbf4a21306cfaec59234e0bd77114e95e7a24658e6ec"
+        },
+        {
+          "item_id": "48b324a9e047792bdc142d39a860eff3c878157dda157cff9d4f88c76daa9eb9",
+          "path": "src/app/api/live-errors/usage/route.ts",
+          "fingerprint": "ea2d224dcb1a8bf7b52d57f5ec7bfc408eafde6c0ad4d862b2bcb3b1e525fe36"
+        },
+        {
+          "item_id": "63c4f0b63ba24541b8f8118cefc14284eab13ad172f1c7e1ba574e31fdeadfeb",
+          "path": "src/app/(dashboard)/live-errors/page.tsx",
+          "fingerprint": "276e7a0b9c7d681c3cac2ee00f8492a1b1367b29ed2765531db7e1326dbcfbdd"
+        },
+        {
+          "item_id": "64776b558995b749bb0626000093672627187b5c4f90e2a2ac3e26696e15292f",
+          "path": "src/lib/live-error-codes.json",
+          "fingerprint": "78328a84271ffe0b3663ff238da092382308e307cefc974a39abf4db86174d20"
+        },
+        {
+          "item_id": "740724db716fb3752e6497d15df5b57e92f7275d67c5ddd40c7fc7cae92ee3f7",
+          "path": "packages/core/src/liveErrors.ts",
+          "fingerprint": "4066041853ebac3667a448041b5243bbb279e30210733b1661516abc65b935ad"
+        },
+        {
+          "item_id": "841cfc86dfbf543c9458f24e4a4b9fe5080c4961735c0195086983b53d0c2d89",
+          "path": "src/components/kevbox-live-errors.tsx",
+          "fingerprint": "8492ed55329b21b9a98cb8e4e148c4eca5eedd0da3740e0c05b37d98a7188d9e"
+        },
+        {
+          "item_id": "8af1fd16409c3404691e16a8df0635a4799c3525f23f2eeb9e22753279e559a4",
+          "path": "src/app/live-actions.ts",
+          "fingerprint": "00bcea8c5f1c9246690c2b7512e8c32ebbb2f33af909d8b1db9d7f4fcaa156f3"
+        },
+        {
+          "item_id": "8f7f981aa4f188dca7a3ab83d185a6bef57c847a42bd6c1e84f523efdd30bdd4",
+          "path": "src/components/header-content.tsx",
+          "fingerprint": "dc08287b83ab9960dcee6b7595e00e7742882091993fdb45f1d86786bd4073c8"
+        },
+        {
+          "item_id": "92c7417d0f8510eaf571702c30d2270668ce44baa4a1989be304f9b05784fa16",
+          "path": "packages/core/src/index.ts",
+          "fingerprint": "123463fe7b9f6838b0eaca4544a845e189d7805fde228967ef8fe073691e3738"
+        },
+        {
+          "item_id": "9f6d6ab1b9b8dac0a681fb92c00e71d9a76eb9723b773a838319ba15be8bb2f7",
+          "path": "scripts/prove-live-error.sh",
+          "fingerprint": "0d3d9809a51ecd5a86404524bc1749f5a2082a467e495bd0d2e7162b28417bb9"
+        },
+        {
+          "item_id": "ab4e95c7de743ee92462178f01b0bb29c7084de525959d6f882ee6a7d780e3fe",
+          "path": "supabase/migrations/0015_live_error.sql",
+          "fingerprint": "1870d1ea1b12419fe9a5a42b7f40c9739e9fd903ae91b950822eb30f4d2dddf9"
+        },
+        {
+          "item_id": "bd6ee2978bce5c4f0842bf4fb6b3a4afb06647fefbec93993db068ff22f08312",
+          "path": "src/app/api/cron/telemetry-prune/route.ts",
+          "fingerprint": "b61112d5ec4862844e7987ba34f775cad2029f705e4bf068cca94ff6dbcec40e"
+        },
+        {
+          "item_id": "c09b8aff4b94d344ee6774d71f199a1cf0ce3f7a2110d388bed9fe50dac67fb2",
+          "path": "src/app/api/live-errors/rows/route.ts",
+          "fingerprint": "96ac635c4c96927e629fb3e25c4615a773694f1b1cd405c20a2d6a0a850861ea"
+        },
+        {
+          "item_id": "c8ba2f2322f958d33b00df8683568e6b8e59cec24969b28e3efa5e10cc361d41",
+          "path": "src/components/kevbox-live-section.tsx",
+          "fingerprint": "22678159527c9ecc5655ddbc8a620c788af6b90fe33b5309790de1c47cf3c3d1"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "041f46bfe34ce909ab14ec14d5c2ee30f8b8284229869b49d607179421042883",
+          "path": "src/app/api/live-errors/route.ts",
+          "fingerprint": "e909ece49eb6c57da05b0448059a8d09f5550f39c2b2fa5717d2501dae57c340"
+        },
+        {
+          "item_id": "1cae4c6066821bc2fc0c6825e946c50b6c22c954ba48fb42c72275930ea878c5",
+          "path": "src/lib/nav-items.ts",
+          "fingerprint": "810b5a3c81ced1c140b5486623e8ee58b7fec3c561f2674ee2c294f7f7c87674"
+        },
+        {
+          "item_id": "23c88552a1e18e3c059c75da3945bc55efe85d835dc70ff889ec214f1763ab61",
+          "path": "packages/core/test/schema.sql",
+          "fingerprint": "079614ceae1185a8ef3b133c3d5684869c8993c73eb9699ce20c74f373dc483e"
+        },
+        {
+          "item_id": "303ac6c7524971e638e50fe4fb80c298c6ca7c037662160de850d3a5c8e879e9",
+          "path": "src/app/api/members/[userId]/live-errors/route.ts",
+          "fingerprint": "8b09c567037b82876fb1574dcbeca070c6790de82bbb900940415dd977d00b3d"
+        },
+        {
+          "item_id": "32e61024e2624bb790f000ec29cf331eed690e0f8ac0b630b4fe98a2435faf3a",
+          "path": "src/components/admin/live-errors-view.tsx",
+          "fingerprint": "e6a44854c40fa1123573d9766427c38831d48f855f2fb796760e58eb38ed594e"
+        },
+        {
+          "item_id": "43a0281ba465c103e680383b3e0511b4ee1dd5a7fe2cb34171c579d8d6967a27",
+          "path": "src/lib/live-error-labels.ts",
+          "fingerprint": "4c6220c3baa431d3fb93fbf4a21306cfaec59234e0bd77114e95e7a24658e6ec"
+        },
+        {
+          "item_id": "48b324a9e047792bdc142d39a860eff3c878157dda157cff9d4f88c76daa9eb9",
+          "path": "src/app/api/live-errors/usage/route.ts",
+          "fingerprint": "ea2d224dcb1a8bf7b52d57f5ec7bfc408eafde6c0ad4d862b2bcb3b1e525fe36"
+        },
+        {
+          "item_id": "63c4f0b63ba24541b8f8118cefc14284eab13ad172f1c7e1ba574e31fdeadfeb",
+          "path": "src/app/(dashboard)/live-errors/page.tsx",
+          "fingerprint": "276e7a0b9c7d681c3cac2ee00f8492a1b1367b29ed2765531db7e1326dbcfbdd"
+        },
+        {
+          "item_id": "64776b558995b749bb0626000093672627187b5c4f90e2a2ac3e26696e15292f",
+          "path": "src/lib/live-error-codes.json",
+          "fingerprint": "78328a84271ffe0b3663ff238da092382308e307cefc974a39abf4db86174d20"
+        },
+        {
+          "item_id": "740724db716fb3752e6497d15df5b57e92f7275d67c5ddd40c7fc7cae92ee3f7",
+          "path": "packages/core/src/liveErrors.ts",
+          "fingerprint": "4066041853ebac3667a448041b5243bbb279e30210733b1661516abc65b935ad"
+        },
+        {
+          "item_id": "841cfc86dfbf543c9458f24e4a4b9fe5080c4961735c0195086983b53d0c2d89",
+          "path": "src/components/kevbox-live-errors.tsx",
+          "fingerprint": "8492ed55329b21b9a98cb8e4e148c4eca5eedd0da3740e0c05b37d98a7188d9e"
+        },
+        {
+          "item_id": "8af1fd16409c3404691e16a8df0635a4799c3525f23f2eeb9e22753279e559a4",
+          "path": "src/app/live-actions.ts",
+          "fingerprint": "00bcea8c5f1c9246690c2b7512e8c32ebbb2f33af909d8b1db9d7f4fcaa156f3"
+        },
+        {
+          "item_id": "8f7f981aa4f188dca7a3ab83d185a6bef57c847a42bd6c1e84f523efdd30bdd4",
+          "path": "src/components/header-content.tsx",
+          "fingerprint": "dc08287b83ab9960dcee6b7595e00e7742882091993fdb45f1d86786bd4073c8"
+        },
+        {
+          "item_id": "92c7417d0f8510eaf571702c30d2270668ce44baa4a1989be304f9b05784fa16",
+          "path": "packages/core/src/index.ts",
+          "fingerprint": "123463fe7b9f6838b0eaca4544a845e189d7805fde228967ef8fe073691e3738"
+        },
+        {
+          "item_id": "9f6d6ab1b9b8dac0a681fb92c00e71d9a76eb9723b773a838319ba15be8bb2f7",
+          "path": "scripts/prove-live-error.sh",
+          "fingerprint": "0d3d9809a51ecd5a86404524bc1749f5a2082a467e495bd0d2e7162b28417bb9"
+        },
+        {
+          "item_id": "ab4e95c7de743ee92462178f01b0bb29c7084de525959d6f882ee6a7d780e3fe",
+          "path": "supabase/migrations/0015_live_error.sql",
+          "fingerprint": "1870d1ea1b12419fe9a5a42b7f40c9739e9fd903ae91b950822eb30f4d2dddf9"
+        },
+        {
+          "item_id": "bd6ee2978bce5c4f0842bf4fb6b3a4afb06647fefbec93993db068ff22f08312",
+          "path": "src/app/api/cron/telemetry-prune/route.ts",
+          "fingerprint": "b61112d5ec4862844e7987ba34f775cad2029f705e4bf068cca94ff6dbcec40e"
+        },
+        {
+          "item_id": "c09b8aff4b94d344ee6774d71f199a1cf0ce3f7a2110d388bed9fe50dac67fb2",
+          "path": "src/app/api/live-errors/rows/route.ts",
+          "fingerprint": "96ac635c4c96927e629fb3e25c4615a773694f1b1cd405c20a2d6a0a850861ea"
+        },
+        {
+          "item_id": "c8ba2f2322f958d33b00df8683568e6b8e59cec24969b28e3efa5e10cc361d41",
+          "path": "src/components/kevbox-live-section.tsx",
+          "fingerprint": "22678159527c9ecc5655ddbc8a620c788af6b90fe33b5309790de1c47cf3c3d1"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 153782
+  }
+}
