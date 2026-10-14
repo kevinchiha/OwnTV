@@ -280,8 +280,10 @@ internal fun LiveStagePane(
                     fill = Color.Transparent,
                 ) { OwnTVIcon(OwnTVIcon.LIVE_TV, tint = StageColors.Dim, modifier = Modifier.size(56.mpx)) }
             }
+            // KevBox: with the shell's video stage (Search), this box marks where the one video window goes instead
+            // of drawing its own preview surface; without one, upstream's ExoPreviewSurface plays here as before.
             if (playing && videoStage != null) {
-                Box(Modifier.fillMaxSize().liveVideoSite(videoStage, tv.own.owntv.kevbox.live.VideoSite.BOX, videoR)) // KevBox
+                Box(Modifier.fillMaxSize().liveVideoSite(videoStage, tv.own.owntv.kevbox.live.VideoSite.BOX, videoR))
             } else if (playing) {
                 tv.own.owntv.player.ExoPreviewSurface(engine = previewEngine, modifier = Modifier.fillMaxSize())
             }
