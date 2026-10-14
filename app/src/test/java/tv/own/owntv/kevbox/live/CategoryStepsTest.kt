@@ -46,4 +46,50 @@ class CategoryStepsTest {
 
     @Test
     fun upFromTheFirstRowIsLeftToTheSearchField() = assertNull(CategorySteps.next(from = 0, delta = -1, rows = 150))
+
+    // --- Wrap (B): only a fresh press goes round; a held key stops at the end ----------------------
+
+    @Test
+    fun aFreshDownOnTheLastRowWrapsToTheFirst() =
+        assertEquals(0, CategorySteps.next(from = 149, delta = 1, rows = 150, fresh = true))
+
+    @Test
+    fun aHeldDownStopsOnTheLastRow() =
+        assertEquals(149, CategorySteps.next(from = 149, delta = 1, rows = 150, heldMs = 3_000, fresh = false))
+
+    @Test
+    fun aFreshUpOnTheFirstRowStillGoesToTheSearchField() =
+        assertNull(CategorySteps.next(from = 0, delta = -1, rows = 150, fresh = true))
+
+    @Test
+    fun aFreshUpOnTheSearchFieldGoesToTheLastRow() = assertEquals(149, CategorySteps.fromSearch(rows = 150, fresh = true))
+
+    @Test
+    fun aHeldUpStopsOnTheSearchField() = assertNull(CategorySteps.fromSearch(rows = 150, fresh = false))
+
+    @Test
+    fun anEmptyListHasNoLastRow() = assertNull(CategorySteps.fromSearch(rows = 0, fresh = true))
+
+    // --- Speed-up (C): rows per press grow with how long the key has been held -------------------
+
+    @Test
+    fun stepSizeGrowsWithTheHold() {
+        assertEquals(1, CategorySteps.stepSize(heldMs = 0))
+        assertEquals(1, CategorySteps.stepSize(heldMs = 999))
+        assertEquals(3, CategorySteps.stepSize(heldMs = 1_000))
+        assertEquals(3, CategorySteps.stepSize(heldMs = 1_999))
+        assertEquals(6, CategorySteps.stepSize(heldMs = 2_000))
+        assertEquals(6, CategorySteps.stepSize(heldMs = 60_000))
+    }
+
+    @Test
+    fun aLongHoldMovesSixRows() = assertEquals(46, CategorySteps.next(from = 40, delta = 1, rows = 150, heldMs = 2_500))
+
+    @Test
+    fun aFastHoldStopsAtTheEndInsteadOfPassingIt() =
+        assertEquals(149, CategorySteps.next(from = 147, delta = 1, rows = 150, heldMs = 2_500))
+
+    @Test
+    fun aFastHoldUpPastTheTopGoesToTheSearchField() =
+        assertNull(CategorySteps.next(from = 2, delta = -1, rows = 150, heldMs = 2_500))
 }

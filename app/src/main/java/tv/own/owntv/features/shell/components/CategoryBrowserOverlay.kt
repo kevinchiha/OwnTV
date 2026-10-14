@@ -98,6 +98,7 @@ fun CategoryBrowserOverlay(
             onSelect = { onSelect(entries[it].item.key) },
             onLongSelect = {},
             onNavigateRight = {},
+            jumpToBlocks = true, // KevBox: Hold OK opens "Jump to" (kevbox/live/CategoryJumps.kt)
             focusRequester = listFocus,
             focusRowIndex = focusRow,
             onRowFocused = { focusRow = null },

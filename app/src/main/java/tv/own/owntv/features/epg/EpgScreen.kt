@@ -928,6 +928,7 @@ fun EpgScreen(
                 onRowFocus = { columnCursor = it; sidebarExit = null },
                 onSearchFocus = { columnCursor = null; sidebarExit = null },
                 focusFollowsSelection = false,
+                jumpToBlocks = true, // KevBox: Hold OK opens "Jump to" (kevbox/live/CategoryJumps.kt)
                 modifier = Modifier
                     .padding(start = menuRoom)
                     .width(GuideSidebar.COLUMN_WIDTH_MPX.mpx)

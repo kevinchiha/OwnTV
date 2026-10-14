@@ -19,11 +19,26 @@ internal object CategorySteps {
     fun rowPos(itemIndex: Int, headingPos: Int): Int = itemIndex - 1 - if (headingPos >= 0 && itemIndex > headingPos + 1) 1 else 0
 
     /**
-     * The row a press of [delta] (+1 ▼, -1 ▲) moves to from row [from], out of [rows]. Null for ▲ on the
-     * first row, which is left to focus search so it reaches the search field; ▼ on the last row stays.
+     * The row a press of [delta] (+1 ▼, -1 ▲) moves to from row [from], out of [rows]. Null for ▲ past
+     * the first row, which is left to focus search so it reaches the search field.
+     *
+     * KevBox (Kevin, 2026-10-14): a key held for [heldMs] moves [stepSize] rows a press, so a long list
+     * is quick to cross. ▼ on the last row wraps to the first on a [fresh] press only (not a repeat
+     * of a held key); a held key stops at the end instead of going round and round.
      */
-    fun next(from: Int, delta: Int, rows: Int): Int? {
-        val to = from + delta
+    fun next(from: Int, delta: Int, rows: Int, heldMs: Long = 0, fresh: Boolean = false): Int? {
+        if (fresh && delta > 0 && from >= rows - 1) return 0
+        val to = from + delta * stepSize(heldMs)
         return if (to < 0) null else to.coerceAtMost(rows - 1)
+    }
+
+    /** ▲ on the search field, the list's top: a [fresh] press wraps to the last row, a held key stays. */
+    fun fromSearch(rows: Int, fresh: Boolean): Int? = if (fresh && rows > 0) rows - 1 else null
+
+    /** Rows a press moves while the key has been held [heldMs]: 1 for the first second, then 3, then 6. */
+    fun stepSize(heldMs: Long): Int = when {
+        heldMs < 1_000 -> 1
+        heldMs < 2_000 -> 3
+        else -> 6
     }
 }
