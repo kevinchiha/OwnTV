@@ -3,6 +3,7 @@ package tv.own.owntv.features.shell
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tv.own.owntv.kevbox.settings.LiveOnlySettings
 import java.io.File
 
 /**
@@ -54,7 +55,8 @@ class SettingsSearchCoverageTest {
         assertEquals(
             "settings screens with no search entry — nothing on them is findable by name",
             emptyList<String>(),
-            declared.filterNot { it in notSearchable || it in reachable }.sorted(),
+            // KevBox: a tab whose row KevBox Live hides needs no reachable entry (AC-12).
+            declared.filterNot { it in notSearchable || it in reachable || "tab_$it" in LiveOnlySettings.HIDDEN_KEYS }.sorted(),
         )
     }
 
@@ -115,6 +117,9 @@ class SettingsSearchCoverageTest {
                 val body = m.groupValues[1]
                 // Quick's own rows are copies of rows that live in a group; the group row is the one to find.
                 if (Regex("""^\s*"quick_""").containsMatchIn(body)) return@mapNotNull null
+                // KevBox: a row KevBox Live hides needs no search entry (AC-12): its first argument is a
+                // hidden key, or tabRowKey(SettingsTab.X) with tab_X hidden.
+                if (rootRowKey(body) in LiveOnlySettings.HIDDEN_KEYS) return@mapNotNull null
                 // The row's own title: a derived row says `ref.titleRes` (covered by the Video player
                 // derivation), so a title further down — another call's — must not stand in for it.
                 Regex("""title = stringResource\(([^)]*)\)""").find(body)?.groupValues?.get(1)
@@ -130,6 +135,12 @@ class SettingsSearchCoverageTest {
             emptyList<String>(),
             rootRows.filterNot { normalize(it) in present }.sorted(),
         )
+    }
+
+    // KevBox: the key a RootRow( body starts with: a "literal", or tabRowKey(SettingsTab.X) as tab_X.
+    private fun rootRowKey(body: String): String? {
+        val m = Regex("""^\s*(?:"([^"]+)"|tabRowKey\(SettingsTab\.([A-Z_]+)\))""").find(body) ?: return null
+        return m.groupValues[1].ifEmpty { "tab_" + m.groupValues[2] }
     }
 
     /**

@@ -216,6 +216,9 @@ fun SettingsScreen(
     /** More › Settings (until P10 redraws this screen): open at a root group, or with search open. */
     start: SettingsStart? = null,
     onStartConsumed: () -> Unit = {},
+    // KevBox: counts-only mode (see [rememberSettingsGroupCounts]): when set, the screen reports one row
+    // count per SettingsGroup and draws nothing, so More's cards count the rows the pages draw (AC-11).
+    onGroupCounts: ((List<Int>) -> Unit)? = null,
 ) {
     // A cross-script language change recreates the Activity so Android can apply the new script's
     // shaping and font fallback. Keep the open settings sub-screen across that configuration change
@@ -601,7 +604,8 @@ fun SettingsScreen(
             focus = catchupRowFocus,
             onClick = { saveScroll(); dialogReturn = catchupRowFocus; showCatchupTime = true },
         ),
-        if (playlistSources.isNotEmpty()) RootRow(
+        // KevBox: only with two or more playlists (AC-19); with one, the Catch-up row's zone is the only one.
+        if (playlistSources.size > 1) RootRow(
             "catchup_sources", TileTone.SECONDARY, OwnTVIcon.CATCHUP,
             title = stringResource(R.string.settings_catchup_timezone_per_playlist),
             desc = stringResource(R.string.settings_catchup_timezone_per_playlist_description),
@@ -611,7 +615,8 @@ fun SettingsScreen(
             focus = catchupSourcesRowFocus,
             onClick = { saveScroll(); dialogReturn = catchupSourcesRowFocus; showCatchupSources = true },
         ) else null,
-        RootGroup("group_appearance", stringResource(R.string.settings_appearance_group), OwnTVIcon.PALETTE, stringResource(R.string.settings_group_summary_appearance)),
+        // KevBox: a summary that names no hidden row (accent, focus highlight).
+        RootGroup("group_appearance", stringResource(R.string.settings_appearance_group), OwnTVIcon.PALETTE, stringResource(R.string.kevbox_settings_group_summary_appearance)),
         RootRow(
             "theme", TileTone.PRIMARY, OwnTVIcon.THEME,
             title = stringResource(R.string.settings_theme), desc = stringResource(R.string.settings_theme_description),
@@ -695,7 +700,8 @@ fun SettingsScreen(
             focus = rowFocus.getValue(SettingsTab.WEATHER),
             onClick = { open(SettingsTab.WEATHER) },
         ),
-        RootGroup("group_layout", stringResource(R.string.settings_group_layout), OwnTVIcon.LIST_GRID, stringResource(R.string.settings_group_summary_layout)),
+        // KevBox: a summary that names no hidden row (live layout, panel width, Home).
+        RootGroup("group_layout", stringResource(R.string.settings_group_layout), OwnTVIcon.LIST_GRID, stringResource(R.string.kevbox_settings_group_summary_layout)),
         navigationRootRow(settingsVm, navigationRowFocus) { saveScroll(); dialogReturn = navigationRowFocus; showNavigation = true },
         liveLayoutRootRow(settingsVm, liveLayoutRowFocus) { saveScroll(); dialogReturn = liveLayoutRowFocus; showLiveLayout = true },
         *stageLayoutRows(settingsVm, stageSettings) { saveScroll(); dialogReturn = it }.toTypedArray(),
@@ -757,6 +763,8 @@ fun SettingsScreen(
         RootGroup("group_content_metadata", stringResource(R.string.settings_group_content_metadata), OwnTVIcon.IMAGE, stringResource(R.string.settings_group_summary_content_metadata)),
         RootRow(
             tabRowKey(SettingsTab.CUSTOMIZE), TileTone.PRIMARY, OwnTVIcon.SORT,
+            // KevBox: a heading of its own on the Live TV page it moves to, so it does not sit under Live tuning.
+            heading = stringResource(R.string.settings_customize),
             title = stringResource(R.string.settings_customize), desc = stringResource(R.string.settings_customize_nav_description),
             focus = rowFocus.getValue(SettingsTab.CUSTOMIZE),
             onClick = { open(SettingsTab.CUSTOMIZE) },
@@ -777,7 +785,8 @@ fun SettingsScreen(
         RootGroup("group_picture", stringResource(R.string.settings_vp_cat_picture), OwnTVIcon.VIDEO, ""),
         RootGroup("group_sound", stringResource(R.string.settings_group_sound_subtitles), OwnTVIcon.HEADPHONES, ""),
         RootGroup("group_live", stringResource(R.string.settings_live_tv), OwnTVIcon.LIVE_TV, ""),
-        RootGroup("group_watching", stringResource(R.string.settings_group_watching_recording), OwnTVIcon.REC, ""),
+        // KevBox: named Watching (AC-4), as SettingsGroup.WATCHING.
+        RootGroup("group_watching", stringResource(R.string.kevbox_settings_group_watching), OwnTVIcon.REC, ""),
         // Plan Z — the whole "Data" group is gone. Backup and Local sync are places, not preferences,
         // and are More rows now; Clear history moved onto the History screen it acts on; the download
         // folder moved to the Downloads screen. With all four gone the group had nothing left in it.
@@ -792,6 +801,8 @@ fun SettingsScreen(
             focus = rowFocus.getValue(SettingsTab.LANGUAGE),
             onClick = { open(SettingsTab.LANGUAGE) },
         ),
+        // KevBox: Android TV home and Refresh now move here from the hidden Home screen (AC-8).
+        *kevboxAndroidTvHomeRows(settingsVm).toTypedArray(),
         // KevBox: no App icon row (KevBox Live ships one icon) and no Accent-colored logo row: the mark's
         // play triangle is transparent in KevBox Live, so that toggle would change nothing.
         RootRow(
@@ -830,7 +841,7 @@ fun SettingsScreen(
         ),
         // Plan Z — About and the error log left with the Data group. A page of facts and a log are
         // not preferences; both are More rows now, opening the very same dialogs.
-    )
+    ).let(::kevboxShownRootItems) // KevBox: drops the rows LiveOnlySettings hides (AC-2); groups stay.
 
     // --- Two-pane root: the flat list above is still the single source of truth for order, tone,
     // icon, chip and click of every row. Here it is only *sliced* into (heading, its rows) so the
@@ -873,7 +884,7 @@ fun SettingsScreen(
                     is RootRow -> (lastOrNull()?.second as? MutableList<RootRow>)?.add(item)
                 }
             }
-        }
+        }.let(::kevboxMoveRows) // KevBox: a row in LiveOnlySettings.MOVED_ROWS joins that group (Customize → Live TV, AC-7).
         val byKey = sliced.flatMap { it.second }.associateBy { it.key }
         sliced.map { (group, rows) ->
             if (group.key == "group_quick") {
@@ -883,11 +894,14 @@ fun SettingsScreen(
             }
         }
     }
+    // KevBox: counts-only mode reports here and returns before any effect, focus request or drawing.
+    if (onGroupCounts != null) { ReportGroupCounts(categories.map { it.second }, settingsVm, onGroupCounts); return }
     // A pin that matches no Settings row at all (a row removed in an earlier release) is dropped, so
     // Quick's count says what it lists. Rows that are only hidden for now keep their pins.
     LaunchedEffect(quickPinned, rootItems.size) {
         val known = rootItems.map { it.key }.toSet() + tv.own.owntv.features.settings.VIDEO_QUICK_ROWS.map { it.key } +
-            setOf("ambient_glow", "catchup_sources", "vp_tunneled", "vp_preview_audio", "vp_timeshift_window", "vp_timeshift_resume", "vp_multiview_tiles")
+            setOf("ambient_glow", "catchup_sources", "vp_tunneled", "vp_preview_audio", "vp_timeshift_window", "vp_timeshift_resume", "vp_multiview_tiles",
+                tv.own.owntv.kevbox.settings.LiveOnlySettings.ANDROID_TV_HOME_REFRESH) // KevBox: shown only while Android TV home is on
         val kept = quickPinned.filter { it in known }
         if (kept.size < quickPinned.size) settingsVm.setQuickPinnedKeys(kept)
     }
@@ -984,6 +998,9 @@ fun SettingsScreen(
         val entries = listOfNotNull(
             SettingsSearchEntry(stringResource(R.string.settings_app_group), stringResource(R.string.settings_language), stringResource(R.string.settings_search_keywords_language), OwnTVIcon.LANGUAGE, TileTone.PRIMARY,
                 chip = languageChip, chipTone = TileTone.PRIMARY) { open(SettingsTab.LANGUAGE) },
+            // KevBox: Android TV home and Refresh now, from their App rows; both act in place (AC-8).
+            kevboxRowEntry(rootItems, tv.own.owntv.kevbox.settings.LiveOnlySettings.ANDROID_TV_HOME, stringResource(R.string.settings_group_app), stringResource(R.string.settings_android_tv_home), stringResource(R.string.settings_search_keywords_home)),
+            kevboxRowEntry(rootItems, tv.own.owntv.kevbox.settings.LiveOnlySettings.ANDROID_TV_HOME_REFRESH, stringResource(R.string.settings_group_app), stringResource(R.string.settings_refresh_now), stringResource(R.string.settings_search_keywords_home)),
             // KevBox: no Profiles entry; KevBox Live keeps one hidden profile and no profile pages.
             // KevBox: Choose playlist in place of the Playlists entry, and only while its row shows.
             if (kevboxChoice != null) SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.kevbox_choose_playlist), stringResource(R.string.settings_search_keywords_playlists), OwnTVIcon.PLAYLIST, TileTone.PRIMARY,
@@ -994,31 +1011,40 @@ fun SettingsScreen(
             SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_epg_guide_days), stringResource(R.string.settings_search_keywords_epg), OwnTVIcon.EPG, TileTone.SECONDARY,
                 chip = pluralStringResource(R.plurals.settings_epg_guide_days_value, guideDays, guideDays), chipTone = TileTone.PRIMARY) { saveScroll(); dialogReturn = searchFieldFocus; showGuideDays = true },
             SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_search_guide_logos), stringResource(R.string.settings_search_keywords_logos), OwnTVIcon.EPG, TileTone.SECONDARY) { open(SettingsTab.EPG) },
-            SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_customize), stringResource(R.string.settings_search_keywords_customize), OwnTVIcon.SORT, TileTone.PRIMARY) { open(SettingsTab.CUSTOMIZE) },
+            // KevBox: Customize lives on the Live TV page (AC-7).
+            SettingsSearchEntry(stringResource(R.string.settings_live_tv), stringResource(R.string.settings_customize), stringResource(R.string.settings_search_keywords_customize), OwnTVIcon.SORT, TileTone.PRIMARY) { open(SettingsTab.CUSTOMIZE) },
             navigationSearchEntry(settingsVm) { saveScroll(); dialogReturn = searchFieldFocus; showNavigation = true },
             liveLayoutSearchEntry(settingsVm) { saveScroll(); dialogReturn = searchFieldFocus; showLiveLayout = true },
-            SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_live_opens_in), stringResource(R.string.settings_search_keywords_live_opens_in), OwnTVIcon.LIVE_TV, TileTone.PRIMARY) { saveScroll(); dialogReturn = searchFieldFocus; stageSettings.open = StageSettingsDialog.LIVE_OPENS_IN },
+            SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_live_opens_in), stringResource(R.string.settings_search_keywords_live_opens_in), OwnTVIcon.LIVE_TV, TileTone.PRIMARY,
+                key = tv.own.owntv.kevbox.settings.LiveOnlySettings.LIVE_OPENS_IN) { saveScroll(); dialogReturn = searchFieldFocus; stageSettings.open = StageSettingsDialog.LIVE_OPENS_IN }, // KevBox: key, hidden (AC-10)
             SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_reminders), stringResource(R.string.settings_search_keywords_reminders), OwnTVIcon.BELL, TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; stageSettings.open = StageSettingsDialog.REMINDERS },
             SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_ch_paging), stringResource(R.string.settings_search_keywords_ch), OwnTVIcon.CH_NAV, TileTone.PRIMARY,
                 chip = if (chNavEnabled) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (chNavEnabled) TileTone.PRIMARY else TileTone.SECONDARY) { open(SettingsTab.CH_NAV) },
             SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_vod_layout), stringResource(R.string.settings_search_keywords_vod_layout), OwnTVIcon.LIST_GRID, TileTone.PRIMARY,
-                chip = stringResource(vodLayoutLabelRes(vodLayout)), chipTone = if (vodLayout == tv.own.owntv.core.settings.SettingsRepository.VodLayout.CINEMATIC) TileTone.PRIMARY else TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; showVodLayout = true },
+                chip = stringResource(vodLayoutLabelRes(vodLayout)), chipTone = if (vodLayout == tv.own.owntv.core.settings.SettingsRepository.VodLayout.CINEMATIC) TileTone.PRIMARY else TileTone.SECONDARY,
+                key = tv.own.owntv.kevbox.settings.LiveOnlySettings.VOD_LAYOUT) { saveScroll(); dialogReturn = searchFieldFocus; showVodLayout = true }, // KevBox: key, hidden (AC-10)
             SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_panel_width), stringResource(R.string.settings_search_keywords_panel_width), OwnTVIcon.PANEL_WIDTH, TileTone.PRIMARY,
-                chip = if (panelWidthCustom) stringResource(R.string.settings_live_latency_custom) else stringResource(R.string.settings_subtitle_default), chipTone = if (panelWidthCustom) TileTone.PRIMARY else TileTone.SECONDARY) { open(SettingsTab.PANEL_WIDTH) },
+                chip = if (panelWidthCustom) stringResource(R.string.settings_live_latency_custom) else stringResource(R.string.settings_subtitle_default), chipTone = if (panelWidthCustom) TileTone.PRIMARY else TileTone.SECONDARY,
+                key = tabRowKey(SettingsTab.PANEL_WIDTH)) { open(SettingsTab.PANEL_WIDTH) }, // KevBox: key, hidden (AC-10)
         SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_guide_width), stringResource(R.string.settings_search_keywords_guide_width), OwnTVIcon.EPG, TileTone.PRIMARY,
             chip = if (guideWidthCustom) stringResource(R.string.settings_live_latency_custom) else stringResource(R.string.settings_subtitle_default), chipTone = if (guideWidthCustom) TileTone.PRIMARY else TileTone.SECONDARY) { open(SettingsTab.GUIDE_WIDTH) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_browsing_lists), stringResource(R.string.settings_search_keywords_browsing), OwnTVIcon.LIST_GRID, TileTone.PRIMARY) { open(SettingsTab.BROWSING) },
-            SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_home_root), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY) { open(SettingsTab.HOME) },
-            SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_metadata), stringResource(R.string.settings_search_keywords_metadata), OwnTVIcon.IMAGE, TileTone.PRIMARY) { open(SettingsTab.METADATA) },
+        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_browsing_lists), stringResource(R.string.settings_search_keywords_browsing), OwnTVIcon.LIST_GRID, TileTone.PRIMARY,
+            key = tv.own.owntv.kevbox.settings.LiveOnlySettings.BROWSING_LISTS) { open(SettingsTab.BROWSING) }, // KevBox: key, hidden (AC-10)
+            SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_home_root), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY,
+                key = tabRowKey(SettingsTab.HOME)) { open(SettingsTab.HOME) }, // KevBox: key, hidden (AC-10)
+            SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_metadata), stringResource(R.string.settings_search_keywords_metadata), OwnTVIcon.IMAGE, TileTone.PRIMARY,
+                key = tabRowKey(SettingsTab.METADATA)) { open(SettingsTab.METADATA) }, // KevBox: key, hidden (AC-10)
             // Plan Z — no entries for the download folder, Backup, Local sync or Clear history. They
             // are not in Settings any more, and a result for something that is not here is a lie
             // about where it lives. The no-results state deliberately says nothing else either.
             SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_theme), stringResource(R.string.settings_search_keywords_theme), OwnTVIcon.THEME, TileTone.PRIMARY,
                 chip = themeLabel(themeMode)) { saveScroll(); dialogReturn = searchFieldFocus; showTheme = true },
             SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_accent), stringResource(R.string.settings_search_keywords_accent), OwnTVIcon.PALETTE, TileTone.SECONDARY,
-                chip = if (customAccent.isNotBlank()) customAccent.uppercase() else stringResource(accent.labelRes), chipTone = TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; showAccent = true },
+                chip = if (customAccent.isNotBlank()) customAccent.uppercase() else stringResource(accent.labelRes), chipTone = TileTone.SECONDARY,
+                key = tv.own.owntv.kevbox.settings.LiveOnlySettings.ACCENT) { saveScroll(); dialogReturn = searchFieldFocus; showAccent = true }, // KevBox: key, hidden (AC-10)
             SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_focus_highlight), stringResource(R.string.settings_search_keywords_focus), OwnTVIcon.FOCUS_HIGHLIGHT, TileTone.SECONDARY,
-                chip = focusHighlightChip(focusHighlight, focusHighlightWidth), chipTone = TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; showFocusHighlight = true },
+                chip = focusHighlightChip(focusHighlight, focusHighlightWidth), chipTone = TileTone.SECONDARY,
+                key = tv.own.owntv.kevbox.settings.LiveOnlySettings.FOCUS_HIGHLIGHT) { saveScroll(); dialogReturn = searchFieldFocus; showFocusHighlight = true }, // KevBox: key, hidden (AC-10)
             if (themeMode == ThemeMode.DARK && !glassOn) SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_ambient_glow), stringResource(R.string.settings_ambient_glow_description), OwnTVIcon.GLOW, TileTone.PRIMARY,
                 chip = stringResource(if (ambientGlowEnabled) R.string.common_on else R.string.common_off), chipTone = if (ambientGlowEnabled) TileTone.PRIMARY else TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; showAmbientGlow = true } else null,
         SettingsSearchEntry(
@@ -1049,7 +1075,8 @@ fun SettingsScreen(
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_live_preview"), stringResource(R.string.settings_quick_live_preview), stringResource(R.string.settings_search_keywords_live_preview), OwnTVIcon.LIVE_TV, TileTone.TERTIARY,
                 chip = if (livePreview) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (livePreview) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { toggleLivePreview(searchFieldFocus) },
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_preview_audio"), stringResource(R.string.settings_preview_audio), stringResource(R.string.settings_search_keywords_sound), OwnTVIcon.AUDIO, TileTone.SECONDARY,
-                chip = if (previewAudio) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (previewAudio) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { settingsVm.setLivePreviewAudio(!previewAudio) },
+                chip = if (previewAudio) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (previewAudio) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false,
+                key = tv.own.owntv.kevbox.settings.LiveOnlySettings.VP_PREVIEW_AUDIO) { settingsVm.setLivePreviewAudio(!previewAudio) }, // KevBox: key, hidden (AC-10)
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_channel_numbers"), stringResource(R.string.settings_quick_channel_numbers), stringResource(R.string.settings_search_keywords_channel_numbers), OwnTVIcon.LIVE_TV, TileTone.PRIMARY,
                 chip = if (channelNumbers) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (channelNumbers) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { settingsVm.setDirectTune(!channelNumbers) },
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_mini"), stringResource(R.string.settings_mini_player_root), stringResource(R.string.settings_search_keywords_mini), OwnTVIcon.PIP, TileTone.TERTIARY) { openMiniPlayer = true; jumpVideo("vp_mini", false) },
@@ -1059,23 +1086,27 @@ fun SettingsScreen(
                 chip = if (autoFrameRate) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (autoFrameRate) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { toggleAutoFrameRate(searchFieldFocus) },
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_surround"), stringResource(R.string.settings_surround_sound), stringResource(R.string.settings_search_keywords_surround), OwnTVIcon.AUDIO, TileTone.SECONDARY,
                 chip = surroundModeLabel(surroundMode), chipTone = if (surroundMode == SurroundMode.STEREO) TileTone.SECONDARY else TileTone.PRIMARY, showChevron = false) { settingsVm.cycleSurroundMode() },
-            SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_autoplay"), stringResource(R.string.settings_autoplay_next), stringResource(R.string.settings_search_keywords_autoplay), OwnTVIcon.AUTOPLAY_NEXT, TileTone.SECONDARY,
+            SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_autoplay"), stringResource(R.string.kevbox_settings_catchup_next), stringResource(R.string.settings_search_keywords_autoplay), OwnTVIcon.AUTOPLAY_NEXT, TileTone.SECONDARY,
                 chip = if (autoPlayNext) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (autoPlayNext) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { settingsVm.setAutoPlayNext(!autoPlayNext) },
             SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_catchup), stringResource(R.string.settings_search_keywords_catchup), OwnTVIcon.CATCHUP, TileTone.SECONDARY,
                 chip = when (catchupTz) {
                     SettingsRepository.CatchupTimezone.DEVICE -> stringResource(R.string.settings_device)
                     SettingsRepository.CatchupTimezone.MANUAL -> utcOffsetLabel(catchupOffset)
                 }) { saveScroll(); dialogReturn = searchFieldFocus; showCatchupTime = true },
-            if (playlistSources.isNotEmpty()) SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_catchup_timezone_per_playlist), stringResource(R.string.settings_search_keywords_catchup), OwnTVIcon.CATCHUP, TileTone.SECONDARY,
+            // KevBox: only with two or more playlists, as its row (AC-19).
+            if (playlistSources.size > 1) SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_catchup_timezone_per_playlist), stringResource(R.string.settings_search_keywords_catchup), OwnTVIcon.CATCHUP, TileTone.SECONDARY,
                 chip = if (catchupOverrides == 0) stringResource(R.string.common_off)
                     else pluralStringResource(R.plurals.settings_live_preroll_overrides, catchupOverrides, catchupOverrides),
                 chipTone = if (catchupOverrides > 0) TileTone.PRIMARY else TileTone.SECONDARY) { saveScroll(); dialogReturn = searchFieldFocus; showCatchupSources = true } else null,
             // Four screens that had no entry at all, so nothing on them could be found by name.
-            SettingsSearchEntry(stringResource(R.string.settings_group_watching_recording), stringResource(R.string.recording_settings_group), stringResource(R.string.settings_search_keywords_recording), OwnTVIcon.LIVE_TV, TileTone.TERTIARY) { searchQuery = ""; selectedGroup = SettingsGroup.WATCHING.ordinal },
-            SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_open_subtitles), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.PRIMARY) { open(SettingsTab.OPEN_SUBTITLES) },
+            // KevBox: no Recording entry; KevBox Live records nothing (AC-4). Kept behind a constant, not deleted.
+            if (KEVBOX_RECORDING) SettingsSearchEntry(stringResource(R.string.settings_group_watching_recording), stringResource(R.string.recording_settings_group), stringResource(R.string.settings_search_keywords_recording), OwnTVIcon.LIVE_TV, TileTone.TERTIARY) { searchQuery = ""; selectedGroup = SettingsGroup.WATCHING.ordinal } else null,
+            SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_open_subtitles), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.PRIMARY,
+                key = tabRowKey(SettingsTab.OPEN_SUBTITLES)) { open(SettingsTab.OPEN_SUBTITLES) }, // KevBox: key, hidden (AC-10)
             SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_glass_bg_title), stringResource(R.string.settings_search_keywords_glass), OwnTVIcon.SPARKLE, TileTone.PRIMARY,
                 chip = glassBackgroundSummary(settingsVm.backgroundConfig.collectAsStateWithLifecycle().value, glassConfig), chipTone = if (glassOn) TileTone.PRIMARY else TileTone.SECONDARY) { open(SettingsTab.GLASS_EFFECT) },
-            SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_content_menus_title), stringResource(R.string.settings_search_keywords_customize), OwnTVIcon.MENU, TileTone.PRIMARY) { open(SettingsTab.CONTENT_MENUS) },
+            SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_content_menus_title), stringResource(R.string.settings_search_keywords_customize), OwnTVIcon.MENU, TileTone.PRIMARY,
+                key = tabRowKey(SettingsTab.CONTENT_MENUS)) { open(SettingsTab.CONTENT_MENUS) }, // KevBox: key, hidden (AC-10)
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_sub_style"), stringResource(R.string.settings_subtitle_appearance), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.TERTIARY) { open(SettingsTab.SUBTITLE_STYLE) },
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_live_latency"), stringResource(R.string.settings_live_latency), stringResource(R.string.settings_search_keywords_latency), OwnTVIcon.LIVE_TV, TileTone.TERTIARY) { jumpVideo("vp_live_latency", false) },
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_preroll"), stringResource(R.string.settings_live_preroll), stringResource(R.string.settings_search_keywords_live_preroll), OwnTVIcon.LIVE_TV, TileTone.TERTIARY) { jumpVideo("vp_preroll", false) },
@@ -1127,6 +1158,7 @@ fun SettingsScreen(
                     chipTone = if (binding?.primaryChip == true) TileTone.PRIMARY else TileTone.SECONDARY,
                     showChevron = binding?.onToggle == null,
                     onClick = binding?.onToggle ?: jump,
+                    key = ref.key, // KevBox: hidden Video player rows leave the results (AC-10)
                 )
             }
         // The rows inside hand-written screens and popups, by their own titles — before, only the
@@ -1136,8 +1168,9 @@ fun SettingsScreen(
             titles.map { SettingsSearchEntry(group, stringResource(it), stringResource(keywords), icon, TileTone.TERTIARY, onClick = onClick) }
         val subStyleRef = tv.own.owntv.features.settings.VIDEO_QUICK_ROWS.first { it.key == "vp_sub_style" }
         val screenRowEntries =
-            rowsOf(stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_group_watching_recording), stringResource(R.string.recording_settings_group)),
-                tv.own.owntv.features.settings.RECORDING_SEARCH_ROWS, R.string.settings_search_keywords_recording, OwnTVIcon.LIVE_TV) { searchQuery = ""; selectedGroup = SettingsGroup.WATCHING.ordinal } +
+            // KevBox: no Recording rows in search; KevBox Live records nothing (AC-4). Kept behind a constant, not deleted.
+            (if (KEVBOX_RECORDING) rowsOf(stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_group_watching_recording), stringResource(R.string.recording_settings_group)),
+                tv.own.owntv.features.settings.RECORDING_SEARCH_ROWS, R.string.settings_search_keywords_recording, OwnTVIcon.LIVE_TV) { searchQuery = ""; selectedGroup = SettingsGroup.WATCHING.ordinal } else emptyList()) +
             rowsOf(stringResource(R.string.settings_breadcrumb, tv.own.owntv.features.settings.videoRowPath("vp_sub_style"), stringResource(R.string.settings_subtitle_appearance)),
                 tv.own.owntv.features.settings.SUBTITLE_APPEARANCE_SEARCH_ROWS, R.string.settings_search_keywords_subtitle_appearance, OwnTVIcon.SUBTITLE, jumpTo(subStyleRef)) +
             // KevBox: no proxy rows in search; the proxy is set in kevbox.dev.
@@ -1149,7 +1182,7 @@ fun SettingsScreen(
         // A setting is found by its own name only: "play" lists every setting with "play" in its name (owner).
         val needle = searchQuery.trim().lowercase()
         (entries + videoEntries + screenRowEntries)
-            .filter { e -> e.title.lowercase().contains(needle) }
+            .filter { e -> e.title.lowercase().contains(needle) && (e.key == null || tv.own.owntv.kevbox.settings.LiveOnlySettings.shows(e.key)) } // KevBox: AC-10
             .distinctBy { it.group + it.title }
     }
     val searching = searchQuery.isNotBlank() || searchMode
@@ -1163,14 +1196,11 @@ fun SettingsScreen(
     val pageCount = when {
         searching && searchQuery.isBlank() -> ""
         searching -> pluralStringResource(R.plurals.settings_match_count, searchResults.size, searchResults.size)
-        group.video != null -> videoGroupCount(group.video, settingsVm).let { n ->
-            val all = n + if (group == SettingsGroup.WATCHING) 4 else 0
-            pluralStringResource(R.plurals.settings_setting_count, all, all)
-        }
+        // KevBox: video groups count through groupRowCount, as More's cards do (AC-11); no Recording rows (AC-4).
         group == SettingsGroup.PROFILE -> tv.own.owntv.features.settings.profileCount().let { n ->
             pluralStringResource(R.plurals.settings_profile_count, n, n)
         }
-        else -> (selectedRows.size + if (group == SettingsGroup.APP) videoGroupCount(VideoGroup.DIAGNOSTICS, settingsVm) else 0).let { n ->
+        else -> groupRowCount(group, selectedRows, settingsVm).let { n -> // KevBox: one count source (AC-11)
             pluralStringResource(R.plurals.settings_setting_count, n, n)
         }
     }
@@ -1207,22 +1237,25 @@ fun SettingsScreen(
                 searching -> searchResults.forEach { e ->
                     StageSearchResultRow(e.icon, e.group, e.title, e.chip, onClick = e.onClick)
                 }
-                group.video != null -> {
+                // KevBox: a video group with sliced root rows (Live TV, with Customize) falls through to the row loop.
+                group.video != null && selectedRows.isEmpty() -> {
                     VideoPlayerGroupRows(
                         group.video, pageScroll,
                         openMiniPlayer = openMiniPlayer,
                         focusRowKey = videoRowKey,
                     )
-                    if (group == SettingsGroup.WATCHING) tv.own.owntv.features.settings.RecordingSettingsRows(pageScroll)
+                    // KevBox: no Recording rows on the Watching page; KevBox Live records nothing (AC-4).
                 }
                 group == SettingsGroup.PROFILE -> tv.own.owntv.features.settings.ProfileSettingsRows()
                 // Only Quick can be empty, and only because the user emptied it.
                 selectedRows.isEmpty() -> StageSettingsNote(stringResource(R.string.settings_quick_empty_title), stringResource(R.string.settings_quick_empty_hint))
                 else -> {
+                    // KevBox: a video group's own rows come first, its sliced root rows after them.
+                    group.video?.let { VideoPlayerGroupRows(it, pageScroll, openMiniPlayer = openMiniPlayer, focusRowKey = videoRowKey) }
                     selectedRows.forEachIndexed { i, row ->
                         row.heading?.let { heading ->
                             val under = selectedRows.drop(i).let { rest -> 1 + rest.drop(1).takeWhile { it.heading == null }.size }
-                            StageSettingsHeading(heading, under, first = i == 0)
+                            StageSettingsHeading(heading, under, first = i == 0 && group.video == null) // KevBox: not first after video rows
                         }
                         RootRowStage(
                             row,
@@ -1494,7 +1527,8 @@ private fun themeLabel(mode: ThemeMode): String = stringResource(
 @Composable
 private fun startupLabel(mode: tv.own.owntv.core.settings.StartupMode): String = stringResource(
     when (mode) {
-        tv.own.owntv.core.settings.StartupMode.HOME -> R.string.settings_startup_home
+        // KevBox: HOME opens Live TV in KevBox Live, so it says so (AC-18).
+        tv.own.owntv.core.settings.StartupMode.HOME -> R.string.kevbox_settings_startup_live_tv
         tv.own.owntv.core.settings.StartupMode.LAST_CHANNEL -> R.string.settings_startup_last_channel
         tv.own.owntv.core.settings.StartupMode.FAVORITES -> R.string.settings_startup_favorites
         tv.own.owntv.core.settings.StartupMode.SPECIFIC_CHANNEL -> R.string.settings_startup_specific_channel
@@ -1614,6 +1648,7 @@ private fun liveLayoutSearchEntry(settingsVm: SettingsViewModel, onClick: () -> 
         stringResource(R.string.settings_group_layout), stringResource(R.string.settings_live_layout),
         stringResource(R.string.settings_search_keywords_live_layout), OwnTVIcon.LIVE_TV, TileTone.PRIMARY,
         chip = stringResource(liveLayoutLabelRes(layout)), chipTone = TileTone.PRIMARY, onClick = onClick,
+        key = tv.own.owntv.kevbox.settings.LiveOnlySettings.LIVE_LAYOUT, // KevBox: hidden (AC-10)
     )
 }
 
@@ -3004,24 +3039,24 @@ private data class RootRow(
 @Composable
 private fun subScreenSearchEntries(open: (SettingsTab) -> Unit): List<SettingsSearchEntry> = listOf(
         SettingsSearchEntry(stringResource(R.string.settings_group_sources), stringResource(R.string.settings_epg_sources_auto_refresh_title), stringResource(R.string.settings_search_keywords_epg), OwnTVIcon.EPG, TileTone.SECONDARY) { open(SettingsTab.EPG) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.home_row_now_trending), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY) { open(SettingsTab.HOME) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.home_trending_style), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY) { open(SettingsTab.HOME) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_hero_preview), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY) { open(SettingsTab.HOME) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_live_keep_watching), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY) { open(SettingsTab.HOME) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_movies_keep_watching), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY) { open(SettingsTab.HOME) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_series_keep_watching), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY) { open(SettingsTab.HOME) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_android_tv_home), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY) { open(SettingsTab.HOME) },
+        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.home_row_now_trending), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_HOME) { open(SettingsTab.HOME) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.home_trending_style), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_HOME) { open(SettingsTab.HOME) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_hero_preview), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_HOME) { open(SettingsTab.HOME) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_live_keep_watching), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_HOME) { open(SettingsTab.HOME) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_movies_keep_watching), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_HOME) { open(SettingsTab.HOME) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_series_keep_watching), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.HOME, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_HOME) { open(SettingsTab.HOME) }, // KevBox: key, hidden (AC-10)
+        // KevBox: the Android TV home entry moved to the App group, beside its row (AC-8).
         SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_ch_nav_up), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.CH_NAV, TileTone.SECONDARY) { open(SettingsTab.CH_NAV) },
         SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_ch_nav_down), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.CH_NAV, TileTone.SECONDARY) { open(SettingsTab.CH_NAV) },
         SettingsSearchEntry(stringResource(R.string.settings_group_layout), stringResource(R.string.settings_remote_shortcuts), stringResource(R.string.settings_search_keywords_home), OwnTVIcon.CH_NAV, TileTone.SECONDARY) { open(SettingsTab.CH_NAV) },
         SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_show_weather), stringResource(R.string.settings_search_keywords_weather), OwnTVIcon.WEATHER, TileTone.SECONDARY) { open(SettingsTab.WEATHER) },
         SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_temperature_unit), stringResource(R.string.settings_search_keywords_weather), OwnTVIcon.WEATHER, TileTone.SECONDARY) { open(SettingsTab.WEATHER) },
         SettingsSearchEntry(stringResource(R.string.settings_group_appearance), stringResource(R.string.settings_custom_location), stringResource(R.string.settings_search_keywords_weather), OwnTVIcon.WEATHER, TileTone.SECONDARY) { open(SettingsTab.WEATHER) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_metadata_source), stringResource(R.string.settings_search_keywords_metadata), OwnTVIcon.IMAGE, TileTone.SECONDARY) { open(SettingsTab.METADATA) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_metadata_language), stringResource(R.string.settings_search_keywords_metadata), OwnTVIcon.IMAGE, TileTone.SECONDARY) { open(SettingsTab.METADATA) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.player_subtitles_search_language), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.SECONDARY) { open(SettingsTab.OPEN_SUBTITLES) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.player_subtitles_filter_title), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.SECONDARY) { open(SettingsTab.OPEN_SUBTITLES) },
-        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.player_subtitles_stay_signed_in), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.SECONDARY) { open(SettingsTab.OPEN_SUBTITLES) },
+        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_metadata_source), stringResource(R.string.settings_search_keywords_metadata), OwnTVIcon.IMAGE, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_METADATA) { open(SettingsTab.METADATA) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.settings_metadata_language), stringResource(R.string.settings_search_keywords_metadata), OwnTVIcon.IMAGE, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_METADATA) { open(SettingsTab.METADATA) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.player_subtitles_search_language), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_OPEN_SUBTITLES) { open(SettingsTab.OPEN_SUBTITLES) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.player_subtitles_filter_title), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_OPEN_SUBTITLES) { open(SettingsTab.OPEN_SUBTITLES) }, // KevBox: key, hidden (AC-10)
+        SettingsSearchEntry(stringResource(R.string.settings_group_content_metadata), stringResource(R.string.player_subtitles_stay_signed_in), stringResource(R.string.settings_search_keywords_subtitle_appearance), OwnTVIcon.SUBTITLE, TileTone.SECONDARY, key = tv.own.owntv.kevbox.settings.LiveOnlySettings.TAB_OPEN_SUBTITLES) { open(SettingsTab.OPEN_SUBTITLES) }, // KevBox: key, hidden (AC-10)
 )
 
 /** The list key of the row that opens [tab], so a Back from that sub-screen can find its index. */
@@ -3135,6 +3170,8 @@ private class SettingsSearchEntry(
     val chip: String? = null,
     val chipTone: TileTone = TileTone.PRIMARY,
     val showChevron: Boolean = true,
+    // KevBox: the row or page this entry stands for; results drop it while LiveOnlySettings hides that key (AC-10).
+    val key: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -3380,4 +3417,101 @@ private fun serviceRowExtras(vm: SettingsViewModel): Map<String, RowExtra> {
         "tab_NETWORK" to RowExtra(SettingValue.Opens(if (proxy.usable) "${proxy.host}:${proxy.port}" else off)),
         "tab_DNS" to RowExtra(SettingValue.Opens(if (dns.enabled && dnsHost.isNotBlank()) dnsHost else if (dns.enabled) on else off)),
     )
+}
+
+// KevBox: everything below is KevBox Live's (0.2 live-only Settings). It sits outside [SettingsScreen],
+// which is at the JVM's 64 KB method limit.
+
+/** KevBox: Recording rows and search entries stay in the source behind this constant (AC-4). */
+private const val KEVBOX_RECORDING = false
+
+/** KevBox: the root list without the rows [tv.own.owntv.kevbox.settings.LiveOnlySettings] hides; every group header stays, so indices keep matching [SettingsGroup]. */
+private fun kevboxShownRootItems(items: List<RootItem>): List<RootItem> =
+    items.filter { it !is RootRow || tv.own.owntv.kevbox.settings.LiveOnlySettings.shows(it.key) }
+
+/** KevBox: moves each row in [tv.own.owntv.kevbox.settings.LiveOnlySettings.MOVED_ROWS] to the end of the group with that key. */
+private fun kevboxMoveRows(sliced: List<Pair<RootGroup, List<RootRow>>>): List<Pair<RootGroup, List<RootRow>>> {
+    val moved = tv.own.owntv.kevbox.settings.LiveOnlySettings.MOVED_ROWS
+    val movers = sliced.flatMap { it.second }.filter { it.key in moved }
+    if (movers.isEmpty()) return sliced
+    return sliced.map { (group, rows) ->
+        group to rows.filterNot { it.key in moved } + movers.filter { moved[it.key] == group.key }
+    }
+}
+
+/** KevBox: Android TV home and, while it is on, Refresh now: the App rows that follow Language (AC-8). */
+@Composable
+private fun kevboxAndroidTvHomeRows(vm: SettingsViewModel): List<RootRow> {
+    val on by vm.androidTvHomeEnabled.collectAsStateWithLifecycle()
+    val refresh by vm.tvHomeRefresh.collectAsStateWithLifecycle()
+    val status = when (refresh) {
+        SettingsViewModel.TvHomeRefresh.REFRESHING -> stringResource(R.string.settings_rebuilding)
+        SettingsViewModel.TvHomeRefresh.DONE -> stringResource(R.string.settings_done_check)
+        else -> null
+    }
+    return listOf(
+        RootRow(
+            tv.own.owntv.kevbox.settings.LiveOnlySettings.ANDROID_TV_HOME, TileTone.SECONDARY, OwnTVIcon.HISTORY,
+            title = stringResource(R.string.settings_android_tv_home),
+            desc = stringResource(R.string.settings_android_tv_home_description),
+            chip = stringResource(if (on) R.string.common_on else R.string.common_off),
+            chipTone = if (on) TileTone.PRIMARY else TileTone.SECONDARY,
+            onClick = { vm.setAndroidTvHomeEnabled(!on) },
+        ),
+        RootRow(
+            tv.own.owntv.kevbox.settings.LiveOnlySettings.ANDROID_TV_HOME_REFRESH, TileTone.SECONDARY, OwnTVIcon.REFRESH,
+            title = stringResource(R.string.settings_refresh_now),
+            desc = stringResource(R.string.settings_refresh_description),
+            chip = status,
+            value = status?.let { SettingValue.Action(it) },
+            onClick = { if (refresh == SettingsViewModel.TvHomeRefresh.IDLE) vm.refreshAndroidTvHome() },
+        ),
+    ).filter { on || it.key != tv.own.owntv.kevbox.settings.LiveOnlySettings.ANDROID_TV_HOME_REFRESH }
+}
+
+/** KevBox: a search entry that acts like the root row with [key], or null while that row is not shown. */
+private fun kevboxRowEntry(items: List<RootItem>, key: String, group: String, title: String, keywords: String): SettingsSearchEntry? {
+    val row = items.firstOrNull { it.key == key } as? RootRow ?: return null
+    return SettingsSearchEntry(
+        group, title, keywords, row.icon, row.tone,
+        chip = row.chip, chipTone = row.chipTone, showChevron = false, key = key, onClick = row.onClick,
+    )
+}
+
+/**
+ * KevBox: one group's row count, the number its page header shows and More's card shows (AC-11).
+ * Video groups: their Video player rows plus their sliced root rows (Customize on Live TV).
+ */
+@Composable
+private fun groupRowCount(group: SettingsGroup, rows: List<RootRow>, vm: SettingsViewModel): Int = when {
+    group.video != null -> videoGroupCount(group.video, vm) + rows.size
+    group == SettingsGroup.PROFILE -> tv.own.owntv.features.settings.profileCount()
+    group == SettingsGroup.APP -> rows.size + videoGroupCount(VideoGroup.DIAGNOSTICS, vm)
+    else -> rows.size
+}
+
+/** KevBox: the counts-only mode of [SettingsScreen]: hands [onCounts] one count per [SettingsGroup], by ordinal. */
+@Composable
+private fun ReportGroupCounts(rowsByGroup: List<List<RootRow>>, vm: SettingsViewModel, onCounts: (List<Int>) -> Unit) {
+    val counts = SettingsGroup.entries.map { g -> groupRowCount(g, rowsByGroup.getOrNull(g.ordinal).orEmpty(), vm) }
+    androidx.compose.runtime.SideEffect { onCounts(counts) }
+}
+
+/** One row count per SettingsGroup (index = ordinal), the same numbers each group page shows. Null until known. */
+@Composable
+internal fun rememberSettingsGroupCounts(): List<Int>? {
+    val shellVm: tv.own.owntv.features.shell.ShellViewModel = koinViewModel()
+    // Theme decides whether Ambient glow shows; zoom and fonts change no count, so they keep their defaults.
+    val themeMode by shellVm.themeMode.collectAsStateWithLifecycle()
+    var counts by remember { mutableStateOf<List<Int>?>(null) }
+    SettingsScreen(
+        themeMode = themeMode,
+        uiZoomPercent = UiZoom.DEFAULT,
+        onSetZoom = {},
+        fontCustomization = FontCustomization(),
+        onSetFontCustomization = {},
+        onOpenPlaylist = {},
+        onGroupCounts = { if (it != counts) counts = it },
+    )
+    return counts
 }

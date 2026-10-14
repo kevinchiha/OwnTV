@@ -18,7 +18,8 @@ internal enum class SettingsGroup(val titleRes: Int, val video: VideoGroup? = nu
     PICTURE(R.string.settings_vp_cat_picture, VideoGroup.PICTURE),
     SOUND(R.string.settings_group_sound_subtitles, VideoGroup.SOUND),
     LIVE(R.string.settings_live_tv, VideoGroup.LIVE),
-    WATCHING(R.string.settings_group_watching_recording, VideoGroup.WATCHING),
+    // KevBox: named Watching (AC-4); KevBox Live records nothing, so no heading says Recording.
+    WATCHING(R.string.kevbox_settings_group_watching, VideoGroup.WATCHING),
     APP(R.string.settings_group_app),
     ;
 

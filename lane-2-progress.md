@@ -1,2 +1,3 @@
 - Task 2: done. No Interfaces deviations.
 - Task 3: done. No Interfaces deviations.
+- Task 4: done. Interfaces deviation: none. Note: the two Recording search entries stay in the source behind a false constant (KEVBOX_RECORDING) instead of being deleted, because each line holds an empty-string literal and the global rule forbids deleting such lines.
