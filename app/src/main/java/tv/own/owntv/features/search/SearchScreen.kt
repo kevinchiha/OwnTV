@@ -333,10 +333,13 @@ fun SearchScreen(
                 // ▼ lands on the open tab, not whichever tab is nearest below.
                 // KevBox: no tabs, so ▼ lands on the first result, from the pill and from the text being edited
                 // alike (the default search found nothing below the field).
+                // KevBox: scrolled there first. The list keeps its scroll position while Search stays open (a
+                // channel no longer takes you to Live TV), so new results can open scrolled down, with the
+                // first row not laid out and its focus request failing: ▼ then did nothing (Kevin, 2026-10-14).
                 .onPreviewKeyEvent { e ->
                     val first = entries.firstOrNull { it.isResult() }
                     if (showingResults && first != null && e.key == Key.DirectionDown) {
-                        if (e.type == KeyEventType.KeyDown) runCatching { requesterFor(first.key).requestFocus() }
+                        if (e.type == KeyEventType.KeyDown) scope.launch { focusRow(first.key) }
                         true
                     } else false
                 }
