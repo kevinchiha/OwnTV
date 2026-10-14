@@ -3,17 +3,27 @@ package tv.own.owntv.kevbox.di
 
 import android.content.Context
 import java.time.LocalDate
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.merge
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 import tv.own.owntv.BuildConfig
 import tv.own.owntv.core.database.dao.SourceDao
+import tv.own.owntv.core.database.entity.SourceEntity
+import tv.own.owntv.core.network.ConnectivityObserver
+import tv.own.owntv.core.parser.XtreamClient
 import tv.own.owntv.core.repository.SourceTester
+import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.kevbox.KevBoxCoordinator
 import tv.own.owntv.kevbox.KevBoxViewModel
 import tv.own.owntv.kevbox.access.AccessMonitor
 import tv.own.owntv.kevbox.epg.GuideFeeds
 import tv.own.owntv.kevbox.access.PrefsVerdictPrefs
+import tv.own.owntv.kevbox.errors.AccountCheck
+import tv.own.owntv.kevbox.errors.ErrorReporter
+import tv.own.owntv.kevbox.errors.ErrorSender
+import tv.own.owntv.kevbox.errors.secretWordsOf
 import tv.own.owntv.kevbox.expiry.ExpiryMonitor
 import tv.own.owntv.kevbox.expiry.PrefsExpiryPrefs
 import tv.own.owntv.kevbox.playlist.CoreLocalSources
@@ -68,6 +78,35 @@ val kevboxModule = module {
             api = get(),
             deviceId = get(),
             appVersion = BuildConfig.VERSION_NAME,
+            scope = get(),
+            now = System::currentTimeMillis,
+        )
+    }
+    single {
+        val xtream = get<XtreamClient>()
+        AccountCheck(fetch = { source -> xtream.fetchAccountStatus(source) }, now = System::currentTimeMillis)
+    }
+    single {
+        val auth = get<KevBoxAuth>()
+        val sessions = get<SessionStore>()
+        val reconciler = get<PlaylistReconciler>()
+        val sourceDao = get<SourceDao>()
+        val settings = get<SettingsRepository>()
+        val connectivity = get<ConnectivityObserver>()
+        val sender = get<ErrorSender>()
+        val currentSource: suspend () -> SourceEntity? = { reconciler.currentSourceId()?.let { sourceDao.getById(it) } }
+        ErrorReporter(
+            queue = get(),
+            kick = sender::kick,
+            startSender = sender::start,
+            accountCheck = get(),
+            currentSource = currentSource,
+            sourceById = { id -> sourceDao.getById(id) },
+            proxyUsable = { settings.proxyConfig.first().usable },
+            isOnline = connectivity::isOnlineNow,
+            // A rotated Supabase session has no signal of its own; the reporter re-reads it per entry too.
+            secretChanges = merge(auth.email, auth.userId, sourceDao.observeAll()),
+            readSecrets = { secretWordsOf(currentSource(), auth.email.value, sessions.load()) },
             scope = get(),
             now = System::currentTimeMillis,
         )
