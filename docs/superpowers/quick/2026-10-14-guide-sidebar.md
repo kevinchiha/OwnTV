@@ -88,3 +88,9 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt` (with its tes
 - review: minor GuideSidebar unused events DIALOG_OPENED / GRID_FOCUSED_DURING_COLUMN_ENTRY with a comment at :569-572 that reads as if applied. Decision: fix the comment.
 - review: minor stale comment at EpgScreen.kt:664-665. Decision: fix.
 - fix round 1: 6e4f5846 "the layout follows focus" (one rule: focus decides the layout; a started move outranks focus passing through). All 6 items reported fixed; gate green.
+- re-review round 1: all 6 items closed, no new critical or important; gate green, proof greps match (EpgScreen 14/14, OwnTVShell 14/14, LiveStage 4/4, StageRail 2/2).
+- minor OwnTVShell.kt:731 raw railHasFocus lets a passing menu visit show the menu over the expanded guide for a moment: skip, kept on purpose so focus is never on a hidden menu; check on the TV.
+- minor railFocused's 400 ms key window can drop a waiting move after a bounce to the menu: skip, needs a bounce within 400 ms of Right on an unloaded category.
+- minor a reveal whose channel is missing from its category stays pending: skip, rare; check on the TV.
+- minor keys pressed in the 1-3 frames after Back from full screen act on the hidden menu: skip, the next retry pulls focus back.
+- final review: done
