@@ -21,6 +21,12 @@
 #         values) and ~/secrets/kevbox-keys/kevbox-live.env (KEVBOX_SUPABASE_URL and
 #         KEVBOX_SUPABASE_ANON_KEY); the keystore exists; the Supabase URL starts with https:// and
 #         the anon key is not blank. The files are sourced inside subshells and never printed.
+# KevBox: check_sentry_settings: when kevbox-live.env sets SENTRY_AUTH_TOKEN, it sets SENTRY_ORG and
+#         SENTRY_PROJECT too. The four SENTRY_* lines are optional; without them the release has no
+#         Sentry key and uploads no symbols.
+# KevBox: check_error_codes_match: the app's tools/kevbox/live-error-codes.json equals kevbox's
+#         src/lib/live-error-codes.json, so the admin labels every code the TVs send (a warning only
+#         when the kevbox checkout is missing).
 #
 # Then it deletes any release APK an earlier build left in Gradle's output folders (so a stale
 # APK can never ship under a new tag), builds the standard (arm) and x86_64 release APKs, copies
@@ -39,6 +45,7 @@ source tools/kevbox/release-checks.sh
 release_repo="kevinchiha/OwnTV"
 release_branch="origin/kevbox-live"
 keys_dir="$HOME/secrets/kevbox-keys"
+kevbox_repo="$HOME/projects/kevbox"
 signing_env="$keys_dir/release.env"
 supabase_env="$keys_dir/kevbox-live.env"
 expected_sha256="9A:E0:71:8C:CC:F9:F6:83:90:93:49:31:D3:FE:0E:52:F4:57:EF:B5:81:D5:AC:C1:14:16:F1:51:2D:BB:1D:6F"
@@ -97,6 +104,13 @@ check_code_above_latest "$version" "$latest" || die "stopped: version code not a
   source "$supabase_env"
   [[ "${KEVBOX_SUPABASE_URL:-}" == https://* && -n "${KEVBOX_SUPABASE_ANON_KEY:-}" ]] || exit 1
 ) || die "$supabase_env must set KEVBOX_SUPABASE_URL to an https:// address and a non-blank KEVBOX_SUPABASE_ANON_KEY"
+(
+  unset SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT
+  # shellcheck source=/dev/null
+  source "$supabase_env"
+  check_sentry_settings "${SENTRY_AUTH_TOKEN:-}" "${SENTRY_ORG:-}" "${SENTRY_PROJECT:-}"
+) || die "stopped: incomplete Sentry settings in $supabase_env"
+check_error_codes_match "$kevbox_repo" || die "stopped: error codes differ from kevbox"
 
 version_code="$(bash tools/kevbox/version.sh code "$version")"
 
@@ -122,8 +136,12 @@ echo "release: building KevBox Live $version (code $version_code)"
 (
   # shellcheck source=/dev/null
   source "$signing_env"
+  # KevBox: the SENTRY_* values come from kevbox-live.env alone, blank when it has none.
+  unset SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT
   # shellcheck source=/dev/null
   source "$supabase_env"
+  export SENTRY_DSN="${SENTRY_DSN:-}" SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN:-}"
+  export SENTRY_ORG="${SENTRY_ORG:-}" SENTRY_PROJECT="${SENTRY_PROJECT:-}"
   export KEYSTORE_FILE="$NUVIO_RELEASE_STORE_FILE"
   export KEYSTORE_PASSWORD="$NUVIO_RELEASE_STORE_PASSWORD"
   export KEY_ALIAS="$NUVIO_RELEASE_KEY_ALIAS"

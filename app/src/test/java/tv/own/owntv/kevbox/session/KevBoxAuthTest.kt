@@ -184,6 +184,27 @@ class KevBoxAuthTest {
     }
 
     @Test
+    fun `userId follows sign-in and sign-out`() = runBlocking {
+        server.on(TOKEN, Canned(200, tokenBody("a1", "r1")))
+        server.on(LOGOUT, Canned(204, ""))
+        val auth = auth()
+        assertNull(auth.userId.value)
+
+        auth.signIn("member@example.com", "secret")
+        assertEquals("user-1", auth.userId.value)
+
+        auth.signOut()
+        assertNull(auth.userId.value)
+    }
+
+    @Test
+    fun `userId starts from a stored session`() {
+        storeSession(expiresAtMs = clock + 3_600_000)
+
+        assertEquals("user-1", auth().userId.value)
+    }
+
+    @Test
     fun `wrong password returns WrongCredentials and saves nothing`() = runBlocking {
         server.on(
             TOKEN,

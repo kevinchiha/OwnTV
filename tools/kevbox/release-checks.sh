@@ -11,6 +11,12 @@
 #                                             reachable from HEAD
 #   check_code_above_latest <v> <latest-tag>  refuses unless code(v) > code(latest); an empty
 #                                             latest tag (no release yet) passes
+#   check_error_codes_match <kevbox repo>     refuses when <kevbox repo>/src/lib/live-error-codes.json
+#                                             differs from tools/kevbox/live-error-codes.json; warns
+#                                             and passes when the kevbox file is missing
+#   check_sentry_settings <token> <org> <project>
+#                                             refuses when a Sentry auth token is set but the org
+#                                             or project is blank (an upload would fail mid-build)
 
 # Both callers run with these options already; setting them here keeps the file safe on its own.
 set -euo pipefail
@@ -63,6 +69,30 @@ check_code_above_latest() {
   fi
   if (( code <= latest_code )); then
     echo "release: $version (code $code) is not above the latest release $latest (code $latest_code)" >&2
+    return 1
+  fi
+}
+
+check_error_codes_match() {
+  local kevbox_repo="${1:-}" theirs ours="tools/kevbox/live-error-codes.json"
+  theirs="$kevbox_repo/src/lib/live-error-codes.json"
+  if [[ ! -f "$theirs" ]]; then
+    echo "release: warning: $theirs not found, so the error codes were not compared with kevbox's label list" >&2
+    return 0
+  fi
+  if ! cmp -s "$theirs" "$ours"; then
+    echo "release: the app's error codes differ from kevbox's label list; update kevbox first ($theirs vs $ours)" >&2
+    return 1
+  fi
+}
+
+check_sentry_settings() {
+  local token="${1:-}" org="${2:-}" project="${3:-}" missing=()
+  [[ -z "$token" ]] && return 0
+  [[ -z "$org" ]] && missing+=("SENTRY_ORG")
+  [[ -z "$project" ]] && missing+=("SENTRY_PROJECT")
+  if (( ${#missing[@]} > 0 )); then
+    echo "release: SENTRY_AUTH_TOKEN is set but ${missing[*]} is blank; add the missing line to kevbox-live.env or remove the token" >&2
     return 1
   fi
 }
