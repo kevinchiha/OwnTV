@@ -111,3 +111,13 @@ New files under `app/src/main/java/tv/own/owntv/kevbox/live/` (with tests), plus
 - Task 4: landed (c2f95c81). Hold also calls epgVm.noteChannelTuned on Live TV; exitPlayerWith reveals the playing channel when the grid no longer lists it (hold from another category). Known edge: guide search filter hiding the boxed channel leaves a pending reveal, as CH+/CH- today.
 - gate (orchestrator, after Task 4): red, lint NonObservableLocale at EpgScreen.kt:1262 (Locale.getDefault() in a composable). On the fix list as important.
 - ocr: 4 medium, 7 low (low dropped). Medium OwnTVShell.kt:1046 (hold fires on the KeyDown-time arming; re-check section, boxSection, dialogs when it fires): fix. Medium ShowSearch.kt:86 (rows grouped by raw epgChannelId, looked up by trimmed lower-case key): fix. Medium SearchViewModel.kt:92 (no error catch, shows not recomputed when sources load): fix. Medium EpgScreen.kt:848 (outline uses live field text and one-letter queries; take the loaded query from state, 2+ characters): fix.
+- review: critical EpgScreen.kt:1262 lint NonObservableLocale (same item as the gate red above).
+- review: important ShowSearch.kt:111-113 (AC-7): per-guide-id dedupe runs before the guide's category filter, so a second channel on the same guide id (HD/SD copy, other playlist) never gets an On now / Next 24 hours row, and a copy inside the open category is lost when the first carrier is outside it.
+- review: minor EpgScreen.kt:848 one-letter outline (same item as ocr medium EpgScreen.kt:848): fix.
+- review: minor GuideCore.kt:195-201 light palette focused match has no own outline: skip, KevBox Live's palette is dark.
+- review: minor SQLite LIKE case only for A-Z vs Kotlin ignoreCase: skip, core behaves the same.
+- review: minor guide On now order follows ShowSearch (playlist position) not the grid's order: fix.
+- review: minor SearchViewModel.kt:88-93 results and shows debounce apart: "Nothing found" flashes and Down before shows arrive locks Channels as the choice: fix (with ocr medium SearchViewModel.kt:92).
+- review: minor SearchScreen.kt:644 "▲ Search" key hint now one step off: fix.
+- review: minor SearchScreen.kt:203-208 results.copy per recomposition makes both entry lists compare up to 500 rows per key press: fix.
+- review: minor SearchScreen.kt:305/307/502 changed lines 5-7 from a KevBox: comment: fix.
