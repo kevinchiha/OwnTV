@@ -100,3 +100,4 @@ New files under `app/src/main/java/tv/own/owntv/kevbox/live/` (with tests), plus
 **Verify:** `GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew testStandardDebugUnitTest --tests 'tv.own.owntv.kevbox.live.*' compileStandardDebugKotlin`
 
 ## Build log
+- baseline: gate green (tests, lint, check-divergence 0 failures)
