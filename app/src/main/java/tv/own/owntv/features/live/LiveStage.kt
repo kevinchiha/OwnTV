@@ -486,6 +486,11 @@ internal fun LiveCategories(
     onSearchQueryChange: ((String) -> Unit)? = null,
     /** The category search is being typed in (the player's sheet then leaves ◀ to the text cursor). */
     onSearchEditingChange: (Boolean) -> Unit = {},
+    // KevBox: false keeps focus where it is when the selection changes. Live TV's guide column selects the
+    // category the cursor rests on, and a load landing must never pull the cursor back to that row.
+    focusFollowsSelection: Boolean = true,
+    // KevBox: the search field took focus (Live TV's guide column: the cursor is off every category).
+    onSearchFocus: () -> Unit = {},
 ) {
     var localQuery by remember { mutableStateOf("") }
     val query = searchQuery ?: localQuery
@@ -501,7 +506,7 @@ internal fun LiveCategories(
     var hasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(selectedIndex) {
         val pos = visible.indexOf(selectedIndex)
-        if (!hasFocus || pos < 0) return@LaunchedEffect
+        if (!focusFollowsSelection || !hasFocus || pos < 0) return@LaunchedEffect // KevBox: focusFollowsSelection
         runCatching { listState.scrollToItem(pos + 1) } // +1: the search field is item 0
         withFrameNanos { }
         runCatching { rowFocusers[pos].requestFocus() }
@@ -589,6 +594,7 @@ internal fun LiveCategories(
                         .fillMaxWidth()
                         .padding(start = if (sheet) 8.mpx else 0.mpx, end = if (sheet) 8.mpx else 0.mpx, bottom = if (sheet) 14.mpx else 16.mpx)
                         .focusRequester(searchFocus)
+                        .onFocusChanged { if (it.hasFocus) onSearchFocus() } // KevBox: see onSearchFocus
                         .then(if (query.isEmpty()) rightKey else Modifier),
                     height = if (sheet) 54.mpx else 48.mpx,
                     radius = if (sheet) 16.mpx else 15.mpx,

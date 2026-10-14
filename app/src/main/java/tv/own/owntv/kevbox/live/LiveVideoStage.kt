@@ -38,6 +38,7 @@ import androidx.compose.ui.node.requireDensity
 import androidx.compose.ui.node.requireLayoutCoordinates
 import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.flow.collectLatest
+import kotlin.math.abs
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.nav.MainSection
 import tv.own.owntv.features.shell.PlayerMode
@@ -53,7 +54,7 @@ import tv.own.owntv.player.LivePreviewEngine
  * handed over between screens, so the stream never gets a new window: some TV chips stall when it does.
  *
  * Who cuts the patch: a site the window has settled on cuts its own, so its overlays draw above the
- * video and anything composed later (the categories sidebar) covers it. While the window moves,
+ * video and anything composed later covers it. While the window moves,
  * LiveVideoPatch cuts it at the window's current rectangle instead. Once the last site leaves, the
  * window goes at once, unless the bridge was armed and the player left: then it waits up to the grace
  * period for the box (see patchShows).
@@ -83,6 +84,16 @@ internal fun graceOver(lastClearMs: Long, nowMs: Long): Boolean = nowMs - lastCl
  */
 internal fun patchShows(target: VideoSite?, settledOnTarget: Boolean, lastCleared: VideoSite?, bridgeArmed: Boolean): Boolean =
     if (target != null) !settledOnTarget else bridgeArmed && lastCleared == VideoSite.PLAYER
+
+/** Closer than this, in px, two edges count as one: float rounding, never a real move. */
+private const val SAME_PX = 0.01f
+
+internal fun sameRect(a: Rect, b: Rect): Boolean =
+    abs(a.left - b.left) < SAME_PX && abs(a.top - b.top) < SAME_PX &&
+        abs(a.right - b.right) < SAME_PX && abs(a.bottom - b.bottom) < SAME_PX
+
+internal fun sameSize(a: Rect, b: Rect): Boolean =
+    abs(a.width - b.width) < SAME_PX && abs(a.height - b.height) < SAME_PX
 
 internal fun lerpCorner(from: Float, to: Float, t: Float): Float = from + (to - from) * t
 
@@ -158,6 +169,25 @@ class LiveVideoStage(durationMs: Int = 320) {
 
     val target: VideoSite? get() = pickTarget(box != null, player != null)
 
+    /**
+     * How far the box's screen has slid it sideways right now, in px, or null when nothing slides it.
+     * Live TV's guide moves the box with a layer translation when its category column opens and closes.
+     * The box's bounds are kept without the slide, and the slide is added where the window is drawn
+     * ([shown]), which reads it in the same frame as the guide's own layer. Through reports alone the
+     * window trailed the box by a frame: a report lands after that frame's layers are updated.
+     */
+    var boxSlide: (() -> Float)? by mutableStateOf(null)
+
+    /** The box's slide now, in px (0 with nothing sliding it). */
+    fun boxSlideNow(): Float = boxSlide?.invoke() ?: 0f
+
+    /**
+     * The window's rectangle as drawn now, in window pixels: [current], plus the box's slide while the
+     * box is the target. Read it in a draw or layer block, so the slide is read there too.
+     */
+    val shown: Rect?
+        get() = current?.let { r -> if (target == VideoSite.BOX) r.translate(boxSlideNow(), 0f) else r }
+
     /** The armed player left and no target has appeared yet: the window waits for the box. */
     private val bridging: Boolean get() = bridgeArmed && lastCleared == VideoSite.PLAYER
 
@@ -204,24 +234,34 @@ class LiveVideoStage(durationMs: Int = 320) {
     /** [site] is composed at [bounds] (window pixels) with [cornerPx] corners. */
     fun report(site: VideoSite, bounds: Rect, cornerPx: Float, nowMs: Long) {
         val old = siteOf(site)
-        if (old != null && old.bounds == bounds && old.cornerPx == cornerPx) return
+        // Nearly equal, not equal: a slid box's bounds come back as (place + slide) - slide in floats.
+        if (old != null && sameRect(old.bounds, bounds) && old.cornerPx == cornerPx) return
+        // A site the window has settled on that only moved, at the same size, takes the window along at
+        // once: the site itself jumped there, and an eased move would leave the video behind it.
+        val follow = old != null && settledOn(site) && sameSize(old.bounds, bounds) && old.cornerPx == cornerPx
         val before = targetSite()
+        val beforeTarget = target
         when (site) {
             VideoSite.BOX -> box = Site(bounds, cornerPx)
             VideoSite.PLAYER -> player = Site(bounds, cornerPx)
         }
-        retarget(before, nowMs)
+        if (follow) {
+            current = bounds
+            return
+        }
+        retarget(before, beforeTarget, nowMs)
     }
 
     /** [site] left the screen. */
     fun clear(site: VideoSite, nowMs: Long) {
         if (siteOf(site) == null) return
         val before = targetSite()
+        val beforeTarget = target
         when (site) {
             VideoSite.BOX -> box = null
             VideoSite.PLAYER -> player = null
         }
-        retarget(before, nowMs)
+        retarget(before, beforeTarget, nowMs)
         if (target == null && before != null) lastCleared = site
         // The bridge only covers a player leaving with no target. Back during the grow leaves the box
         // there, so the arm is spent and a later player exit hides at once.
@@ -267,7 +307,14 @@ class LiveVideoStage(durationMs: Int = 320) {
     private fun targetSite(): Site? = target?.let(::siteOf)
 
     /** The target site or its rectangle may have changed: start a move from where the window is now. */
-    private fun retarget(before: Site?, nowMs: Long) {
+    private fun retarget(before: Site?, beforeTarget: VideoSite?, nowMs: Long) {
+        // The box's rectangles leave out its slide, every other one is plain window pixels: a window
+        // passing between the two keeps its place on screen.
+        if (beforeTarget != target) {
+            val slide = boxSlideNow()
+            val dx = (if (beforeTarget == VideoSite.BOX) slide else 0f) - (if (target == VideoSite.BOX) slide else 0f)
+            current?.let { if (dx != 0f) current = it.translate(dx, 0f) }
+        }
         val to = targetSite()
         if (to == null) {
             move = null
@@ -302,7 +349,7 @@ val LocalLiveVideoStage = staticCompositionLocalOf<LiveVideoStage?> { null }
  * stage is visible. Subtitles are left to the site above it, which knows whether it wants them.
  *
  * The window is laid out once, at the full size of this layer, and placed by its graphics layer:
- * moved and scaled down to [LiveVideoStage.current]. A SurfaceView applies a layout resize off the
+ * moved and scaled down to [LiveVideoStage.shown]. A SurfaceView applies a layout resize off the
  * frame, so resizing it each frame left the video lagging its see-through patch (a black strip along
  * the trailing edges). A layer transform reaches the surface in step with the frame. All stage reads
  * happen in the layer block, so a move neither recomposes nor re-lays out the window.
@@ -320,7 +367,7 @@ fun LiveVideoLayer(stage: LiveVideoStage, engine: LivePreviewEngine, keepAwake: 
         ExoPreviewSurface(
             engine = engine,
             modifier = Modifier.fillMaxSize().graphicsLayer {
-                val r = stage.current ?: Rect.Zero
+                val r = stage.shown ?: Rect.Zero
                 if (size.width <= 0f || size.height <= 0f) return@graphicsLayer
                 // The float rectangle, unrounded, so the window lines up with the patch exactly.
                 val sx = r.width / size.width
@@ -355,7 +402,7 @@ fun LiveVideoPatch(stage: LiveVideoStage) {
             .onGloballyPositioned { origin = it.positionInWindow() }
             .drawBehind {
                 if (!stage.patchVisible) return@drawBehind
-                val r = stage.current ?: return@drawBehind
+                val r = stage.shown ?: return@drawBehind
                 drawRoundRect(
                     color = Color.Black,
                     topLeft = r.topLeft - origin,
@@ -409,7 +456,11 @@ private class LiveVideoSiteNode(
             coordinates.localToWindow(Offset.Zero),
             coordinates.localToWindow(Offset(size.width.toFloat(), size.height.toFloat())),
         )
-        stage.report(site, bounds, with(requireDensity()) { corner.toPx() }, stageNowMs())
+        // The box is kept without its slide (see LiveVideoStage.boxSlide). A layer translation above it
+        // calls this on every frame it changes, so a slide reports the same place each frame and moves
+        // nothing here.
+        val unslid = if (site == VideoSite.BOX) bounds.translate(-stage.boxSlideNow(), 0f) else bounds
+        stage.report(site, unslid, with(requireDensity()) { corner.toPx() }, stageNowMs())
     }
 
     override fun ContentDrawScope.draw() {

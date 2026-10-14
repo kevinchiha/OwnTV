@@ -164,6 +164,64 @@ class LiveVideoStageTest {
     }
 
     @Test
+    fun aSettledSiteMovedAtTheSameSizeTakesTheWindowAlongAtOnce() {
+        // The guide's layer slid the box: the box is there now, and the video must not trail it.
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        val moved = box.translate(-548f, 0f)
+        stage.report(VideoSite.BOX, moved, 28f, nowMs = 1_000)
+        assertTrue(stage.settledOn(VideoSite.BOX))
+        assertEquals(moved, stage.current)
+    }
+
+    @Test
+    fun aReportOffByFloatRoundingChangesNothing() {
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.report(VideoSite.PLAYER, Rect(0.001f, 0f, 1920.001f, 1080f), 0f, nowMs = 1_000)
+        assertEquals(full, stage.current)
+        assertTrue(stage.settledOn(VideoSite.PLAYER))
+    }
+
+    @Test
+    fun theBoxIsDrawnWithItsSlide() {
+        var slide = 548f
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.boxSlide = { slide }
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        assertEquals(box.translate(548f, 0f), stage.shown)
+        slide = 0f
+        assertEquals(box, stage.shown)
+        assertTrue(stage.settledOn(VideoSite.BOX))
+    }
+
+    @Test
+    fun aGrowFromASlidBoxStartsWhereTheBoxIsOnScreen() {
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.boxSlide = { 548f }
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 1_000)
+        stage.frame(1_000)
+        assertEquals(box.translate(548f, 0f), stage.shown)
+        stage.frame(1_320)
+        assertEquals(full, stage.shown)
+    }
+
+    @Test
+    fun aShrinkIntoASlidBoxEndsOnTheBoxOnScreen() {
+        val stage = LiveVideoStage(durationMs = 320)
+        stage.boxSlide = { 548f }
+        stage.report(VideoSite.PLAYER, full, 0f, nowMs = 0)
+        stage.report(VideoSite.BOX, box, 28f, nowMs = 0)
+        stage.clear(VideoSite.PLAYER, nowMs = 1_000)
+        stage.frame(1_000)
+        assertEquals(full, stage.shown)
+        stage.frame(1_320)
+        assertTrue(stage.settledOn(VideoSite.BOX))
+        assertEquals(box.translate(548f, 0f), stage.shown)
+    }
+
+    @Test
     fun withNoDurationOneFrameSettles() {
         val stage = LiveVideoStage(durationMs = 0)
         stage.report(VideoSite.BOX, box, 28f, nowMs = 0)

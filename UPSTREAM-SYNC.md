@@ -106,15 +106,15 @@ keep one file per row, with its full path.
 | `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'kevbox.ui.QuietAccessibility.install(this)' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -c 'KevBoxAutoSetup(' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'LaunchedEffect(profile) { gateSession.authenticateProfile(profile) }' app/src/main/java/tv/own/owntv/MainActivity.kt` (the count must be 2) |
 | `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.UpdateProfileAttacher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` && grep -n 'network.DnsDefault>().applyOnce()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` |
 | `app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` | `grep -n 'LiveOnly.browseSections' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` |
-| `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.LiveVideoLayer(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVideoSite(liveVideoStage' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerChromeReady) PlayerHud(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.isBackToGrid(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'exitPlayerWith(false)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVm.keepInBox(playingChannel)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.ui.KeptHidden' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` && grep -n 'if (playerMode != PlayerMode.NONE) previewChannelState.value else null' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` && grep -n 'RemoteShortcutAction.OPEN_PROFILE_SWITCHER -> Unit' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` |
+| `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.LiveVideoLayer(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVideoSite(liveVideoStage' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerChromeReady) PlayerHud(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.isBackToGrid(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'exitPlayerWith(false)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVm.keepInBox(playingChannel)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.ui.KeptHidden' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` && grep -n 'if (playerMode != PlayerMode.NONE) previewChannelState.value else null' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` && grep -n 'RemoteShortcutAction.OPEN_PROFILE_SWITCHER -> Unit' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` && grep -n 'liveGuideExpanded && !railHasFocus' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'selectedSection == MainSection.LIVE_TV -> 0.dp' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt |
 | `app/src/main/java/tv/own/owntv/ui/stage/StageDraw.kt` | `grep -c 'this.bakedBackground(listOf(' app/src/main/java/tv/own/owntv/ui/stage/StageDraw.kt` (the count must be 2) |
-| `app/src/main/java/tv/own/owntv/features/shell/components/StageRail.kt` | `grep -n 'KevBox: no profile at the bottom of the menu' app/src/main/java/tv/own/owntv/features/shell/components/StageRail.kt` |
+| `app/src/main/java/tv/own/owntv/features/shell/components/StageRail.kt` | `grep -n 'KevBox: no profile at the bottom of the menu' app/src/main/java/tv/own/owntv/features/shell/components/StageRail.kt && grep -n 'state == RailState.HIDDEN && edgeGlow' app/src/main/java/tv/own/owntv/features/shell/components/StageRail.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt` | `grep -n 'liveVideoSite(videoStage' app/src/main/java/tv/own/owntv/features/epg/GuideStage.kt` |
 | `app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt` | `grep -n 'if (subOn && subtitles)' app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt && grep -n 'fun ExoSubtitleLayer' app/src/main/java/tv/own/owntv/player/MpvVideoSurface.kt` |
-| `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'class SidebarExit(val row: Int, val oldState' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'if (liveMode) { sheetOpen = true; return@invoke true }' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'okOnRow = liveMode' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'LocalLiveVideoStage.current' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` && grep -n 'val previewChannelState = liveVm.previewChannel' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'val isSelectedRow by remember(index)' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
+| `app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` | `grep -n 'if (!liveMode) Row(' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'rememberPlaylistFirstSync' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'liveVm.reveal.collectAsStateWithLifecycle' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'class SidebarExit(val row: Int, val oldState' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'if (liveMode) { columnEntry++; return@invoke true }' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'focusFollowsSelection = false' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'GuideSidebar.rightOrOk(key, liveSelected' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'videoStage?.boxSlide = ' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'okOnRow = liveMode' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'LocalLiveVideoStage.current' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` && grep -n 'val previewChannelState = liveVm.previewChannel' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt && grep -n 'val isSelectedRow by remember(index)' app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt` |
 | `app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` | `grep -n 'fun onFullscreenExited(keepStream: Boolean' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt && grep -n 'fun keepInBox(channel: ChannelEntity)' app/src/main/java/tv/own/owntv/features/live/LiveViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` | `grep -n 'KevBox: every channel shows' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt && grep -n 'KevBox: reload when a playlist finishes a sync' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt && grep -n 'channelDao.channelsAfterCategory(filter.id' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt && grep -n 'MAX_CHANNELS = 40_000' app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt` |
-| `app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt && grep -n 'stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` && grep -n 'val entries = remember(railItems, railCounts, recentLabel' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` |
+| `app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt && grep -n 'stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` && grep -n 'val entries = remember(railItems, railCounts, recentLabel' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt` && grep -n 'if (!focusFollowsSelection' app/src/main/java/tv/own/owntv/features/live/LiveStage.kt |
 | `app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` | `grep -n 'LiveOnly.categoryName' app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` && grep -n 'copy(movies = emptyList(), series = emptyList())' app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt && grep -n 'filter { it == SearchIntent.CHANNELS }' app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt && grep -n 'kevbox_search_field_hint' app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt` |
 | `app/src/main/java/tv/own/owntv/features/settings/SettingsStage.kt` | `grep -n 'passwordShownAtStart' app/src/main/java/tv/own/owntv/features/settings/SettingsStage.kt` |
 | `app/src/main/java/tv/own/owntv/player/PlayerHud.kt` | `grep -n 'kevbox.onChannelFailed()' app/src/main/java/tv/own/owntv/player/PlayerHud.kt` && grep -n 'KevBox: a channel opens on the picture alone' app/src/main/java/tv/own/owntv/player/PlayerHud.kt && grep -n 'KevBox: CH+ / CH- change the channel and show nothing' app/src/main/java/tv/own/owntv/player/PlayerHud.kt` |
@@ -214,26 +214,34 @@ Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
   upstream route into them that does not go through `selectSection` (a new `MainSection`, a deep
   link, a More page) is a route to cut.
 - Live TV is always the guide grid (`OwnTVShell` ignores the stored List/Guide choice). The grid
-  has no control line; Back or ◀ on it opens the category sidebar, and Back or ◀ there moves to the
-  main menu. ▶ from the main menu opens the sidebar, never the grid (the screen's rail entry hook),
-  so the sidebar is the only way between the menu and the channels, both ways. The sidebar asks for
-  focus over a few frames: from the menu, the shell content's `focusRestorer` turns the first request
-  into the grid row last focused. ▶ or OK on a category moves to the grid through `SidebarExit`,
-  which waits for the sidebar to close and for a new guide state after a category change: upstream's
-  direct `focusGrid()` let focus fall to the main menu. A category that loads empty reopens the
-  sidebar on it, and ▶ over an empty grid does nothing, so an empty category never strands focus.
-  The sidebar draws a 92% layer of the glass colour under its glass. OK on a
+  has no control line. Live TV's category list is a column (`LiveCategories`' flat column, with its
+  search), always composed right of the main menu: the content area starts at the screen edge on
+  Live TV and `EpgScreen` gets the menu's room (`menuRoom`). The guide keeps its full-screen layout
+  and slides on one layer translation: right by the menu's room plus the 420 mpx column while they
+  show, back to 0 once the user moves into the grid, in 320 ms with the menu's own slide
+  (`kevbox/live/GuideSidebar.kt` holds the rules). ▶ from the main menu moves to the column, never
+  the grid, with nothing moving (the screen's rail entry hook); the column asks for focus over a
+  few frames, since from the menu the shell content's `focusRestorer` turns the first request into
+  the grid row last focused. The cursor resting 300 ms on a category shows it in the guide behind
+  (`LiveCategories`' `focusFollowsSelection = false` keeps a load from pulling the cursor back). ▶
+  or OK on a category selects it if the guide does not show it yet and moves to the grid through
+  `SidebarExit`, which waits for a new guide state after a category change (upstream's direct
+  `focusGrid()` let focus fall to the main menu); an empty category keeps the cursor in the column.
+  Moving into the grid expands the guide, and the shell hides the menu (`railState` HIDDEN, no
+  edge glow) while focus is in the guide. ◀ or Back on a channel row collapses back to the column,
+  ◀ or Back in the column moves to the main menu, and the menu taking focus collapses too. The TV
+  Guide section keeps upstream's glass category sheet. OK on a
   channel that is not in the top video box previews it there (`boxChannel`, held on the video
   stage below); only OK on the channel already in the box opens it full screen, on its row
   (`GuideRow`'s `okOnRow`) and inside its programmes alike, and ▶ steps into the programmes. If upstream
-  reworks `EpgScreen`'s control line, its sheet or `GuideRow`'s ◀ handling, check all of these keys
+  reworks `EpgScreen`'s control line, its layout, `LiveCategories` or `GuideRow`'s ◀ handling, check all of these keys
   again on a TV.
 - The playlist's own guide feed is added and downloaded by `kevbox/epg/GuideFeeds.kt`, which
   stands in for the onboarding's "sync the guide?" question. If Core starts adding the Xtream
   feed by itself (its `ImportFinalizer` only does so for Stalker portals today), drop GuideFeeds.
 - Provider category names show verbatim (`LiveOnly.categoryName`), channel names still go through
   `ProviderTags`.
-- ▲ ▼ in every `LiveCategories` list (the Live TV sidebar among them) step by row number through
+- ▲ ▼ in every `LiveCategories` list (Live TV's category column among them) step by row number through
   `VodStepper`, as the channel grid does (`kevbox/live/CategorySteps.kt` maps a row to its list item
   past the search field and the "GROUPS" heading). Upstream leaves them to focus search, which a held
   key outran on a long provider list: the list stopped until its scroll caught up. If upstream adds
@@ -246,8 +254,11 @@ Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
   placed by a graphics layer (translation and scale from the top-left corner, corner clip divided by
   the scale): a SurfaceView resized by layout lags the frame and trailed a black strip. The UI shows
   the video through a see-through patch (a `BlendMode.Clear` draw): a site the window has settled on
-  cuts its own, so its overlays draw on top and the category sidebar covers it; while the window
-  moves, `LiveVideoPatch` cuts one at the window's current rectangle. When the last site leaves, the
+  cuts its own, so its overlays draw on top; while the window moves, `LiveVideoPatch` cuts one at
+  the window's current rectangle. The box slides with Live TV's guide on a layer translation: the
+  stage keeps the box's rectangle without the slide and adds it where the window and the patch are
+  drawn (`boxSlide`, read in the same frame as the guide's layer), since a report from
+  `onGloballyPositioned` lands a frame after the layer moved. When the last site leaves, the
   window goes at once, so nothing shows through a see-through background. The one exception is an
   armed bridge (`armBridge`, which only takes while the player is on screen): after Back to the
   grid the window stays at the player's rectangle for up to 600 ms (`GRACE_MS`) until the box

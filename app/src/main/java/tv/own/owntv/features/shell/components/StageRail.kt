@@ -147,6 +147,9 @@ fun StageRail(
     nowPlaying: NowPlayingRail?,
     onNowPlaying: () -> Unit,
     modifier: Modifier = Modifier,
+    // KevBox: false leaves out the accent glow at the screen edge while HIDDEN (KevBox Live's Live TV, whose
+    // expanded guide shows only the guide).
+    edgeGlow: Boolean = true,
 ) {
     val open = (state == RailState.OPEN || state == RailState.PINNED) && size != NavSize.COMPACT
     val counts = size >= NavSize.WIDE
@@ -177,7 +180,7 @@ fun StageRail(
         if (state == RailState.OPEN && open) {
             Box(Modifier.fillMaxSize().background(StageColors.Scrim))
         }
-        if (state == RailState.HIDDEN) RailEdgeGlow(Modifier.align(Alignment.CenterStart))
+        if (state == RailState.HIDDEN && edgeGlow) RailEdgeGlow(Modifier.align(Alignment.CenterStart)) // KevBox: edgeGlow
 
         val width = if (open) size.openWidth.mpx else 84.mpx
         val edge = if (open) 24.mpx else 28.mpx

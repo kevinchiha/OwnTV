@@ -722,7 +722,12 @@ fun OwnTVShell(
     // keeps the compact room, so nothing behind it moves).
     val widenDocked = navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED && navSize == tv.own.owntv.core.settings.SettingsRepository.NavSize.COMPACT && navWiden != null && railFocused
     val railSize = if (widenDocked) navWiden ?: navSize else navSize
+    // KevBox: Live TV's guide, expanded over its category column (EpgScreen's onExpandedChange); a new
+    // section starts collapsed. While it is expanded and focus is in the guide, the menu slides fully off
+    // the screen with the column, with no edge glow (see edgeGlow below).
+    var liveGuideExpanded by remember(selectedSection) { mutableStateOf(false) }
     val railState = when {
+        selectedSection == MainSection.LIVE_TV && liveGuideExpanded && !railHasFocus -> tv.own.owntv.features.shell.components.RailState.HIDDEN
         widenDocked -> tv.own.owntv.features.shell.components.RailState.OPEN
         navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED -> tv.own.owntv.features.shell.components.RailState.PINNED
         railFocused -> tv.own.owntv.features.shell.components.RailState.OPEN
@@ -1182,6 +1187,8 @@ fun OwnTVShell(
                             Modifier
                                 .padding(
                                     start = when {
+                                        // KevBox: Live TV's guide spans the screen and makes room for the menu itself (menuRoom).
+                                        selectedSection == MainSection.LIVE_TV -> 0.dp
                                         navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED ->
                                             tv.own.owntv.features.shell.components.railDockedReserve(navSize)
                                         stageScreen -> 0.dp
@@ -1356,8 +1363,16 @@ fun OwnTVShell(
                             previewEnabled = playerMode == PlayerMode.NONE,
                             liveMode = true,
                             onEntryHook = { guideEntry = it },
-                            // KevBox: Back or ◀ on the category sidebar goes on to the main menu.
+                            // KevBox: Back or ◀ in the category column goes on to the main menu. The column starts
+                            // where the menu's room ends (Floating gets the Compact capsule's room), the menu
+                            // taking focus makes room for it again, and an expanded guide hides the menu.
                             onOpenMenu = focusRail,
+                            menuHasFocus = railHasFocus,
+                            menuRoom = tv.own.owntv.features.shell.components.railDockedReserve(
+                                if (navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED) navSize
+                                else tv.own.owntv.core.settings.SettingsRepository.NavSize.COMPACT,
+                            ),
+                            onExpandedChange = { liveGuideExpanded = it },
                             onListView = { liveVm.setLiveView(tv.own.owntv.core.settings.SettingsRepository.LiveView.LIST) },
                             restoreFocus = restoreFocus,
                             onRestored = { restoreFocus = false },
@@ -1493,6 +1508,7 @@ fun OwnTVShell(
             )
             tv.own.owntv.features.shell.components.StageRail(
                 state = railState,
+                edgeGlow = selectedSection != MainSection.LIVE_TV, // KevBox: Live TV's expanded guide shows only the guide
                 size = railSize,
                 length = navLength,
                 selected = selectedSection,
