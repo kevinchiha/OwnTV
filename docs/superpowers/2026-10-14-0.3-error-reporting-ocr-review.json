@@ -1,0 +1,536 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 12 finding(s) across 29 selected item(s).",
+  "summary": {
+    "files_reviewed": 29,
+    "comments": 12,
+    "total_tokens": 1510115,
+    "input_tokens": 1465611,
+    "output_tokens": 44504,
+    "cache_read_tokens": 1033519,
+    "cache_write_tokens": 431968,
+    "elapsed": "2m24s"
+  },
+  "tool_calls": {
+    "total": 47,
+    "by_tool": {
+      "code_comment": 7,
+      "code_search": 21,
+      "file_read": 13,
+      "file_read_diff": 6
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "tools/kevbox/release-checks.sh",
+      "content": "`cmp -s` returns 2 when `$ours` is missing or unreadable, for example when the function runs from a directory other than the repo root, since `ours` is a relative path. The release still stops, but the message says the lists \"differ\" and tells Kevin to update kevbox, which is the wrong fix. Check `$ours` separately so the error names the real problem, and add a test for the missing-app-file case.",
+      "suggestion_code": "  if [[ ! -f \"$ours\" ]]; then\n    echo \"release: $ours not found (run from the OwnTV repo root)\" \u003e\u00262\n    return 1\n  fi\n  if ! cmp -s \"$theirs\" \"$ours\"; then\n    echo \"release: the app's error codes differ from kevbox's label list; update kevbox first ($theirs vs $ours)\" \u003e\u00262\n    return 1\n  fi",
+      "existing_code": "  if ! cmp -s \"$theirs\" \"$ours\"; then\n    echo \"release: the app's error codes differ from kevbox's label list; update kevbox first ($theirs vs $ours)\" \u003e\u00262\n    return 1\n  fi",
+      "start_line": 83,
+      "end_line": 86,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "tools/kevbox/release-checks.sh",
+      "content": "`check_sentry_settings` never checks `SENTRY_DSN`. If `kevbox-live.env` sets the auth token, org and project but no `SENTRY_DSN`, the build still uploads symbols. But `BuildConfig.SENTRY_DSN` ends up as \"\" (release.sh exports a blank value), so the shipped APK reports no crashes and the check doesn't warn. A token without a DSN is almost certainly a config mistake. Consider passing the DSN in as well and refusing when the token is set but the DSN is blank, or at least printing a warning.",
+      "existing_code": "  [[ -z \"$token\" ]] \u0026\u0026 return 0",
+      "start_line": 91,
+      "end_line": 91,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/LiveCheckin.kt",
+      "content": "`lastSentAtMs` belongs to the whole process and nothing resets it when the member changes. The spec says a check-in goes out \"whenever a member signs in\", and the `userId` collector is there for that. But if member B signs in (or A signs out and back in) within 6 hours of the last check-in, `checkinDue` returns false and nothing is sent. The TV then doesn't show up in the usage line for B until the next 6-hour window. Fix: store the user id the last check-in was sent for, and treat a different user as due.",
+      "suggestion_code": "    private var lastSentFor: String? = null\n\n    private suspend fun checkInIfDue() = lock.withLock {\n        val userId = auth.userId.value\n        val last = lastSentAtMs.takeIf { lastSentFor == userId }\n        if (!checkinDue(last, now(), signedIn = userId != null)) return@withLock\n        ...\n        if (result is Fetch.Ok \u0026\u0026 result.value.code in HTTP_SUCCESS) {\n            lastSentAtMs = now()\n            lastSentFor = userId\n        }\n    }",
+      "existing_code": "        if (!checkinDue(lastSentAtMs, now(), signedIn = auth.userId.value != null)) return@withLock",
+      "start_line": 65,
+      "end_line": 65,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+      "content": "`store.load()` now runs twice when this object is created. Each call is a separate Keystore decrypt, and the comments here say Keystore is flaky on cheap TV firmware. A failed decrypt makes `load()` return null. So if one call succeeds and the other fails, `email` is non-null while `userId` is null. The UI then shows the member as signed in, but `LiveCheckin`, `ErrorSender` and Sentry all treat the TV as signed out. That breaks the \"moves with email\" guarantee. Load the session once and set both flows from that one result.",
+      "suggestion_code": "    private val initial = store.load()\n    private val _email = MutableStateFlow(initial?.email)\n    private val _userId = MutableStateFlow(initial?.userId)",
+      "existing_code": "    private val _userId = MutableStateFlow(store.load()?.userId)",
+      "start_line": 35,
+      "end_line": 35,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/LiveCheckin.kt",
+      "content": "The due check compares wall-clock times. TV boxes often have no RTC battery, so they boot with the wrong time and NTP corrects it later. If a check-in is recorded while the clock is ahead and NTP then moves it back, `nowMs - lastSentAtMs` is negative or small. Neither the 6-hour loop nor `onForeground` will send again until the wall clock passes the old ahead-of-time value, which can be days or weeks. `SystemClock.elapsedRealtime()` never goes backwards and keeps counting during deep sleep, so the stated reason for using wall-clock time (the delay pauses while the TV sleeps) still holds. Pass `{ SystemClock.elapsedRealtime() }` as `now`, or at least treat a negative difference as due.",
+      "suggestion_code": "fun checkinDue(lastSentAtMs: Long?, nowMs: Long, signedIn: Boolean): Boolean {\n    if (!signedIn) return false\n    if (lastSentAtMs == null) return true\n    val elapsed = nowMs - lastSentAtMs\n    return elapsed \u003c 0 || elapsed \u003e= CHECKIN_INTERVAL_MS\n}",
+      "existing_code": "fun checkinDue(lastSentAtMs: Long?, nowMs: Long, signedIn: Boolean): Boolean =\n    signedIn \u0026\u0026 (lastSentAtMs == null || nowMs - lastSentAtMs \u003e= CHECKIN_INTERVAL_MS)",
+      "start_line": 25,
+      "end_line": 26,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorSender.kt",
+      "content": "Every 4xx except 401 counts as `Rejected`, and that includes temporary statuses such as 408 (request timeout), 425 and 429 (rate limited, which Supabase/PostgREST gateways do return). Once `ErrorQueue.settle` has recorded `MAX_REJECTIONS` (3) rejections for an entry, it deletes it for good. A short rate-limit spell can therefore throw away valid reports, which breaks the promise in AC-16/AC-17 that entries wait until they are sent. Treat these statuses as `Retry`.",
+      "suggestion_code": "        401, 408, 425, 429 -\u003e SendOutcome.Retry\n        in 400..499 -\u003e SendOutcome.Rejected",
+      "existing_code": "        401 -\u003e SendOutcome.Retry\n        in 400..499 -\u003e SendOutcome.Rejected",
+      "start_line": 33,
+      "end_line": 34,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt",
+      "content": "The dedup key is only (user, code, channel). The merged entry keeps the first entry's `engine`, `surface`, `providerHost`, `accountStatus`, `activeCons` and `maxConnections`. For example, an Exo preview failure and a full-screen mpv failure with the same code become one row, and a later account result such as a changed `active_cons` is lost. Either add engine, surface and providerHost to the merge key, or update the account fields from the newer entry.",
+      "existing_code": "                it.entry.code == entry.code \u0026\u0026\n                it.entry.channel == entry.channel \u0026\u0026",
+      "start_line": 51,
+      "end_line": 52,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/errors/KevBoxSentry.kt",
+      "content": "`scrub` skips `event.threads`. Thread names can carry stream URLs. For example, OkHttp renames its worker thread to `OkHttp \u003curl\u003e` while a call runs, and an Xtream live URL has `/live/\u003cuser\u003e/\u003cpass\u003e/\u003cid\u003e.ts` in its path. ANR events attach every thread, and crash events attach the crashing thread. Neither of these fields passes through `Scrubber`. Scrub `thread.name` as well, and check `exception.mechanism.data` and `contexts` too.",
+      "suggestion_code": "        event.exceptions?.forEach { it.value = clean(it.value, secrets) }\n        event.threads?.forEach { it.name = clean(it.name, secrets) }",
+      "existing_code": "        event.exceptions?.forEach { it.value = clean(it.value, secrets) }",
+      "start_line": 104,
+      "end_line": 104,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/errors/KevBoxSentry.kt",
+      "content": "`SecretWords` is still empty when Sentry starts. `KevBoxSentry.start` runs before Koin, and only the reporter fills `SecretWords` later. The SDK processes the previous run's ANR (ApplicationExitInfo) on a background thread right after init, so `beforeSend` probably runs with an empty secret set. The pattern rules still apply, but a bare password, username or refresh token in a message would go out as-is. Native (NDK) crash events are also written by sentry-native and, as far as I know, never pass through the Java `beforeSend`. Consider seeding `SecretWords` from a cheap in-memory or prefs read before `start`, or holding the historical ANR until secrets are loaded.",
+      "existing_code": "        options.beforeSend = SentryOptions.BeforeSendCallback { event, _ -\u003e scrub(event, SecretWords.current()) }",
+      "start_line": 87,
+      "end_line": 87,
+      "category": "security",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/errors/AccountCheck.kt",
+      "content": "An UNREACHABLE result is cached for the full 10 minutes, just like a real answer. That includes a timeout or a short network blip. During that window every later playback failure on this source is labelled with the stale 'unreachable' status rather than the real one (for example, expired or too many connections). Only cache conclusive results, or give UNREACHABLE a much shorter gap. Note too that the mutex is held across the 15 s fetch, so concurrent callers wait behind it.",
+      "suggestion_code": "            val fresh = check(source)\n            if (fresh.status != AccountStatus.UNREACHABLE) {\n                lastSourceId = source.id\n                lastAtMs = now()\n                last = fresh\n            }",
+      "existing_code": "            val fresh = check(source)\n            lastSourceId = source.id\n            lastAtMs = now()\n            last = fresh",
+      "start_line": 63,
+      "end_line": 66,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/errors/AccountCheck.kt",
+      "content": "You can drop the `!!` with an explicit null check, which keeps the code free of non-null assertions.",
+      "suggestion_code": "        word != null \u0026\u0026 word in DEAD_STATUSES -\u003e word",
+      "existing_code": "        word in DEAD_STATUSES -\u003e word!!",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt",
+      "content": "Rejections are counted per batch, but the queue deletes entries one by one. If the server refuses a batch because of one bad entry (for example a malformed field), all the valid entries in that batch (up to 50) also get their counter raised. After 3 tries they are all deleted. The same batch is usually sent again with the same members, so one bad entry can wipe out up to 50 good reports. There is a second problem: `add` can merge new occurrences into an item whose `rejections` count is already above 0, so those fresh reports start out with the old count. Some options: once a batch has been rejected, retry it with a smaller batch size (or one entry at a time) so the bad entry can be found; or don't merge into items that have `rejections \u003e 0`.",
+      "existing_code": "                items.removeAll { it.id in settled \u0026\u0026 it.rejections \u003e= SendPolicy.MAX_REJECTIONS }",
+      "start_line": 88,
+      "end_line": 88,
+      "category": "bug",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Error reporting core: entries, queue, sender, reporter",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorClassifier.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorEntry.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorReporter.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorSender.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/Scrubber.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/SecretWords.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/LiveErrorCodes.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/PlaybackScene.kt"
+      ]
+    },
+    {
+      "label": "Sentry integration, watchers, device/account context",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorWatchers.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/KevBoxSentry.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/SentryTestReceiver.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/AccountCheck.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/DeviceId.kt"
+      ]
+    },
+    {
+      "label": "App wiring, DI, manifest and build config",
+      "files": [
+        "app/build.gradle.kts",
+        "app/src/main/AndroidManifest.xml",
+        "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt"
+      ]
+    },
+    {
+      "label": "Auth, Supabase API and live check-in",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/usage/LiveCheckin.kt"
+      ]
+    },
+    {
+      "label": "Release scripts and checks",
+      "files": [
+        "release.sh",
+        "tools/kevbox/live-error-codes.json",
+        "tools/kevbox/release-checks.sh",
+        "tools/kevbox/test-release-checks.sh"
+      ]
+    },
+    {
+      "label": "E2E fake servers",
+      "files": [
+        "tools/kevbox/e2e/fake_sentry.py",
+        "tools/kevbox/e2e/fake_xtream.py"
+      ]
+    }
+  ],
+  "session_id": "5893bde4-7aee-4abe-a7ae-49308fc37823",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "5893bde4-7aee-4abe-a7ae-49308fc37823",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "phase/0.3-error-reporting",
+      "resolved_base": "abcfaf7cddfc564c652af10a0533129550dd0052",
+      "resolved_head": "f901994c8a57009e295b65f85e8f795bcdeb2d93",
+      "exact_range": "abcfaf7cddfc564c652af10a0533129550dd0052..f901994c8a57009e295b65f85e8f795bcdeb2d93",
+      "source_artifact_sha256": "4bf7b70726132f81ca295ec45a376194c7a48315aa361c464af08558616d7c77"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "9d80bd3f22e780710293fe6d92218a59e8dca99989714ceda44914d40d42f4c6"
+        },
+        {
+          "item_id": "085098658daa84942719e19e67160dbcd0c017062ab63ce9f9a4634aac32ca4a",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/SentryTestReceiver.kt",
+          "fingerprint": "7e5a5ed8c138edf98bfa1f487ea594c1ada7ebe50cc54fe19bf923d1337b03f7"
+        },
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "32b265c4481878cfe0cfc9bda985221216249033b1ba7759fc8bdf48e570b866"
+        },
+        {
+          "item_id": "1c82827c1bbd81e7265df540a2a19d6bfc8dc0bff84137c7bb6d871f6d005d47",
+          "path": "tools/kevbox/release-checks.sh",
+          "fingerprint": "cae295a40c83954e8ff9483141022e629d5fffe9deedc4c270ebcc5cf03ebafe"
+        },
+        {
+          "item_id": "28ab1d2de85fee8742d7d2f52b64a89b387e97b4f4acf7359ed9f31e94202bef",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/SecretWords.kt",
+          "fingerprint": "6a037b3dc03d045352a0b819e7876df7c184bd7b9e1e6df037a8234cac567fe0"
+        },
+        {
+          "item_id": "333e3f78ec57ad50874802b96057cd9afeceaab26d07fee293a602913d2cda2c",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/AccountCheck.kt",
+          "fingerprint": "c3ddd4c7d860940caff9adfcdd20b74000443e6cdda447499808700aeedb8f85"
+        },
+        {
+          "item_id": "39f60474762ff91a42043bbca6b5614e0cc477506b9a42b477f111e071737757",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt",
+          "fingerprint": "43145fb99a6f5bb0f0c9a143511885291fbc8cc8a3b44d3b3149b90c47095e62"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "cca39c3167673faa7d538a2c11646d61a8778cc97e3e0367185739ffb6b53318"
+        },
+        {
+          "item_id": "4f78926991463c14ec8b2294813417dfcb3abe96db26b074954a2e229d77d3b4",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorSender.kt",
+          "fingerprint": "ac0d4ee5324f1e403b349005f42803d7df8675c37e8a2f8fa97e77846e3e4b42"
+        },
+        {
+          "item_id": "5c1c15c9fe58d2587878617031630c8db0cf71cb740fe24a038e115b1a117a88",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/KevBoxSentry.kt",
+          "fingerprint": "567551b24c0677ad7550d832e9864acb72e3227079256b47413d894b24f1e06f"
+        },
+        {
+          "item_id": "5e17c3730f424d82e1fa514eb33442936f641cbfda1e49ab5ef6fa91d9900aac",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/LiveCheckin.kt",
+          "fingerprint": "cda5e4add4c4eff4288eb489dadb87590bdb9bc7cf0703d1b42bbf27d31682b3"
+        },
+        {
+          "item_id": "63c6718371bf4cafdd892b9705c79078b666e87df6ce830e707ba8654dbccdcc",
+          "path": "app/src/main/AndroidManifest.xml",
+          "fingerprint": "ae1f529e9688a754db559c100a2518532228e1a4d0158124bdfa14c89d652bdd"
+        },
+        {
+          "item_id": "7b3944a3dd25ff84c8ad7862e91b2f0ec7e4abcbd7c37d659419c57499ef1d29",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorWatchers.kt",
+          "fingerprint": "47566a5dbc76a63b0043c23e01916adb2cb5dcd88a01509ad0eee037ef327d52"
+        },
+        {
+          "item_id": "8c03a501b2d8a281a23dfbd77fd696105a6ce200791a2e291693a09fc66dcae2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorEntry.kt",
+          "fingerprint": "c81d76ba2f55ccbe59dd1f870665be9753a121c2518a78013767cec8574afb72"
+        },
+        {
+          "item_id": "8ebb8184b41d816fc187c03279a9de16e2d893e1b03a34edc0e288bfaff1b543",
+          "path": "release.sh",
+          "fingerprint": "46459687232f57b1207f5e2b3f4d9157cf672049349d6e20a4db55500bafc0b9"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "12137cd896e8880b7bf5be07a0156a828cc87200a29e8fe4e9c342c62eb195e7"
+        },
+        {
+          "item_id": "a1af16ffa4e4dddf405ba0cec0470bc542df2b03e47ca5e2a88df1e956d1f6cc",
+          "path": "tools/kevbox/live-error-codes.json",
+          "fingerprint": "0a6c181765419e57188d25fd47687e8c344347de7b6574bb1d79ad6cb2d864a9"
+        },
+        {
+          "item_id": "a1f32010bae921f0998ce0de296acf753ddbb30aa828a5e7b67af2c17ea35f63",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorClassifier.kt",
+          "fingerprint": "c89132edf1df98bd10274ec2ade8ba0381d876826f9ba6e214ebd7e89ea89da5"
+        },
+        {
+          "item_id": "a5343afc40918ec1b8eda239bca9597eca2af7e50b5e13152e7e46bde88a9dc2",
+          "path": "app/build.gradle.kts",
+          "fingerprint": "9959d7db0cf4e1ac74196c7c370f66377c1cd40a58cca9ce209c3da4bb5bae4d"
+        },
+        {
+          "item_id": "ad1ba597eef670b7ce25b847d6b9abadcc22c9185f6e905075a9d6512ab95d2f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/PlaybackScene.kt",
+          "fingerprint": "0ee81002120f9f3bb4ea8f27270eb52506881e1422f0be141997343a3327dbe9"
+        },
+        {
+          "item_id": "ae0a8d95e462a999024a992a2f5c0185f52df01ffba1a742a563bf19508df73f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+          "fingerprint": "78bb4d03833ead8a83baaae2a5e62228bc0805cf1edc8cbf271f3e3079dc7217"
+        },
+        {
+          "item_id": "b31490fa22dd6bb1e39964b7aafd559c7431e921d43c79c1b7fe052ab8e97f36",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/DeviceId.kt",
+          "fingerprint": "dd2c557cace7e5cc44dd5bf46731f4aadb8c9959e04659a08ca96e96f9e8a6e9"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "532d3b64db3949fc2da856cc3c103fcff4e7937ecc25e8148fa38013a663df6e"
+        },
+        {
+          "item_id": "d7227c38d15f90949db96cca9b9b16f33c4ef2c1225a33a84651c761d4ae1dfa",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/LiveErrorCodes.kt",
+          "fingerprint": "0aff17c32d58826e690e788c0910b9e12a1ebb8677187bf3a4b9c1418b05ce3b"
+        },
+        {
+          "item_id": "d7537126b2b767550544b8f122dad68d92f1242825fcd43ab1af0dc4452802c0",
+          "path": "tools/kevbox/e2e/fake_sentry.py",
+          "fingerprint": "4006f4f70401d325793adfa8736b84af23127a23ce59aeab902b4cccbb008607"
+        },
+        {
+          "item_id": "eb47bc9bf958dc35d0c2dab4c1d3fddfff0d048748d52da5cc4251c622a3e1a8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorReporter.kt",
+          "fingerprint": "2dc5899d95ea267527b609d3fc4defa76511c6d4fd3550835ff12e9fc9fa69b7"
+        },
+        {
+          "item_id": "f3dfa3fb3e268ebbe17cce7d5561d128b18ce577573a875540da89c5d6759b8b",
+          "path": "tools/kevbox/e2e/fake_xtream.py",
+          "fingerprint": "d41cbfdf70b367060e3baca779bcd06ce0b9e63a9d0d9d09fb287749811cdd05"
+        },
+        {
+          "item_id": "f79f9c2b55393b61116893a0e47e5a4918d6c4731b7a0840d5fbaaf0709d90db",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/Scrubber.kt",
+          "fingerprint": "687df289f0028c059a0f6a1de6a44aad57ee17cf77983c0e593fe30d30b4c9e4"
+        },
+        {
+          "item_id": "fcb7df3761d28f880145a035cbc3bbe6158ddfc13f3927e5e349cd673a28d5b9",
+          "path": "tools/kevbox/test-release-checks.sh",
+          "fingerprint": "0cc29699a257154804eaa0c8dc6758f6ba7fc88bcc1b0bdb687a195dbda5c569"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "9d80bd3f22e780710293fe6d92218a59e8dca99989714ceda44914d40d42f4c6"
+        },
+        {
+          "item_id": "085098658daa84942719e19e67160dbcd0c017062ab63ce9f9a4634aac32ca4a",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/SentryTestReceiver.kt",
+          "fingerprint": "7e5a5ed8c138edf98bfa1f487ea594c1ada7ebe50cc54fe19bf923d1337b03f7"
+        },
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "32b265c4481878cfe0cfc9bda985221216249033b1ba7759fc8bdf48e570b866"
+        },
+        {
+          "item_id": "1c82827c1bbd81e7265df540a2a19d6bfc8dc0bff84137c7bb6d871f6d005d47",
+          "path": "tools/kevbox/release-checks.sh",
+          "fingerprint": "cae295a40c83954e8ff9483141022e629d5fffe9deedc4c270ebcc5cf03ebafe"
+        },
+        {
+          "item_id": "28ab1d2de85fee8742d7d2f52b64a89b387e97b4f4acf7359ed9f31e94202bef",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/SecretWords.kt",
+          "fingerprint": "6a037b3dc03d045352a0b819e7876df7c184bd7b9e1e6df037a8234cac567fe0"
+        },
+        {
+          "item_id": "333e3f78ec57ad50874802b96057cd9afeceaab26d07fee293a602913d2cda2c",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/AccountCheck.kt",
+          "fingerprint": "c3ddd4c7d860940caff9adfcdd20b74000443e6cdda447499808700aeedb8f85"
+        },
+        {
+          "item_id": "39f60474762ff91a42043bbca6b5614e0cc477506b9a42b477f111e071737757",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt",
+          "fingerprint": "43145fb99a6f5bb0f0c9a143511885291fbc8cc8a3b44d3b3149b90c47095e62"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "cca39c3167673faa7d538a2c11646d61a8778cc97e3e0367185739ffb6b53318"
+        },
+        {
+          "item_id": "4f78926991463c14ec8b2294813417dfcb3abe96db26b074954a2e229d77d3b4",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorSender.kt",
+          "fingerprint": "ac0d4ee5324f1e403b349005f42803d7df8675c37e8a2f8fa97e77846e3e4b42"
+        },
+        {
+          "item_id": "5c1c15c9fe58d2587878617031630c8db0cf71cb740fe24a038e115b1a117a88",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/KevBoxSentry.kt",
+          "fingerprint": "567551b24c0677ad7550d832e9864acb72e3227079256b47413d894b24f1e06f"
+        },
+        {
+          "item_id": "5e17c3730f424d82e1fa514eb33442936f641cbfda1e49ab5ef6fa91d9900aac",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/LiveCheckin.kt",
+          "fingerprint": "cda5e4add4c4eff4288eb489dadb87590bdb9bc7cf0703d1b42bbf27d31682b3"
+        },
+        {
+          "item_id": "63c6718371bf4cafdd892b9705c79078b666e87df6ce830e707ba8654dbccdcc",
+          "path": "app/src/main/AndroidManifest.xml",
+          "fingerprint": "ae1f529e9688a754db559c100a2518532228e1a4d0158124bdfa14c89d652bdd"
+        },
+        {
+          "item_id": "7b3944a3dd25ff84c8ad7862e91b2f0ec7e4abcbd7c37d659419c57499ef1d29",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorWatchers.kt",
+          "fingerprint": "47566a5dbc76a63b0043c23e01916adb2cb5dcd88a01509ad0eee037ef327d52"
+        },
+        {
+          "item_id": "8c03a501b2d8a281a23dfbd77fd696105a6ce200791a2e291693a09fc66dcae2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorEntry.kt",
+          "fingerprint": "c81d76ba2f55ccbe59dd1f870665be9753a121c2518a78013767cec8574afb72"
+        },
+        {
+          "item_id": "8ebb8184b41d816fc187c03279a9de16e2d893e1b03a34edc0e288bfaff1b543",
+          "path": "release.sh",
+          "fingerprint": "46459687232f57b1207f5e2b3f4d9157cf672049349d6e20a4db55500bafc0b9"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "12137cd896e8880b7bf5be07a0156a828cc87200a29e8fe4e9c342c62eb195e7"
+        },
+        {
+          "item_id": "a1af16ffa4e4dddf405ba0cec0470bc542df2b03e47ca5e2a88df1e956d1f6cc",
+          "path": "tools/kevbox/live-error-codes.json",
+          "fingerprint": "0a6c181765419e57188d25fd47687e8c344347de7b6574bb1d79ad6cb2d864a9"
+        },
+        {
+          "item_id": "a1f32010bae921f0998ce0de296acf753ddbb30aa828a5e7b67af2c17ea35f63",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorClassifier.kt",
+          "fingerprint": "c89132edf1df98bd10274ec2ade8ba0381d876826f9ba6e214ebd7e89ea89da5"
+        },
+        {
+          "item_id": "a5343afc40918ec1b8eda239bca9597eca2af7e50b5e13152e7e46bde88a9dc2",
+          "path": "app/build.gradle.kts",
+          "fingerprint": "9959d7db0cf4e1ac74196c7c370f66377c1cd40a58cca9ce209c3da4bb5bae4d"
+        },
+        {
+          "item_id": "ad1ba597eef670b7ce25b847d6b9abadcc22c9185f6e905075a9d6512ab95d2f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/PlaybackScene.kt",
+          "fingerprint": "0ee81002120f9f3bb4ea8f27270eb52506881e1422f0be141997343a3327dbe9"
+        },
+        {
+          "item_id": "ae0a8d95e462a999024a992a2f5c0185f52df01ffba1a742a563bf19508df73f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+          "fingerprint": "78bb4d03833ead8a83baaae2a5e62228bc0805cf1edc8cbf271f3e3079dc7217"
+        },
+        {
+          "item_id": "b31490fa22dd6bb1e39964b7aafd559c7431e921d43c79c1b7fe052ab8e97f36",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/DeviceId.kt",
+          "fingerprint": "dd2c557cace7e5cc44dd5bf46731f4aadb8c9959e04659a08ca96e96f9e8a6e9"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "532d3b64db3949fc2da856cc3c103fcff4e7937ecc25e8148fa38013a663df6e"
+        },
+        {
+          "item_id": "d7227c38d15f90949db96cca9b9b16f33c4ef2c1225a33a84651c761d4ae1dfa",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/LiveErrorCodes.kt",
+          "fingerprint": "0aff17c32d58826e690e788c0910b9e12a1ebb8677187bf3a4b9c1418b05ce3b"
+        },
+        {
+          "item_id": "d7537126b2b767550544b8f122dad68d92f1242825fcd43ab1af0dc4452802c0",
+          "path": "tools/kevbox/e2e/fake_sentry.py",
+          "fingerprint": "4006f4f70401d325793adfa8736b84af23127a23ce59aeab902b4cccbb008607"
+        },
+        {
+          "item_id": "eb47bc9bf958dc35d0c2dab4c1d3fddfff0d048748d52da5cc4251c622a3e1a8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorReporter.kt",
+          "fingerprint": "2dc5899d95ea267527b609d3fc4defa76511c6d4fd3550835ff12e9fc9fa69b7"
+        },
+        {
+          "item_id": "f3dfa3fb3e268ebbe17cce7d5561d128b18ce577573a875540da89c5d6759b8b",
+          "path": "tools/kevbox/e2e/fake_xtream.py",
+          "fingerprint": "d41cbfdf70b367060e3baca779bcd06ce0b9e63a9d0d9d09fb287749811cdd05"
+        },
+        {
+          "item_id": "f79f9c2b55393b61116893a0e47e5a4918d6c4731b7a0840d5fbaaf0709d90db",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/Scrubber.kt",
+          "fingerprint": "687df289f0028c059a0f6a1de6a44aad57ee17cf77983c0e593fe30d30b4c9e4"
+        },
+        {
+          "item_id": "fcb7df3761d28f880145a035cbc3bbe6158ddfc13f3927e5e349cd673a28d5b9",
+          "path": "tools/kevbox/test-release-checks.sh",
+          "fingerprint": "0cc29699a257154804eaa0c8dc6758f6ba7fc88bcc1b0bdb687a195dbda5c569"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 144083
+  }
+}
