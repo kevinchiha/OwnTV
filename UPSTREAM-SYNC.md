@@ -269,6 +269,22 @@ Since 2026-10-14 KevBox Live is a live TV app with no onboarding:
   was drawn. `EpgViewModel` reads one provider category's channels alone
   (`channelsAfterCategory`) instead of the whole playlist filtered in memory, and `MAX_CHANNELS` is
   40,000 (was 20,000, which left later categories of Kevin's 20,000+ channel playlist empty).
+- More Live TV speed (2026-10-14, 5.1.0.5). `stageBackground` (StageDraw.kt) paints the Stage wash and
+  its lights as one baked quarter-size picture (`kevbox/ui/BakedBackground.kt`): the overdraw view on
+  the TCL showed the page background painted five times before any row. `QuietAccessibility` empties
+  Compose's cached list of accessibility services while no screen reader is on, through a field kept
+  by name in `app/src/main/keepRules/kevbox.keep`; after a Compose update, check that
+  `AndroidComposeViewAccessibilityDelegateCompat._enabledServices` still exists, or it silently does
+  nothing. The shell reads the focused channel only while a player is up, grid rows read only
+  whether they are the selected row, and `liveCategoryEntries` is remembered per input.
+- In-app updates start compiled (5.1.0.5): `release.sh` publishes each APK's `.dm` profile next to it
+  and `kevbox/release/UpdateProfileAttacher.kt` writes it into Core's install session under Core's
+  entry name `owntv-update` + `.dm`. If Core renames `UpdateManager.SESSION_ENTRY`, change
+  `SESSION_PROFILE_ENTRY` to match, or updates install uncompiled again (they still install).
+- Proxy and DNS (5.1.0.5): kevbox.dev sets each customer's HTTP proxy beside the playlist (kevbox
+  migration 0014) and `kevbox/network/ManagedProxy.kt` applies it to Core's global proxy at each
+  playlist check; the Proxy row is hidden. `SupabaseApi` always connects direct. `DnsDefault` turns on
+  Cloudflare DNS-over-HTTPS once per install unless a DNS of the member's own is on.
 
 ## Regenerating the rebrand
 
