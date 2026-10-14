@@ -989,6 +989,12 @@ class LiveViewModel(
             override suspend fun globalPreference() = tv.own.owntv.kevbox.settings.LiveOnlySettings.LIVE_ENGINE
             override suspend fun sourceOf(sourceId: Long) =
                 tv.own.owntv.kevbox.settings.LiveOnlySettings.withoutEngineChoice(core.sourceOf(sourceId))
+            // KevBox: Core still logs the ladder step; the error reporter hears it too, so an ExoPlayer
+            // failure Core hands to mpv is not reported as one the member saw (0.3 AC-10).
+            override fun recordLadderEvent(onExo: Boolean, reason: tv.own.owntv.player.PlayerFailureReason, detail: String) {
+                core.recordLadderEvent(onExo, reason, detail) // KevBox: Core's own log, unchanged
+                tv.own.owntv.kevbox.errors.LadderEvents.record(reason) // KevBox: the reporter's ladder sink
+            }
         }
 
     // True while the in-pane preview is suppressed because the provider allows one stream at a time and

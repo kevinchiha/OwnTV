@@ -1,6 +1,7 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.errors
 
+import android.util.Log
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
@@ -21,9 +22,18 @@ data class SceneSnapshot(
     val catchup: Boolean,
 )
 
-/** One failure a watcher saw, before it is classified. */
+/**
+ * One failure a watcher saw, before it is classified. [Playback.lost] is true when Core gave up on a
+ * channel that had played (its `LostConnection` failure), whatever text it kept.
+ */
 sealed interface Failure {
-    data class Playback(val engine: Engine, val raw: String?, val reason: PlayerFailureReason?, val scene: SceneSnapshot) : Failure
+    data class Playback(
+        val engine: Engine,
+        val raw: String?,
+        val reason: PlayerFailureReason?,
+        val scene: SceneSnapshot,
+        val lost: Boolean = false,
+    ) : Failure
     data class Playlist(val sourceId: Long, val message: String?) : Failure
     data class Guide(val feedUrl: String?, val message: String?) : Failure
 }
@@ -47,7 +57,8 @@ fun needsAccountCheck(failure: Failure, c: Classified): Boolean = when (failure)
 /**
  * The one entry point every watcher calls. [record] only hands the failure to a channel; one worker
  * on [scope] classifies it, runs the account check when needed, fills the TV fields, scrubs every
- * text field, queues the entry and tells the listeners. Nothing here logs.
+ * text field, queues the entry and tells the listeners. Only a dropped failure logs, and then only
+ * the exception's class name.
  *
  * The collaborators come in as functions so the pipeline runs in plain JUnit; Koin wires them to
  * the sender, the reconciler, Core's source table, settings and connectivity.
@@ -101,7 +112,7 @@ class ErrorReporter(
         refreshSecrets()
         val online = isOnline()
         val base = when (failure) {
-            is Failure.Playback -> ErrorClassifier.playback(failure.engine, failure.raw, failure.reason, online)
+            is Failure.Playback -> ErrorClassifier.playback(failure.engine, failure.raw, failure.reason, online, failure.lost)
             is Failure.Playlist -> ErrorClassifier.playlist(failure.message, online)
             is Failure.Guide -> ErrorClassifier.guide(failure.message, online)
         }
@@ -173,8 +184,10 @@ class ErrorReporter(
             block()
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
-            // Reporting must never take the app down; this one failure goes unreported.
+        } catch (e: Exception) {
+            // Reporting must never take the app down; this one failure goes unreported. The class
+            // name only: the message could hold a stream address or a login.
+            Log.w(LOG_TAG, "failure dropped: ${e.javaClass.simpleName}")
         }
     }
 
@@ -187,6 +200,7 @@ class ErrorReporter(
     }
 
     private companion object {
+        const val LOG_TAG = "KevBoxErrors"
         const val FIELD_MAX = 120
         const val SURFACE_PREVIEW = "preview"
         const val SURFACE_FULL = "full"

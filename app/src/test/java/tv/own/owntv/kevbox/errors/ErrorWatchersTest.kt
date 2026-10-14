@@ -67,6 +67,96 @@ class ErrorWatchersTest {
     }
 
     @Test
+    fun `an ExoPlayer failure Core hands to mpv records nothing`() {
+        val hold = FallbackHold()
+        assertEquals(emptyList<Failure.Playback>(), hold.hold(FULL_EXO, 0))
+        assertEquals(emptyList<Failure.Playback>(), hold.onLadder(PlayerFailureReason.LIVE_FALLBACK, 500))
+        assertEquals(emptyList<Failure.Playback>(), hold.due(10_000))
+    }
+
+    @Test
+    fun `an ExoPlayer failure with no fallback records one entry`() {
+        val hold = FallbackHold()
+        assertEquals(emptyList<Failure.Playback>(), hold.hold(FULL_EXO, 0))
+        // Other ladder steps say nothing about this failure.
+        assertEquals(emptyList<Failure.Playback>(), hold.onLadder(PlayerFailureReason.MPV_HANDOFF, 100))
+        assertEquals(listOf(FULL_EXO), hold.onLadder(PlayerFailureReason.LIVE_NO_FALLBACK, 500))
+        assertEquals(emptyList<Failure.Playback>(), hold.due(10_000))
+    }
+
+    @Test
+    fun `a failure no ladder event claims is recorded once the hold ends`() {
+        val hold = FallbackHold()
+        hold.hold(FULL_EXO, 0)
+        assertEquals(emptyList<Failure.Playback>(), hold.due(FallbackHold.HOLD_MS - 1))
+        assertEquals(listOf(FULL_EXO), hold.due(FallbackHold.HOLD_MS))
+        assertEquals(emptyList<Failure.Playback>(), hold.due(FallbackHold.HOLD_MS * 2))
+    }
+
+    @Test
+    fun `a ladder event that comes before its failure still decides it`() {
+        val hold = FallbackHold()
+        hold.onLadder(PlayerFailureReason.LIVE_FALLBACK, 0)
+        assertEquals(emptyList<Failure.Playback>(), hold.hold(FULL_EXO, 300))
+        assertEquals(emptyList<Failure.Playback>(), hold.due(10_000))
+
+        hold.onLadder(PlayerFailureReason.LIVE_NO_FALLBACK, 20_000)
+        assertEquals(listOf(FULL_EXO), hold.hold(FULL_EXO, 20_300))
+
+        // An event older than the hold belongs to nothing; the next failure waits as usual.
+        hold.onLadder(PlayerFailureReason.LIVE_FALLBACK, 30_000)
+        assertEquals(emptyList<Failure.Playback>(), hold.hold(FULL_EXO, 30_000 + FallbackHold.HOLD_MS + 1))
+        assertEquals(listOf(FULL_EXO), hold.due(40_000))
+    }
+
+    @Test
+    fun `a preview failure records at once and a full-screen one waits for the ladder`() {
+        val hold = FallbackHold()
+        val box = FULL_EXO.copy(scene = FULL_EXO.scene.copy(inBox = true))
+        assertEquals(listOf(box), hold.hold(box, 0))
+        // Even a fallback in flight does not swallow it, and it leaves the event for the next one.
+        hold.onLadder(PlayerFailureReason.LIVE_FALLBACK, 0)
+        assertEquals(listOf(box), hold.hold(box, 100))
+        assertEquals(emptyList<Failure.Playback>(), hold.hold(FULL_EXO, 200))
+        // mpv in full screen waits too.
+        val mpv = FULL_EXO.copy(engine = Engine.MPV)
+        assertEquals(emptyList<Failure.Playback>(), hold.hold(mpv, 20_000))
+        assertEquals(listOf(mpv), hold.due(20_000 + FallbackHold.HOLD_MS))
+    }
+
+    @Test
+    fun `background processes report only guide errors that change, the screen reports standing ones`() {
+        val standing = listOf(feed(1, "HTTP 404"), feed(2, null))
+
+        // A WorkManager wake: the error was there before, so it is not news.
+        assertEquals(emptyList<Long>(), guideErrorsToReport(null, emptyMap(), standing, shown = false).map { it.id })
+        val seen = standing.associate { it.id to it.lastError }
+        assertEquals(emptyList<Long>(), guideErrorsToReport(seen, emptyMap(), standing, shown = false).map { it.id })
+        // A guide that starts failing while it runs is.
+        val changed = listOf(feed(1, "HTTP 404"), feed(2, "timeout"))
+        assertEquals(listOf(2L), guideErrorsToReport(seen, emptyMap(), changed, shown = false).map { it.id })
+
+        // The screen shows: every error not yet reported in this process goes out once.
+        val reported = mapOf(2L to "timeout")
+        assertEquals(listOf(1L), guideErrorsToReport(seen, reported, changed, shown = true).map { it.id })
+        assertEquals(emptyList<Long>(), guideErrorsToReport(seen, reported + (1L to "HTTP 404"), changed, shown = true).map { it.id })
+        // First emission of a process with a screen: the standing error shows once.
+        assertEquals(listOf(1L), guideErrorsToReport(null, emptyMap(), standing, shown = true).map { it.id })
+    }
+
+    @Test
+    fun `a sync that already ended at the first emission is checked too`() {
+        assertTrue(syncEnded(null, active = false))
+        assertTrue(syncEnded(true, active = false))
+        assertFalse(syncEnded(false, active = false))
+        assertFalse(syncEnded(null, active = true))
+        assertFalse(syncEnded(true, active = true))
+        // A run that ended before this process started is an earlier process's to report.
+        assertNull(playlistFailureOf(SOURCE, stats(1_000, SyncResult.Failed("HTTP 401")), 1_500, SOURCE))
+        assertEquals(Failure.Playlist(SOURCE, "HTTP 401"), playlistFailureOf(SOURCE, stats(2_000, SyncResult.Failed("HTTP 401")), 1_500, SOURCE))
+    }
+
+    @Test
     fun `the scene keeps the last update and starts empty`() {
         val scene = PlaybackScene()
         assertFalse(scene.shown.value)
@@ -85,5 +175,11 @@ class ErrorWatchersTest {
 
     private companion object {
         const val SOURCE = 7L
+        val FULL_EXO = Failure.Playback(
+            Engine.EXO,
+            "ERROR_CODE_IO_BAD_HTTP_STATUS: Response code: 403",
+            null,
+            SceneSnapshot("BBC One", "UK", null, inBox = false, catchup = false),
+        )
     }
 }

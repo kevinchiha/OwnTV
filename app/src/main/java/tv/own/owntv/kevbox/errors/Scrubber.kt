@@ -25,6 +25,12 @@ object Scrubber {
     private val JWT = Regex("""eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*""")
     private val EMAIL = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 
+    /** Line breaks and tabs, which become a space so the words on either side stay apart. */
+    private val BREAKS = Regex("""[\t\n\r]+""")
+
+    /** Every other C0 control character, NUL included: Postgres jsonb refuses `\u0000`, losing the batch. */
+    private val CONTROL = Regex("""[\x00-\x08\x0B\x0C\x0E-\x1F]""")
+
     private val SCHEME = Regex("""^[a-zA-Z][a-zA-Z0-9+.-]*://""")
 
     /** What is left of the authority once the login is gone: a name or bracketed IPv6, then an optional port. */
@@ -37,6 +43,8 @@ object Scrubber {
     fun text(input: String?, secrets: Collection<String>, max: Int? = null): String? {
         if (input == null) return null
         var s = input
+        s = CONTROL.replace(s, "")
+        s = BREAKS.replace(s, " ")
         s = URL.replace(s, URL_MARK)
         s = QUERY_SECRET.replace(s) { it.groupValues[1] + "=" + REMOVED_MARK }
         s = JSON_TOKEN.replace(s) { it.groupValues[1] + "\"" + REMOVED_MARK + "\"" }
