@@ -81,7 +81,7 @@ val kevboxModule = module {
     single {
         PlaylistRefreshSetting(androidContext().prefs(PlaylistRefreshSetting.PREFS_NAME), get(), get(), scope = get())
     }
-    single { CoreSyncSteps(get(), get(), get(), get(), get(), get(), get()) }
+    single { CoreSyncSteps(get(), get(), get(), get(), get(), get(), get(), get()) }
     single {
         val coordinator = get<KevBoxCoordinator>()
         val reconciler = get<PlaylistReconciler>()

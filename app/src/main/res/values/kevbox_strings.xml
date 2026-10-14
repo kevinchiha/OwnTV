@@ -83,7 +83,7 @@
     <string name="kevbox_epg_automatic">Set up for you</string>
     <!-- Settings › Playlists: how often the channel list downloads again by itself, and a button to do it now. -->
     <string name="kevbox_refresh_playlist">Refresh playlist</string>
-    <string name="kevbox_refresh_playlist_description">How often the channel list downloads again by itself. The app checks when it opens or comes back to the screen. The TV guide keeps its own timer in EPG sources.</string>
+    <string name="kevbox_refresh_playlist_description">How often the channel list downloads again by itself. The app checks when it opens or comes back to the screen, and waits while something plays. The TV guide keeps its own timer in EPG sources.</string>
     <string name="kevbox_refresh_app_start">Every time the app opens</string>
     <string name="kevbox_refresh_6h">Every 6 hours</string>
     <string name="kevbox_refresh_12h">Every 12 hours</string>

@@ -952,7 +952,8 @@ fun EpgScreen(
                 searchQuery = vm.categoryQuery.collectAsStateWithLifecycle().value,
                 onSearchQueryChange = vm::setCategoryQuery,
                 entries = columnEntries,
-                selectedIndex = openIndex,
+                // KevBox: the mark follows the cursor; the guide catches up when it rests (GuideSidebar.markedRow).
+                selectedIndex = GuideSidebar.markedRow(openIndex, columnCursor, columnHasFocus),
                 groupsHeading = groupsHeading,
                 sheet = false,
                 listState = catListState,

@@ -26,6 +26,15 @@ internal object GuideSidebar {
     /** How long the cursor rests on a category before the guide behind shows it. */
     const val REST_SELECT_MS = 300L
 
+    /**
+     * The category the column marks as open (blue name, bar). While the cursor is on a category in the
+     * column, that one: the guide behind catches up after [REST_SELECT_MS], and marking the category it
+     * still shows lit up the row the cursor had left during a fast scroll (Kevin, 2026-10-14). Otherwise
+     * the category the guide shows ([shown]).
+     */
+    fun markedRow(shown: Int, cursor: Int?, columnHasFocus: Boolean): Int =
+        if (columnHasFocus && cursor != null) cursor else shown
+
     /** Where focus is, as far as the layout goes. */
     enum class Focus {
         /** A channel row, or a programme inside one. */
