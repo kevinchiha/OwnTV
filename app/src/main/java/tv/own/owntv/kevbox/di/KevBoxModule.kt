@@ -109,8 +109,8 @@ val kevboxModule = module {
             sourceById = { id -> sourceDao.getById(id) },
             proxyUsable = { settings.proxyConfig.first().usable },
             isOnline = connectivity::isOnlineNow,
-            // A rotated Supabase session has no signal of its own; the reporter re-reads it per entry too.
-            secretChanges = merge(auth.email, auth.userId, sourceDao.observeAll()),
+            // sessionVersion moves when a refresh rotates the tokens, which leaves the email and id alone.
+            secretChanges = merge(auth.email, auth.userId, auth.sessionVersion, sourceDao.observeAll()),
             readSecrets = { secretWordsOf(currentSource(), auth.email.value, sessions.load()) },
             scope = get(),
             now = System::currentTimeMillis,

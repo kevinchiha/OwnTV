@@ -24,19 +24,22 @@ sealed interface SendOutcome {
 }
 
 /**
- * The server's answer to a batch. A 401 is a session problem, never the batch's fault, so it
- * retries; any other 4xx means the server refused the entries (AC-17).
+ * The server's answer to a batch. Some 4xx answers are never the batch's fault, so they retry: 401
+ * (the session), 404 (the function is not on the server yet, as during a rollout), 408 (timeout),
+ * 425 (too early) and 429 (rate limit). Any other 4xx means the server refused the entries (AC-17).
  */
 fun outcomeOf(result: Fetch<ApiResponse.Http>): SendOutcome = when (result) {
     is Fetch.Ok -> when (result.value.code) {
         in 200..299 -> SendOutcome.Sent
-        401 -> SendOutcome.Retry
+        in RETRY_4XX -> SendOutcome.Retry
         in 400..499 -> SendOutcome.Rejected
         else -> SendOutcome.Retry
     }
     Fetch.Failed -> SendOutcome.Retry
     Fetch.SignedOut, Fetch.SessionRejected -> SendOutcome.SignedOut
 }
+
+private val RETRY_4XX = setOf(401, 404, 408, 425, 429)
 
 /** When batches go out (AC-17). Pure functions: the clock comes in as a parameter. */
 object SendPolicy {
@@ -71,6 +74,21 @@ object SendPolicy {
         if (unsentCount >= SEND_AT_COUNT) return oldestUnsentAtMs
         return oldestUnsentAtMs + FIRST_WAIT_MS
     }
+
+    /**
+     * [nextSendAtMs] as of [nowMs], where a time later than now counts as now. The wall clock can
+     * move back (a network time fix on a TV that booted with a wrong date); without this, a failure
+     * or an entry stamped before the fix would hold every send until the clock caught up again.
+     */
+    fun planAtMs(nowMs: Long, oldestUnsentAtMs: Long?, unsentCount: Int, failures: Int, lastFailureAtMs: Long?): Long? =
+        nextSendAtMs(oldestUnsentAtMs?.coerceAtMost(nowMs), unsentCount, failures, lastFailureAtMs?.coerceAtMost(nowMs))
+
+    /**
+     * Whether a signed-out pause set to end at [pausedUntilMs] is over at [nowMs]. A pause ending
+     * further off than [SIGNED_OUT_PAUSE_MS] means the clock moved back, so it is over too.
+     */
+    fun pauseOver(nowMs: Long, pausedUntilMs: Long): Boolean =
+        nowMs >= pausedUntilMs || pausedUntilMs - nowMs > SIGNED_OUT_PAUSE_MS
 }
 
 /**
@@ -114,23 +132,23 @@ class ErrorSender(
         while (isActive) {
             val userId = auth.userId.value
             if (userId == null) {
+                // Signed out: a pause for a refused session ends here, so the same member signing
+                // back in sends at once instead of waiting it out.
+                clearPause()
                 wake.receive()
                 continue
             }
             val paused = pausedUntilMs
             if (paused != null) {
-                if (pausedFor == userId && now() < paused) {
+                if (pausedFor == userId && !SendPolicy.pauseOver(now(), paused)) {
                     sleep(paused - now())
                     continue
                 }
                 // The pause ran out or a different member signed in: start afresh.
-                pausedUntilMs = null
-                pausedFor = null
-                failures = 0
-                lastFailureAtMs = null
+                clearPause()
             }
             queue.dropNotRecordedBy(userId)
-            val dueAt = SendPolicy.nextSendAtMs(queue.oldestUnsentAtMs(), queue.unsentCount(), failures, lastFailureAtMs)
+            val dueAt = SendPolicy.planAtMs(now(), queue.oldestUnsentAtMs(), queue.unsentCount(), failures, lastFailureAtMs)
             if (dueAt == null) {
                 wake.receive()
                 continue
@@ -142,6 +160,14 @@ class ErrorSender(
             }
             sendBatch(userId)
         }
+    }
+
+    private fun clearPause() {
+        if (pausedUntilMs == null) return
+        pausedUntilMs = null
+        pausedFor = null
+        failures = 0
+        lastFailureAtMs = null
     }
 
     /** Waits [ms], or less when a kick or a sign-in change arrives. */

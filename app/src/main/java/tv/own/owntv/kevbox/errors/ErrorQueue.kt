@@ -19,6 +19,10 @@ data class Queued(val id: Long, val entry: ErrorEntry, val rejections: Int)
  *
  * Each entry carries the id of the member signed in when it was recorded ([currentUserId]). The tag
  * stays on the TV; [dropNotRecordedBy] uses it so one member's errors never go out under another's.
+ * An entry recorded while signed out has no tag and goes out under the next member (AC-18).
+ *
+ * A refused batch does not count against its entries: they go out again one per batch, so only an
+ * entry the server refuses on its own collects rejections, and the good ones around it still send.
  *
  * Every method takes one lock, so the reporter's worker and the sender can share the queue and only
  * one of them touches the file at a time. Callers keep it off the main thread.
@@ -32,9 +36,11 @@ class ErrorQueue(
         val id: Long,
         var entry: ErrorEntry,
         var rejections: Int,
-        val userId: String?,
+        var userId: String?,
         val addedAtMs: Long,
         var inFlight: Boolean = false,
+        /** Sent alone: it was in a refused batch, or was refused on its own. */
+        var solo: Boolean = false,
     )
 
     private val lock = Any()
@@ -50,6 +56,8 @@ class ErrorQueue(
                 it.userId == userId &&
                 it.entry.code == entry.code &&
                 it.entry.channel == entry.channel &&
+                // With no channel (playlist and guide entries) the host tells two feeds apart.
+                (entry.channel != null || it.entry.providerHost == entry.providerHost) &&
                 entry.firstAtMs - it.entry.lastAtMs in -SendPolicy.MERGE_WINDOW_MS..SendPolicy.MERGE_WINDOW_MS
         }
         if (target != null) {
@@ -57,6 +65,8 @@ class ErrorQueue(
                 repeatCount = target.entry.repeatCount + entry.repeatCount,
                 lastAtMs = maxOf(target.entry.lastAtMs, entry.lastAtMs),
             )
+            // New occurrences: the count of refusals starts again.
+            target.rejections = 0
         } else {
             items += Item(nextId++, entry, rejections = 0, userId = userId, addedAtMs = now())
             trimToMax()
@@ -64,10 +74,16 @@ class ErrorQueue(
         save()
     }
 
-    /** Up to [max] unsent entries, oldest first, now marked in flight until [settle]. */
+    /**
+     * Up to [max] unsent entries, oldest first, now marked in flight until [settle]. An entry from a
+     * refused batch goes alone: when it is the oldest the batch is that entry, and otherwise the
+     * batch stops before it.
+     */
     fun takeBatch(max: Int): List<Queued> = synchronized(lock) {
         load()
-        items.filter { !it.inFlight }.take(max).map {
+        val unsent = items.filter { !it.inFlight }
+        val batch = if (unsent.firstOrNull()?.solo == true) unsent.take(1) else unsent.take(max).takeWhile { !it.solo }
+        batch.map {
             it.inFlight = true
             Queued(it.id, it.entry, it.rejections)
         }
@@ -81,9 +97,13 @@ class ErrorQueue(
             SendOutcome.Retry, SendOutcome.SignedOut ->
                 items.filter { it.id in settled }.forEach { it.inFlight = false }
             SendOutcome.Rejected -> {
-                items.filter { it.id in settled }.forEach {
+                val refused = items.filter { it.id in settled }
+                // Only an entry refused on its own is at fault; a refused batch is split up.
+                val alone = refused.size == 1
+                refused.forEach {
                     it.inFlight = false
-                    it.rejections++
+                    it.solo = true
+                    if (alone) it.rejections++
                 }
                 items.removeAll { it.id in settled && it.rejections >= SendPolicy.MAX_REJECTIONS }
             }
@@ -103,15 +123,21 @@ class ErrorQueue(
     }
 
     /**
-     * Drops every entry not recorded under [userId], in flight or not, and returns how many went.
-     * Entries recorded while signed out go too: nobody can vouch whose they are.
+     * Drops every entry recorded under a member other than [userId], in flight or not, and returns
+     * how many went. Entries recorded while signed out stay and now belong to [userId], so they go
+     * out under this member and no later one (AC-18).
      */
     fun dropNotRecordedBy(userId: String): Int = synchronized(lock) {
         load()
         val before = items.size
-        items.removeAll { it.userId != userId }
+        items.removeAll { it.userId != null && it.userId != userId }
         val dropped = before - items.size
-        if (dropped > 0) save()
+        var adopted = false
+        items.filter { it.userId == null }.forEach {
+            it.userId = userId
+            adopted = true
+        }
+        if (dropped > 0 || adopted) save()
         dropped
     }
 
@@ -145,6 +171,7 @@ class ErrorQueue(
                 rejections = (row.opt(REJECTIONS) as? Number)?.toInt() ?: 0,
                 userId = row.opt(USER) as? String,
                 addedAtMs = (row.opt(ADDED_AT) as? Number)?.toLong() ?: entry.firstAtMs,
+                solo = row.opt(SOLO) == true,
             )
         }
         val storedNext = (root.opt(NEXT_ID) as? Number)?.toLong() ?: 1L
@@ -162,6 +189,7 @@ class ErrorQueue(
                     .put(REJECTIONS, it.rejections)
                     .put(USER, it.userId ?: JSONObject.NULL)
                     .put(ADDED_AT, it.addedAtMs)
+                    .put(SOLO, it.solo)
                     .put(ENTRY, it.entry.toJson()),
             )
         }
@@ -184,6 +212,7 @@ class ErrorQueue(
         const val USER = "user"
         const val ADDED_AT = "added_at"
         const val ENTRY = "entry"
+        const val SOLO = "solo"
         const val TEMP_SUFFIX = ".tmp"
     }
 }

@@ -205,6 +205,73 @@ class KevBoxAuthTest {
     }
 
     @Test
+    fun `email and userId come from one read of the store`() {
+        val session = StoredSession("user-1", "member@example.com", "a", "r", clock + 3_600_000)
+        // A store whose second read fails, as a flaky Keystore decrypt would.
+        val flaky = object : SessionStore {
+            var loads = 0
+            override fun load(): StoredSession? = if (loads++ == 0) session else null
+            override fun save(session: StoredSession) = Unit
+            override fun clear() = Unit
+        }
+
+        val auth = KevBoxAuth(api(), flaky) { clock }
+
+        assertEquals("member@example.com", auth.email.value)
+        assertEquals("user-1", auth.userId.value)
+        assertEquals(1, flaky.loads)
+    }
+
+    @Test
+    fun `a refresh keeps userId on the member, and takes a new id the server sends`() = runBlocking {
+        storeSession(expiresAtMs = clock + 10_000)
+        val noUser = JSONObject().put("access_token", "a2").put("refresh_token", "r2").put("expires_in", 3600).toString()
+        val otherUser = JSONObject(tokenBody("a3", "r3"))
+            .put("user", JSONObject().put("id", "user-2").put("email", "member@example.com"))
+            .toString()
+        server.on(REFRESH_PATH, Canned(200, noUser), Canned(200, otherUser))
+        server.on(VERDICT, Canned(200, "\"ALLOWED\""), Canned(200, "\"ALLOWED\""))
+        val auth = auth()
+
+        // A refresh that leaves the user out keeps the stored one.
+        auth.verdict()
+        assertEquals("user-1", auth.userId.value)
+        assertEquals("user-1", store.load()!!.userId)
+
+        clock += 3_600_000
+        auth.verdict()
+        assertEquals("user-2", auth.userId.value)
+        assertEquals("user-2", store.load()!!.userId)
+    }
+
+    @Test
+    fun `sessionVersion moves on sign-in, on each token refresh and on sign-out`() = runBlocking {
+        server.on(TOKEN, Canned(200, tokenBody("a1", "r1", expiresIn = 30)), Canned(200, tokenBody("a2", "r2")))
+        server.on(VERDICT, Canned(200, "\"ALLOWED\""), Canned(200, "\"ALLOWED\""))
+        server.on(LOGOUT, Canned(204, ""))
+        val auth = auth()
+        val start = auth.sessionVersion.value
+
+        auth.signIn("member@example.com", "secret")
+        val signedIn = auth.sessionVersion.value
+        assertTrue(signedIn > start)
+
+        // The 30 s token is inside the refresh margin: the read refreshes first, same email and id.
+        auth.verdict()
+        val refreshed = auth.sessionVersion.value
+        assertTrue(refreshed > signedIn)
+        assertEquals("member@example.com", auth.email.value)
+        assertEquals("user-1", auth.userId.value)
+
+        // A token with time left is used as it is: nothing rotated, nothing moves.
+        auth.verdict()
+        assertEquals(refreshed, auth.sessionVersion.value)
+
+        auth.signOut()
+        assertTrue(auth.sessionVersion.value > refreshed)
+    }
+
+    @Test
     fun `wrong password returns WrongCredentials and saves nothing`() = runBlocking {
         server.on(
             TOKEN,

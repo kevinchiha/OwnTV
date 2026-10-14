@@ -135,7 +135,7 @@ class ErrorQueueTest {
     }
 
     @Test
-    fun `entries recorded under another member or signed out are dropped, never sent`() {
+    fun `entries recorded under another member are dropped, signed-out ones go out under the next member`() {
         val file = File(folder.root, "errors.json")
         val queue = queue(file)
         queue.add(entry(at = NOW))
@@ -145,9 +145,77 @@ class ErrorQueueTest {
         queue.add(entry(at = NOW + 2_000))
 
         assertEquals(3, queue.unsentCount())
-        assertEquals(2, queue(file).dropNotRecordedBy(MEMBER))
+        assertEquals(1, queue(file).dropNotRecordedBy(MEMBER))
         val left = queue(file).takeBatch(10)
-        assertEquals(listOf(NOW), left.map { it.entry.firstAtMs })
+        assertEquals(listOf(NOW, NOW + 2_000), left.map { it.entry.firstAtMs })
+
+        // The signed-out entry now belongs to MEMBER, so a later member sends neither.
+        assertEquals(2, queue(file).dropNotRecordedBy("third-member"))
+        assertEquals(0, queue(file).unsentCount())
+    }
+
+    @Test
+    fun `a refused batch is resent one entry at a time and only the bad entry collects rejections`() {
+        val file = File(folder.root, "errors.json")
+        val queue = queue(file)
+        queue.add(entry(at = NOW, channel = "Good 1"))
+        queue.add(entry(at = NOW, channel = "Bad"))
+        queue.add(entry(at = NOW, channel = "Good 2"))
+
+        val first = queue.takeBatch(SendPolicy.BATCH_MAX)
+        assertEquals(3, first.size)
+        queue.settle(first.map { it.id }, SendOutcome.Rejected)
+
+        // Each goes alone now, also after a restart; the server takes the good ones and keeps
+        // refusing the bad one, which goes after its third refusal of its own.
+        val reloaded = queue(file)
+        val sent = mutableListOf<String?>()
+        repeat(5) {
+            val batch = reloaded.takeBatch(SendPolicy.BATCH_MAX)
+            assertEquals(1, batch.size)
+            val only = batch.single()
+            if (only.entry.channel == "Bad") {
+                reloaded.settle(listOf(only.id), SendOutcome.Rejected)
+            } else {
+                assertEquals(0, only.rejections)
+                sent += only.entry.channel
+                reloaded.settle(listOf(only.id), SendOutcome.Sent)
+            }
+        }
+        assertEquals(listOf("Good 1", "Good 2"), sent)
+        assertEquals(0, reloaded.unsentCount())
+        assertTrue(reloaded.takeBatch(10).isEmpty())
+    }
+
+    @Test
+    fun `a new occurrence merged into a refused entry resets its rejections`() {
+        val queue = queue()
+        queue.add(entry(at = NOW))
+        settleWith(queue, ApiResponse.Http(400, ""))
+        settleWith(queue, ApiResponse.Http(400, ""))
+        assertEquals(2, rejections(queue))
+
+        queue.add(entry(at = NOW + MINUTE))
+        assertEquals(0, rejections(queue))
+    }
+
+    @Test
+    fun `entries with no channel merge only when their provider host matches`() {
+        val queue = queue()
+        queue.add(entry(at = NOW, code = "guide_unreachable", channel = null, host = "epg-a.example"))
+        queue.add(entry(at = NOW + 1_000, code = "guide_unreachable", channel = null, host = "epg-b.example"))
+        queue.add(entry(at = NOW + 2_000, code = "guide_unreachable", channel = null, host = "epg-a.example"))
+        queue.add(entry(at = NOW + 3_000, code = "guide_unreachable", channel = null, host = null))
+        queue.add(entry(at = NOW + 4_000, code = "guide_unreachable", channel = null, host = null))
+        // With a channel set the host plays no part.
+        queue.add(entry(at = NOW + 5_000, channel = "BBC One", host = "cdn-1.example"))
+        queue.add(entry(at = NOW + 6_000, channel = "BBC One", host = "cdn-2.example"))
+
+        val batch = queue.takeBatch(10)
+        assertEquals(
+            listOf("epg-a.example" to 2, "epg-b.example" to 1, null to 2, "cdn-1.example" to 2),
+            batch.map { it.entry.providerHost to it.entry.repeatCount },
+        )
     }
 
     /** The single entry's rejection count; the peek puts it back unsent. */
@@ -162,12 +230,12 @@ class ErrorQueueTest {
         queue.settle(batch.map { it.id }, outcomeOf(Fetch.Ok(response)))
     }
 
-    private fun entry(at: Long, code: String = "http_404", channel: String? = "BBC One") = ErrorEntry(
+    private fun entry(at: Long, code: String = "http_404", channel: String? = "BBC One", host: String? = null) = ErrorEntry(
         firstAtMs = at, lastAtMs = at, repeatCount = 1,
         code = code, httpStatus = null, errorName = null,
         accountStatus = null, activeCons = null, maxConnections = null,
         engine = "exo", surface = "full", live = true,
-        channel = channel, category = null, providerHost = null, proxy = null,
+        channel = channel, category = null, providerHost = host, proxy = null,
         model = null, android = null, messageShort = null,
     )
 

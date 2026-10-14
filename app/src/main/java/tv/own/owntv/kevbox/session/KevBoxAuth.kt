@@ -31,14 +31,24 @@ class KevBoxAuth(
     private val store: SessionStore,
     private val now: () -> Long,
 ) {
-    private val _email = MutableStateFlow(store.load()?.email)
-    private val _userId = MutableStateFlow(store.load()?.userId)
+    // One read: two could disagree (a decrypt failing the second time) and split the signed-in state.
+    private val initial = store.load()
+    private val _email = MutableStateFlow(initial?.email)
+    private val _userId = MutableStateFlow(initial?.userId)
+    private val _sessionVersion = MutableStateFlow(0L)
 
     /** The signed-in member's email; null when signed out. */
     val email: StateFlow<String?> = _email.asStateFlow()
 
     /** The signed-in member's Supabase user id; null when signed out. Moves with [email]. */
     val userId: StateFlow<String?> = _userId.asStateFlow()
+
+    /**
+     * Goes up by one each time the stored session changes: sign-in, a refresh that rotates the
+     * tokens, sign-out. The email and user id stay the same across a refresh, so this is the only
+     * signal that the tokens the error scrubber must hide have changed.
+     */
+    val sessionVersion: StateFlow<Long> = _sessionVersion.asStateFlow()
 
     // Every store write takes this lock. Refresh tokens rotate, so two refreshes racing on the same
     // token would burn it; and a refresh still waiting on the server must not write its session
@@ -70,6 +80,7 @@ class KevBoxAuth(
                         if (it) {
                             _email.value = session.email
                             _userId.value = session.userId
+                            _sessionVersion.value++
                         }
                     }
                 }
@@ -115,6 +126,7 @@ class KevBoxAuth(
             store.clear()
             _email.value = null
             _userId.value = null
+            _sessionVersion.value++
         }
     }
 
@@ -170,6 +182,7 @@ class KevBoxAuth(
                 if (!trySave(renewed)) return@withLock Fetch.Failed
                 _email.value = renewed.email
                 _userId.value = renewed.userId
+                _sessionVersion.value++
                 Fetch.Ok(renewed)
             }
             // Any other 400/401 is a gateway refusing the apikey, not the session: keep it, since
