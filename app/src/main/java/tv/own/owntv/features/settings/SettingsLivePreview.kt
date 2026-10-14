@@ -56,99 +56,12 @@ import tv.own.owntv.ui.theme.stageText
  */
 @Composable
 internal fun SettingsLivePreview() {
-    val home: HomeViewModel = koinViewModel()
-    val state by home.uiState.collectAsStateWithLifecycle()
-    val items = state.trendingItems
-    val lead = items.firstOrNull()
-    val a = stageAccent
+    // KevBox: no HomeViewModel and no trending movie here; KevBox Live has no Home. The preview is a small
+    // Live TV guide of the member's own channels (spec AC-34), drawn by KevBoxMiniGuidePreview below.
     val ink = tv.own.owntv.ui.theme.LocalStagePalette.current.ink
     SettingPanelHeading(stringResource(R.string.settings_quick_live_preview))
-    BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(18.mpx))
-            .drawBehind { drawInnerRing(ink.copy(alpha = 0.1f), 1.mpx.toPx(), 18.mpx.toPx()) },
-    ) {
-        // The 1920 × 1080 frame, scaled down to the box: every size below is the real screen's.
-        val scale = maxWidth / 1920.mpx
-        Box(
-            Modifier
-                .wrapContentSize(Alignment.TopStart, unbounded = true)
-                .requiredSize(1920.mpx, 1080.mpx)
-                .graphicsLayer { scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0f, 0f) },
-        ) {
-            // The user's picture, when Glass & background shows one, as behind the real Home.
-            val background = tv.own.owntv.ui.theme.LocalBackground.current
-            if (background.showsPicture) {
-                tv.own.owntv.ui.components.BackgroundPicture(background, tv.own.owntv.ui.theme.LocalBlurredBackdrop.current, Modifier.fillMaxSize())
-            }
-            Box(Modifier.fillMaxSize().stageBackground(a.accent))
-            if (lead != null) {
-                AsyncImage(
-                    model = backdropOf(lead),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.align(Alignment.TopEnd).size(1240.mpx, 760.mpx).dissolveEdges(start = 0.45f, bottom = 0.35f),
-                )
-            }
-            // The rail at rest: a glass capsule of icons.
-            Column(
-                Modifier.padding(start = 26.mpx, top = 230.mpx).width(60.mpx).stageGlass(30.mpx).padding(vertical = 18.mpx),
-                verticalArrangement = Arrangement.spacedBy(22.mpx),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                listOf(OwnTVIcon.SEARCH, OwnTVIcon.HOME, OwnTVIcon.LIVE_TV, OwnTVIcon.EPG, OwnTVIcon.MOVIES, OwnTVIcon.SERIES, OwnTVIcon.DOWNLOADS).forEachIndexed { i, icon ->
-                    OwnTVIcon(icon, if (i == 1) a.accent else StageColors.Muted, Modifier.size(26.mpx))
-                }
-            }
-            Column(Modifier.padding(start = 150.mpx, top = 300.mpx).width(820.mpx)) {
-                Text(stringResource(R.string.home_row_now_trending).uppercase(), style = stageText(15, 800, 0.12.em), color = a.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    titleOf(lead) ?: stringResource(R.string.home_row_now_trending),
-                    style = stageText(92, 800, (-2.5f / 92f).em), color = StageColors.Text,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.mpx),
-                )
-                Row(Modifier.padding(top = 40.mpx), horizontalArrangement = Arrangement.spacedBy(16.mpx)) {
-                    // The hero's Play, drawn focused: the accent fill and the focus ring.
-                    Row(
-                        Modifier
-                            .height(64.mpx)
-                            .drawBehind { drawOuterRing(a.focus, 3.mpx.toPx(), 22.mpx.toPx()) }
-                            .background(a.accent, RoundedCornerShape(22.mpx))
-                            .padding(horizontal = 30.mpx),
-                        horizontalArrangement = Arrangement.spacedBy(12.mpx),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OwnTVIcon(OwnTVIcon.PLAY, a.onAccent, Modifier.size(22.mpx), filled = true)
-                        Text(stringResource(R.string.home_trending_play), style = stageText(22, 700), color = a.onAccent, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Row(
-                        Modifier.height(64.mpx).stageGlass(22.mpx).padding(horizontal = 30.mpx),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(stringResource(R.string.home_trending_trailer), style = stageText(22, 700), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-            Column(Modifier.padding(start = 150.mpx, top = 760.mpx)) {
-                Text(stringResource(R.string.home_row_keep_watching), style = stageText(27, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Row(Modifier.padding(top = 18.mpx), horizontalArrangement = Arrangement.spacedBy(24.mpx)) {
-                    items.drop(1).take(5).forEachIndexed { i, item ->
-                        Column(Modifier.width(380.mpx)) {
-                            AsyncImage(
-                                model = backdropOf(item),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxWidth().height(214.mpx).clip(RoundedCornerShape(16.mpx)).background(ink.copy(alpha = 0.06f)),
-                            )
-                            StageProgress(listOf(0.55f, 0.3f, 0.8f, 0.45f, 0.2f)[i], Modifier.padding(top = 10.mpx).fillMaxWidth())
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // KevBox: the mini guide in place of the Home frame (the old 1920 × 1080 Home drawing was here).
+    tv.own.owntv.kevbox.ui.KevBoxMiniGuidePreview()
     Text(
         stringResource(R.string.settings_live_preview_note), style = stageText(15, 500), color = StageColors.Muted,
         modifier = Modifier.padding(top = 12.mpx, start = 2.mpx),

@@ -94,7 +94,10 @@ internal fun GlassBackgroundPage(
     LaunchedEffect(Unit) { runCatching { rowsFocus.requestFocus() } }
     val pic = background.style == BackgroundStyle.PICTURE
     val hasFile = background.imagePath.isNotBlank()
-    val preview: @Composable () -> Unit = { GlassBackgroundPreview() }
+    // KevBox: the mini guide's data is read once for the page and shared by every row's preview, so a
+    // focus move between rows does not read the database again. Was: { GlassBackgroundPreview() }.
+    val miniGuide = tv.own.owntv.kevbox.ui.rememberMiniGuideData()
+    val preview: @Composable () -> Unit = { GlassBackgroundPreview(miniGuide) }
     val change = stringResource(R.string.settings_key_change)
     val back = stringResource(R.string.common_back) to stringResource(R.string.settings_group_appearance)
     val stepHints = listOf("◀ ▶" to change, back)
@@ -269,79 +272,11 @@ private fun PercentRow(
  * nothing focusable, no player — but it follows every change on this page at once.
  */
 @Composable
-private fun GlassBackgroundPreview() {
-    val home: HomeViewModel = koinViewModel()
-    val state by home.uiState.collectAsStateWithLifecycle()
-    val channels = remember(state.recentLive, state.favoriteLive) { (state.recentLive + state.favoriteLive).distinctBy { it.id }.take(8) }
-    val still = state.trendingItems.firstOrNull()
-    val background = LocalBackground.current
-    val blurred = LocalBlurredBackdrop.current
-    val a = stageAccent
-    val previewRim = StageColors.Ink.copy(alpha = 0.1f)
+// KevBox: takes the page's mini guide data; no HomeViewModel, no movie still, no black box (spec AC-35).
+private fun GlassBackgroundPreview(miniGuide: tv.own.owntv.kevbox.ui.MiniGuideData) {
     Column(Modifier.padding(top = 16.mpx)) {
-        BoxWithConstraints(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(18.mpx))
-                .background(stageTone(Color(0xFF05080A), LocalStagePalette.current.page))
-                .drawBehind { drawInnerRing(previewRim, 1.mpx.toPx(), 18.mpx.toPx()) },
-        ) {
-            val scale = maxWidth / 1920.mpx
-            Box(
-                Modifier
-                    .wrapContentSize(Alignment.TopStart, unbounded = true)
-                    .requiredSize(1920.mpx, 1080.mpx)
-                    .graphicsLayer { scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0f, 0f) },
-            ) {
-                if (background.showsPicture) BackgroundPicture(background, blurred, Modifier.fillMaxSize())
-                Box(Modifier.fillMaxSize().stageBackground(a.accent))
-                // The rail at rest: a glass capsule of icons, Live TV lit.
-                Column(
-                    Modifier.padding(start = 26.mpx, top = 230.mpx).width(60.mpx).stageGlass(30.mpx).padding(vertical = 18.mpx),
-                    verticalArrangement = Arrangement.spacedBy(22.mpx),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    listOf(OwnTVIcon.SEARCH, OwnTVIcon.HOME, OwnTVIcon.LIVE_TV, OwnTVIcon.EPG, OwnTVIcon.MOVIES, OwnTVIcon.SERIES, OwnTVIcon.DOWNLOADS).forEachIndexed { i, icon ->
-                        OwnTVIcon(icon, if (i == 2) a.accent else StageColors.Muted, Modifier.size(26.mpx))
-                    }
-                }
-                Text(stringResource(R.string.common_nav_live_tv), style = stageText(46, 800, (-1f / 46f).em), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 128.mpx, top = 54.mpx))
-                Column(Modifier.padding(start = 112.mpx, top = 170.mpx).width(800.mpx), verticalArrangement = Arrangement.spacedBy(8.mpx)) {
-                    channels.forEachIndexed { i, ch ->
-                        val focused = i == 1
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(92.mpx)
-                                .then(
-                                    if (focused) Modifier
-                                        .drawBehind { drawOuterRing(a.focus, 2.mpx.toPx(), 20.mpx.toPx(), inset = -2.mpx.toPx()) }
-                                        .background(Brush.horizontalGradient(listOf(a.accent.copy(alpha = 0.34f), a.accent.copy(alpha = 0.14f))), RoundedCornerShape(20.mpx))
-                                    else Modifier,
-                                )
-                                .padding(horizontal = 22.mpx),
-                            horizontalArrangement = Arrangement.spacedBy(18.mpx),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text((ch.number ?: (i + 1)).toString(), style = stageText(21, 700), color = StageColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(52.mpx))
-                            LivePlate(ch.logoUrl, 78.mpx, 54.mpx)
-                            Text(ch.name, style = stageText(22, 700), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-                // The Stage: the picture of a programme (the player itself is not drawn here).
-                Box(
-                    Modifier
-                        .padding(start = 940.mpx, top = 120.mpx)
-                        .size(916.mpx, 516.mpx)
-                        .clip(RoundedCornerShape(28.mpx))
-                        .background(Color.Black),
-                ) {
-                    if (still != null) AsyncImage(model = backdropOf(still), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                }
-            }
-        }
+        // KevBox: the mini Live TV guide in place of upstream's hand-drawn Live TV frame, which stood here.
+        tv.own.owntv.kevbox.ui.KevBoxMiniGuidePreview(data = miniGuide)
         Text(
             stringResource(R.string.settings_bg_preview_note),
             style = stageText(15, 500), color = StageColors.Muted,
