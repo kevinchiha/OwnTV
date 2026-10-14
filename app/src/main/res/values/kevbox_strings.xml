@@ -65,6 +65,12 @@
     <string name="kevbox_settings_card_appearance">Theme, glass, text, motion</string>
     <string name="kevbox_settings_card_player">Saved choices, external player, streaming</string>
     <string name="kevbox_settings_card_watching">Skip steps, catch-up, mini-player</string>
+    <!-- 0.2 AC-5: the External player row, its dialog and its help line, with the Live TV switch alone. -->
+    <string name="kevbox_settings_external_player_description">Opens live channels in another video app installed on the TV.</string>
+    <string name="kevbox_settings_external_player_row_description">Opens live channels in another video app installed on the TV (VLC, MX Player) instead of the built-in player. Useful for a channel this app can\'t decode, or if you prefer another player. Previous and next channel are unavailable while another app plays; channels that need a custom User-Agent or referer may not play.</string>
+    <string name="kevbox_settings_line_external">VLC, MX Player… for live channels</string>
+    <!-- 0.2 AC-3: the kept "Reset saved live TV player choices" row, without the hidden Live TV player setting. -->
+    <string name="kevbox_settings_reset_live_pins_description">Switching a channel between ExoPlayer and mpv with the player button in full screen saves that choice for the channel. Reset clears these choices, so every channel starts on the default player again.</string>
     <!-- 0.2 AC-26: the guide feed the app adds from the playlist. -->
     <string name="kevbox_epg_automatic">Set up for you</string>
     <!-- 0.2 AC-31: Favorites holds channels only. -->

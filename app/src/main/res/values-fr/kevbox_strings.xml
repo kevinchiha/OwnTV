@@ -9,7 +9,7 @@
     <string name="kevbox_settings_catchup_next">Replay : lire le programme suivant</string>
     <string name="kevbox_settings_catchup_next_description">Quand un programme en replay se termine, le programme suivant de la même chaîne démarre.</string>
     <string name="kevbox_settings_line_catchup_next">Le programme suivant de la même chaîne</string>
-    <string name="kevbox_settings_seek_step">Pas d’avance en replay</string>
+    <string name="kevbox_settings_seek_step">Durée du saut en replay</string>
     <string name="kevbox_settings_seek_step_description">De combien le retour et l’avance sautent en replay.</string>
     <string name="kevbox_settings_line_seek_step">Saut de retour et d’avance en replay</string>
     <string name="kevbox_settings_help_seek_step">De combien reculent et avancent les programmes en replay à chaque appui. Maintenir la touche continue de sauter.</string>
@@ -32,7 +32,13 @@
     <string name="kevbox_settings_card_layout">Navigation, largeur du guide, raccourcis</string>
     <string name="kevbox_settings_card_appearance">Thème, verre, texte, animations</string>
     <string name="kevbox_settings_card_player">Choix enregistrés, lecteur externe, streaming</string>
-    <string name="kevbox_settings_card_watching">Pas de saut, replay, mini-lecteur</string>
+    <string name="kevbox_settings_card_watching">Sauts, replay, mini-lecteur</string>
+    <!-- 0.2 AC-5 -->
+    <string name="kevbox_settings_external_player_description">Ouvre les chaînes en direct dans une autre application vidéo installée sur le téléviseur.</string>
+    <string name="kevbox_settings_external_player_row_description">Ouvre les chaînes en direct dans une autre application vidéo installée sur le téléviseur (VLC, MX Player) plutôt que dans le lecteur intégré. Utile pour une chaîne que cette application ne peut pas décoder, ou si vous préférez un autre lecteur. Les chaînes précédente et suivante ne sont pas disponibles pendant la lecture dans une autre application ; les chaînes nécessitant un User-Agent ou un en-tête Referer personnalisé risquent de ne pas être lues.</string>
+    <string name="kevbox_settings_line_external">VLC, MX Player… pour les chaînes en direct</string>
+    <!-- 0.2 AC-3 -->
+    <string name="kevbox_settings_reset_live_pins_description">Basculer une chaîne entre ExoPlayer et mpv avec le bouton du lecteur en plein écran enregistre ce choix pour la chaîne. La réinitialisation efface ces choix : chaque chaîne repart sur le lecteur par défaut.</string>
     <!-- 0.2 AC-26 -->
     <string name="kevbox_epg_automatic">Configuré pour vous</string>
     <!-- 0.2 AC-31 -->

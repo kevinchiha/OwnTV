@@ -53,7 +53,7 @@ internal val SETTING_LINE: Map<String, Int> = mapOf(
     "vp_vod_engine_sources" to R.string.settings_line_override_playlist,
     "vp_reset_pins" to R.string.settings_line_saved_choices,
     "vp_forget_fixes" to R.string.settings_line_learned_fixes,
-    "vp_external" to R.string.settings_line_external,
+    "vp_external" to R.string.kevbox_settings_line_external, // KevBox: live channels only, no sections (AC-5)
     "vp_vod_buffer" to R.string.kevbox_settings_line_catchup_buffer, // KevBox: catch-up wording (AC-17)
     "vp_vod_timeout" to R.string.settings_line_vod_timeout,
     "vp_vod_reconnects" to R.string.settings_line_vod_reconnects,
