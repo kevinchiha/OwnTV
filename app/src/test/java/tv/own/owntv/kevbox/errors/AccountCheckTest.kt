@@ -1,9 +1,12 @@
 package tv.own.owntv.kevbox.errors
 
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.core.database.entity.SourceEntity
 import tv.own.owntv.core.model.SourceType
@@ -28,6 +31,40 @@ class AccountCheckTest {
         clock += MINUTE
         check.result(XTREAM)
         assertEquals(2, fetches)
+    }
+
+    @Test
+    fun `an unreachable answer is kept for 1 minute only`() = runBlocking {
+        answer = { throw IOException("connection reset") }
+        val check = check()
+        assertEquals(AccountStatus.UNREACHABLE, check.result(XTREAM)!!.status)
+        clock += AccountCheck.UNREACHABLE_GAP_MS - 1
+        check.result(XTREAM)
+        assertEquals(1, fetches)
+
+        answer = { XtAccountDetails(status = "Expired") }
+        clock += 1
+        assertEquals(AccountStatus.EXPIRED, check.result(XTREAM)!!.status)
+        assertEquals(2, fetches)
+        // A real answer keeps the 10 minute gap.
+        clock += 5 * MINUTE
+        check.result(XTREAM)
+        assertEquals(2, fetches)
+    }
+
+    @Test(timeout = 10_000)
+    fun `a call that blocks past the timeout reads as unreachable and frees the caller`() = runBlocking {
+        val release = CountDownLatch(1)
+        // Core's HTTP call blocks the thread and ignores cancellation, as a dead panel would.
+        val check = AccountCheck(fetch = { release.await(); XtAccountDetails(status = "Active") }, now = { clock }, timeoutMs = 200)
+        val startedAt = System.nanoTime()
+        val result = check.result(XTREAM)
+        val tookMs = (System.nanoTime() - startedAt) / 1_000_000
+
+        assertEquals(AccountResult(AccountStatus.UNREACHABLE, null, null), result)
+        assertTrue("took $tookMs ms", tookMs < 2_000)
+        release.countDown()
+        assertTrue(release.await(1, TimeUnit.SECONDS))
     }
 
     @Test

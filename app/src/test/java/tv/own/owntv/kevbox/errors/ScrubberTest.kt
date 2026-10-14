@@ -44,6 +44,15 @@ class ScrubberTest {
     }
 
     @Test
+    fun `control characters come out, NUL included`() {
+        val out = Scrubber.text("bad\u0000 frame\u0007\u001B[0m\r\nnext\tline", emptyList())!!
+        assertEquals("bad frame[0m next line", out)
+        assertTrue(out.none { it < ' ' })
+        // A NUL inside a secret does not hide it from the secret match.
+        assertEquals("login [removed]", Scrubber.text("login s3cret\u0000pass", listOf("s3cretpass")))
+    }
+
+    @Test
     fun `short secrets are skipped and null stays null`() {
         assertEquals("pin 123 code 7", Scrubber.text("pin 123 code 7", listOf("123", "7")))
         assertNull(Scrubber.text(null, listOf("secret")))

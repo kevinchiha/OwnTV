@@ -10,7 +10,8 @@ enum class Engine(val wire: String) { EXO("exo"), MPV("mpv") }
 /**
  * One failure turned into a report code. [httpStatus] is the status the failure text named, if
  * any; [errorName] is the engine's own name for the failure (a Media3 constant or the first line
- * of the text), kept unscrubbed here; the reporter scrubs every field before it leaves the TV.
+ * of the text), kept unscrubbed and uncut here; the reporter scrubs every field, then cuts it, before
+ * it leaves the TV.
  */
 data class Classified(val code: String, val httpStatus: Int?, val errorName: String?)
 
@@ -25,14 +26,16 @@ object AccountStatus {
 /**
  * Maps Core's failure text to a [LiveErrorCodes] code. Pure: no network, disk or clock.
  *
- * Words are matched on the lower-cased text, so Media3's upper-case constant names
- * (`ERROR_CODE_...`) and the engines' lower-case messages both match.
+ * Words are matched on the lower-cased text with every address taken out first, so Media3's
+ * upper-case constant names (`ERROR_CODE_...`) and the engines' lower-case messages both match, and
+ * a word inside an address (`xmltv.php`, `ssl.host`) never does.
  */
 object ErrorClassifier {
-    private const val ERROR_NAME_MAX = 120
-
     /** A Media3 `PlaybackException` constant name at the start of the text. */
     private val MEDIA3_NAME = Regex("^ERROR_CODE_[A-Z0-9_]+")
+
+    /** An address with a scheme, up to the next space: the same shape [Scrubber] replaces. */
+    private val ADDRESS = Regex("""[a-zA-Z][a-zA-Z0-9+.-]*://\S+""")
 
     private val TIMEOUT_WORDS = listOf("error_code_io_network_connection_timeout", "timed out", "timeout")
     private val DNS_WORDS = listOf(
@@ -68,14 +71,24 @@ object ErrorClassifier {
     private const val HTTP_TOO_MANY_REQUESTS = 429
     private const val HTTP_M3U_DISABLED = 884
 
-    fun playback(engine: Engine, raw: String?, reason: PlayerFailureReason?, online: Boolean): Classified {
+    /**
+     * [lost] is Core's own give-up on a channel that had played (its `LostConnection` failure): the
+     * code is then `stream_lost` whatever engine line Core kept as the text.
+     */
+    fun playback(
+        engine: Engine,
+        raw: String?,
+        reason: PlayerFailureReason?,
+        online: Boolean,
+        lost: Boolean = false,
+    ): Classified {
         val name = errorName(raw)
         val status = statusIn(raw)
         if (status != null) return Classified(LiveErrorCodes.http(status), status, name)
-        val l = raw?.lowercase().orEmpty()
+        val l = words(raw)
         val code = when {
             !online -> LiveErrorCodes.NET_OFFLINE
-            isGiveUp(l) -> LiveErrorCodes.STREAM_LOST
+            lost || isGiveUp(l) -> LiveErrorCodes.STREAM_LOST
             l.hasAny(BEHIND_WORDS) -> LiveErrorCodes.BEHIND_LIVE_WINDOW
             l.hasAny(TIMEOUT_WORDS) -> LiveErrorCodes.NET_TIMEOUT
             l.hasAny(DNS_WORDS) -> LiveErrorCodes.NET_DNS
@@ -94,7 +107,7 @@ object ErrorClassifier {
 
     fun playlist(message: String?, online: Boolean): Classified {
         val status = statusIn(message)
-        val l = message?.lowercase().orEmpty()
+        val l = words(message)
         val code = when {
             status == HTTP_TOO_MANY_REQUESTS -> LiveErrorCodes.PLAYLIST_RATE_LIMITED
             status == HTTP_M3U_DISABLED -> LiveErrorCodes.PLAYLIST_M3U_DISABLED
@@ -107,9 +120,12 @@ object ErrorClassifier {
 
     fun guide(message: String?, online: Boolean): Classified {
         val status = statusIn(message)
-        val l = message?.lowercase().orEmpty()
+        val l = words(message)
         val code = when {
-            !online || l.hasAny(NETWORK_WORDS) -> LiveErrorCodes.GUIDE_UNREACHABLE
+            !online -> LiveErrorCodes.GUIDE_UNREACHABLE
+            // The server answered with a status, so the guide never arrived to be parsed.
+            status != null -> LiveErrorCodes.GUIDE_DOWNLOAD_FAILED
+            l.hasAny(NETWORK_WORDS) -> LiveErrorCodes.GUIDE_UNREACHABLE
             l.hasAny(GUIDE_PARSE_WORDS) -> LiveErrorCodes.GUIDE_PARSE_FAILED
             l.hasAny(GUIDE_EMPTY_WORDS) -> LiveErrorCodes.GUIDE_EMPTY
             else -> LiveErrorCodes.GUIDE_DOWNLOAD_FAILED
@@ -150,16 +166,21 @@ object ErrorClassifier {
     private fun statusIn(text: String?): Int? =
         text?.let(PlayerErrors::httpStatusIn)?.takeIf { it in 100..999 }
 
-    /** A leading Media3 constant name, otherwise the first line (mpv's message included). */
+    /** The text the word lists read: lower-cased, with every address taken out. */
+    private fun words(text: String?): String = text?.let { ADDRESS.replace(it, " ") }?.lowercase().orEmpty()
+
+    /**
+     * A leading Media3 constant name, otherwise the first line (mpv's message included), at full
+     * length: the reporter cuts it only after scrubbing, so no secret survives in part.
+     */
     private fun errorName(raw: String?): String? {
         if (raw.isNullOrBlank()) return null
-        val media3 = MEDIA3_NAME.find(raw.trimStart())?.value
-        return media3?.take(ERROR_NAME_MAX) ?: firstLine(raw)
+        return MEDIA3_NAME.find(raw.trimStart())?.value ?: firstLine(raw)
     }
 
     private fun firstLine(text: String?): String? {
         if (text.isNullOrBlank()) return null
-        return text.trim().lineSequence().first().trim().take(ERROR_NAME_MAX)
+        return text.trim().lineSequence().first().trim()
     }
 
     private fun String.hasAny(words: List<String>): Boolean = words.any { it in this }

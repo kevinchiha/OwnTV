@@ -110,9 +110,43 @@ class ErrorClassifierTest {
     }
 
     @Test
-    fun `errorName takes the first line and stops at 120 characters`() {
+    fun `errorName takes the whole first line, leaving the cut to the reporter`() {
         assertEquals("first line", mpv("  first line  \nsecond line").errorName)
-        assertEquals(120, exo("y".repeat(300)).errorName!!.length)
+        assertEquals(300, exo("y".repeat(300)).errorName!!.length)
+        val long = "Failed to open " + "x".repeat(110) + " pass=s3cretpass"
+        assertEquals(long, mpv(long).errorName)
+        assertEquals(long, ErrorClassifier.playlist(long, true).errorName)
+    }
+
+    @Test
+    fun `words inside an address do not decide the code`() {
+        // mpv's open failure names a host with "ssl" in it: not an SSL failure.
+        assertEquals(LiveErrorCodes.MPV_LOAD_FAILED, mpv("Failed to open http://ssl.host.test/live/u/p/1.ts").code)
+        assertEquals(LiveErrorCodes.OTHER, exo("Source error at https://timeout.example.test/decoder/1.ts").code)
+        assertEquals(LiveErrorCodes.PLAYLIST_DOWNLOAD_FAILED, ErrorClassifier.playlist("failed: http://panel.test/get.php?type=json", true).code)
+        // Words outside the address still count.
+        assertEquals(LiveErrorCodes.NET_SSL, mpv("ssl handshake failed for https://panel.test/1.ts").code)
+    }
+
+    @Test
+    fun `a guide failure with a status is a download failure`() {
+        val c = ErrorClassifier.guide("HTTP 401 for http://panel.test/xmltv.php?username=u&password=p", true)
+        assertEquals(LiveErrorCodes.GUIDE_DOWNLOAD_FAILED, c.code)
+        assertEquals(401, c.httpStatus)
+        assertEquals(LiveErrorCodes.GUIDE_DOWNLOAD_FAILED, ErrorClassifier.guide("HTTP 500 xml parse", true).code)
+        assertEquals(LiveErrorCodes.GUIDE_UNREACHABLE, ErrorClassifier.guide("HTTP 500", false).code)
+    }
+
+    @Test
+    fun `Core's give-up on a channel that had played is stream_lost whatever the text`() {
+        val codec = "ERROR_CODE_DECODING_FAILED: MediaCodecVideoRenderer\$MediaCodecVideoDecoderException"
+        assertEquals(LiveErrorCodes.DECODER_FAILED, exo(codec).code)
+        val lost = ErrorClassifier.playback(Engine.EXO, codec, PlayerFailureReason.DECODER_TRANSIENT, online = true, lost = true)
+        assertEquals(Classified(LiveErrorCodes.STREAM_LOST, null, "ERROR_CODE_DECODING_FAILED"), lost)
+        assertEquals(LiveErrorCodes.STREAM_LOST, ErrorClassifier.playback(Engine.MPV, "Failed to open", null, true, lost = true).code)
+        // Offline still says offline, and a status still names itself.
+        assertEquals(LiveErrorCodes.NET_OFFLINE, ErrorClassifier.playback(Engine.EXO, codec, null, online = false, lost = true).code)
+        assertEquals("http_403", ErrorClassifier.playback(Engine.EXO, "Response code: 403", null, true, lost = true).code)
     }
 
     @Test

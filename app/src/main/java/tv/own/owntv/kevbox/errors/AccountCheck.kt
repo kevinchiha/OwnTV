@@ -2,6 +2,10 @@
 package tv.own.owntv.kevbox.errors
 
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -39,13 +43,20 @@ private val NO_USER_INFO = XtreamClient.XtAccountDetails()
 /**
  * Asks the panel's `player_api.php` about the account through Core's [XtreamClient] (Core's HTTP
  * client, the global proxy and the playlist's user agent). It never opens a stream, and the login
- * stays in the source entity. At most one call per [MIN_GAP_MS] for the same source; the last
- * result lives in memory only, so a restart checks afresh.
+ * stays in the source entity. At most one call per [MIN_GAP_MS] for the same source, or per
+ * [UNREACHABLE_GAP_MS] after an answer that never came; the last result lives in memory only, so a
+ * restart checks afresh.
+ *
+ * Core's HTTP call blocks and ignores coroutine cancellation, so it runs on its own scope and only
+ * the wait for it is bounded by [timeoutMs]: a dead or trickling panel costs one stuck IO thread,
+ * never the reporter's single worker.
  */
 class AccountCheck(
     private val fetch: suspend (SourceEntity) -> XtreamClient.XtAccountDetails,
     private val now: () -> Long,
+    private val timeoutMs: Long = TIMEOUT_MS,
 ) {
+    private val calls = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
     private var lastSourceId: Long? = null
     private var lastAtMs: Long? = null
@@ -57,7 +68,9 @@ class AccountCheck(
         return lock.withLock {
             val at = lastAtMs
             val previous = last
-            if (previous != null && at != null && lastSourceId == source.id && now() - at < MIN_GAP_MS) {
+            // A network blip must not label every failure for 10 minutes, so unreachable keeps 1.
+            val gap = if (previous?.status == AccountStatus.UNREACHABLE) UNREACHABLE_GAP_MS else MIN_GAP_MS
+            if (previous != null && at != null && lastSourceId == source.id && now() - at < gap) {
                 return@withLock previous
             }
             val fresh = check(source)
@@ -69,18 +82,23 @@ class AccountCheck(
     }
 
     private suspend fun check(source: SourceEntity): AccountResult {
+        val call = calls.async { fetch(source) }
         val details = try {
-            withTimeoutOrNull(TIMEOUT_MS) { fetch(source) }
+            withTimeoutOrNull(timeoutMs) { call.await() }
         } catch (e: CancellationException) {
+            call.cancel()
             throw e
         } catch (_: Exception) {
             null
         }
+        // Does nothing once the call is done; after a timeout it frees the call as soon as Core lets go.
+        call.cancel()
         return details?.let(::accountResultOf) ?: AccountResult(AccountStatus.UNREACHABLE, null, null)
     }
 
     companion object {
         const val MIN_GAP_MS = 600_000L
+        const val UNREACHABLE_GAP_MS = 60_000L
         private const val TIMEOUT_MS = 15_000L
     }
 }

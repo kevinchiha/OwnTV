@@ -24,6 +24,7 @@ import tv.own.owntv.kevbox.errors.AccountCheck
 import tv.own.owntv.kevbox.errors.ErrorReporter
 import tv.own.owntv.kevbox.errors.ErrorSender
 import tv.own.owntv.kevbox.errors.ErrorWatchers
+import tv.own.owntv.kevbox.errors.LadderEvents
 import tv.own.owntv.kevbox.errors.PlaybackScene
 import tv.own.owntv.kevbox.errors.secretWordsOf
 import tv.own.owntv.kevbox.expiry.ExpiryMonitor
@@ -130,6 +131,8 @@ val kevboxModule = module {
             epgStore = get(),
             reconciler = get(),
             scope = get(),
+            // LiveViewModel's host feeds Core's engine ladder in here (0.3 AC-10).
+            ladderEvents = LadderEvents.events,
         )
     }
 

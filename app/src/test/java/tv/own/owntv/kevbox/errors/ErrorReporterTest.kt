@@ -4,6 +4,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,7 +29,7 @@ class ErrorReporterTest {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val queued = LinkedBlockingQueue<ErrorEntry>()
-    private var kicks = 0
+    private val kicks = AtomicInteger(0)
     private var details: () -> XtAccountDetails = { XtAccountDetails(status = "Active") }
     private var secrets: Set<String> = emptySet()
 
@@ -36,7 +37,7 @@ class ErrorReporterTest {
 
     private fun reporter(fetch: suspend (SourceEntity) -> XtAccountDetails = { details() }) = ErrorReporter(
         queue = queue,
-        kick = { kicks++ },
+        kick = { kicks.incrementAndGet() },
         startSender = {},
         accountCheck = AccountCheck(fetch = fetch, now = { NOW }),
         currentSource = { SOURCE },
@@ -59,6 +60,13 @@ class ErrorReporterTest {
 
     /** The next entry the worker queued, or a failure after 5 seconds. */
     private fun nextEntry(): ErrorEntry = queued.poll(5, TimeUnit.SECONDS) ?: throw AssertionError("no entry queued")
+
+    /** Waits up to 5 seconds for the sender kick count to reach [n]; the worker kicks after the listeners. */
+    private fun awaitKicks(n: Int) {
+        val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (kicks.get() < n && System.nanoTime() < until) Thread.sleep(10)
+        assertEquals(n, kicks.get())
+    }
 
     @Test
     fun `record returns while the worker is busy`() {
@@ -108,6 +116,10 @@ class ErrorReporterTest {
         assertEquals(NOW, entry.firstAtMs)
         assertEquals(1, queue.unsentCount())
         assertEquals(LiveErrorCodes.ACCOUNT_EXPIRED, queue.takeBatch(10).single().entry.code)
+        // One queued entry, one kick to the sender.
+        awaitKicks(1)
+        Thread.sleep(100)
+        assertEquals(1, kicks.get())
     }
 
     @Test
@@ -123,6 +135,7 @@ class ErrorReporterTest {
         listOf(entry.messageShort, entry.errorName).forEach { field ->
             assertNotNull(field)
             assertFalse(field, field!!.contains("s3cretpass"))
+            assertFalse(field, field.contains(SOURCE.username!!))
             assertFalse(field, field.contains("/live/"))
             assertFalse(field, field.contains("panel.example.test"))
         }
@@ -160,8 +173,37 @@ class ErrorReporterTest {
         assertFalse(needsAccountCheck(Failure.Guide(null, null), Classified("http_401", 401, null)))
     }
 
-    private fun playback(engine: Engine, raw: String?, inBox: Boolean = false, catchup: Boolean = false) =
-        Failure.Playback(engine, raw, null, SceneSnapshot("BBC One", "UK", STREAM_URL, inBox, catchup))
+    @Test
+    fun `Core's give-up reaches the classifier as stream_lost`() {
+        val reporter = reporter()
+        reporter.start()
+
+        val codec = "ERROR_CODE_DECODING_FAILED: MediaCodecVideoRenderer\$MediaCodecVideoDecoderException"
+        reporter.record(playback(Engine.EXO, codec, lost = true))
+        val entry = nextEntry()
+
+        assertEquals(LiveErrorCodes.STREAM_LOST, entry.code)
+        // stream_lost runs the account check (AC-13).
+        assertEquals(AccountStatus.ACTIVE, entry.accountStatus)
+    }
+
+    @Test
+    fun `a long first line is scrubbed before it is cut`() {
+        secrets = setOf(SOURCE.password!!)
+        val reporter = reporter()
+        reporter.start()
+
+        // The password starts before character 120 and ends after it.
+        val raw = "x".repeat(115) + SOURCE.password + " refused"
+        reporter.record(Failure.Guide("http://epg.example.test/guide.xml", raw))
+        val name = nextEntry().errorName!!
+
+        assertEquals(120, name.length)
+        assertFalse(name, name.contains("s3cr"))
+    }
+
+    private fun playback(engine: Engine, raw: String?, inBox: Boolean = false, catchup: Boolean = false, lost: Boolean = false) =
+        Failure.Playback(engine, raw, null, SceneSnapshot("BBC One", "UK", STREAM_URL, inBox, catchup), lost)
 
     companion object {
         const val NOW = 1_800_000_000_000L
