@@ -40,6 +40,16 @@ class UpdateProfileAttacher(
     private val updates: UpdateManager,
     private val scope: CoroutineScope,
 ) {
+    /**
+     * Its own connection pool that keeps nothing. On the shared pool, the profile download left an idle
+     * connection to github.com that GitHub had closed by the time the member pressed Update now; Core's
+     * client never retries (retryOnConnectionFailure off), so the APK download failed on it once with
+     * "unexpected end of stream" (seen on the emulator, 2026-10-14).
+     */
+    private val http = client.newBuilder()
+        .connectionPool(okhttp3.ConnectionPool(0, 1, java.util.concurrent.TimeUnit.SECONDS))
+        .build()
+
     @Volatile private var ready: File? = null
     @Volatile private var fetchedFor: String? = null
     private var started = false
@@ -68,7 +78,7 @@ class UpdateProfileAttacher(
     private fun fetch(url: String): File {
         val out = File(File(context.cacheDir, DIR).apply { mkdirs() }, FILE)
         out.delete()
-        client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+        http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
             check(resp.isSuccessful) { "HTTP ${resp.code}" }
             val bytes = resp.body.bytes()
             check(bytes.size in 1..MAX_BYTES) { "size ${bytes.size}" }
