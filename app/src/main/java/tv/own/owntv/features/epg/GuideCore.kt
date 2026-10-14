@@ -106,6 +106,9 @@ internal fun ProgrammeStripCanvas(
     reminderStarts: Set<Long>,
     /** How far the timeline is scrolled, shared by every row and the ruler. */
     scrollPx: Int,
+    // KevBox: the guide search's text (trimmed; null when the field is empty). A programme whose title
+    // contains it, in any case, gets an accent outline.
+    matchText: String? = null,
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val measurer = rememberTextMeasurer(cacheSize = 64)
@@ -118,6 +121,10 @@ internal fun ProgrammeStripCanvas(
     val rangeTemplate = stringResource(R.string.content_live_time_range_plain)
     val labels = remember(programmes, formatTime, rangeTemplate) {
         programmes.map { String.format(java.util.Locale.ROOT, rangeTemplate, formatTime(it.startMs), formatTime(it.stopMs)) }
+    }
+    // KevBox: which programmes match the guide search, worked out once per row rather than on every draw.
+    val matching = remember(programmes, matchText) {
+        if (matchText == null) emptySet() else programmes.indices.filterTo(HashSet()) { programmes[it].title.contains(matchText, ignoreCase = true) }
     }
     val recRed = Color(0xFFFF5B5B)
     val textColor = tv.own.owntv.ui.theme.StageColors.Text
@@ -181,6 +188,17 @@ internal fun ProgrammeStripCanvas(
                 focusRing(x, w, h, r)
             } else {
                 drawRoundRect(ink.copy(alpha = (if (isNow) 0.085f else 0.045f) * fade), Offset(x, 0f), Size(w, h), r)
+            }
+            // KevBox: a match for the guide search keeps an accent outline, focused or not. Unfocused it runs
+            // just inside the cell's edge. A focused cell is filled with the accent, so in dark the outline goes
+            // round its focus ring, a gap out; in light that ring is already the accent.
+            if (i in matching) {
+                if (!focused) {
+                    drawRoundRect(a.accent.copy(alpha = fade), Offset(x + px, px), Size(w - 2 * px, h - 2 * px), CornerRadius(r.x - px), style = Stroke(2 * px))
+                } else if (!palette.isLight) {
+                    val out = 4.5f * px
+                    drawRoundRect(a.accent, Offset(x - out, -out), Size(w + 2 * out, h + 2 * out), CornerRadius(r.x + out), style = Stroke(2 * px))
+                }
             }
             // Text starts at the visible part of a cell that began before the timeline's left edge.
             val tx = maxOf(x, 0f)

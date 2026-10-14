@@ -84,6 +84,8 @@ data class EpgUiState(
     val isError: Boolean = false,
     /** False when the user hasn't added any EPG source yet → the screen shows an "Add EPG" prompt. */
     val hasEpgSources: Boolean = true,
+    /** KevBox: with text in the guide's search, the headings over its groups (kevbox/live/GuideShowGroups.kt); empty otherwise. */
+    val headings: List<tv.own.owntv.kevbox.live.GuideHeading> = emptyList(),
 )
 
 /**
@@ -130,6 +132,10 @@ class EpgViewModel(
 
     /** The match scan itself — core's, so the television, the phone and the single-channel run agree. */
     private val autoMatcher = EpgAutoMatcher(channelDao, guideCandidates)
+
+    // KevBox: the show finder Search uses too, for the guide's own search. Built here rather than injected:
+    // this constructor already takes 22 parameters, the most Koin's viewModelOf accepts.
+    private val showSearch = tv.own.owntv.kevbox.live.ShowSearch(epgDao, channelDao, settings)
 
     // --- Recording, from the guide (Plan D, Feature A) ------------------------------------------
 
@@ -938,9 +944,18 @@ class EpgViewModel(
                 historyDao.getForProfileType(pid, MediaType.LIVE).mapTo(HashSet()) { it.itemId }
             else -> null
         }
+        // KevBox: the open category's rule, in one place for the name matches and the show matches below.
+        fun inCategory(ch: ChannelEntity): Boolean = when (filter) {
+            null, tv.own.owntv.core.live.LiveKey.All -> true
+            tv.own.owntv.core.live.LiveKey.Catchup -> ch.catchup
+            is tv.own.owntv.core.live.LiveKey.Folder ->
+                ch.categoryId == filter.id && (folderKey == null || cust.movedFromOrigin[CustomizeKeys.channel(ch)] != folderKey)
+            else -> ch.id in memberIds.orEmpty()
+        }
         // Heavy work — filter hidden, apply renames + manual EPG matches, sort, category-filter — runs off
         // the main thread (#3/#5) so a 50k-channel playlist never freezes the UI building the guide list.
-        val channels = withContext(Dispatchers.Default) {
+        // KevBox: with a query it also groups the channels and gives the headings (guideSearchGroups below).
+        val (channels, headings) = withContext(Dispatchers.Default) {
             val auto = rawChannels
                 .filter { CustomizeKeys.channel(it) !in cust.hiddenItems }
                 .filter {
@@ -960,14 +975,10 @@ class EpgViewModel(
                 // LIVE_TV, the old default, is the provider's order too (Channel number was the same thing).
                 SettingsRepository.GuideSort.LIVE_TV -> matched.sortedWith(byProvider)
             }.let { sorted ->
-                when (filter) {
-                    null, tv.own.owntv.core.live.LiveKey.All -> sorted
-                    tv.own.owntv.core.live.LiveKey.Catchup -> sorted.filter { it.catchup }
-                    is tv.own.owntv.core.live.LiveKey.Folder -> sorted.filter { ch ->
-                        ch.categoryId == filter.id && (folderKey == null || cust.movedFromOrigin[CustomizeKeys.channel(ch)] != folderKey)
-                    }
-                    else -> sorted.filter { it.id in memberIds.orEmpty() }
-                }
+                // KevBox: the category filter is inCategory above. Was a `when (filter)` here with the same branches.
+                val named = if (filter == null || filter == tv.own.owntv.core.live.LiveKey.All) sorted else sorted.filter { inCategory(it) }
+                if (q.isEmpty()) tv.own.owntv.kevbox.live.GuideGroups(named, emptyList())
+                else guideSearchGroups(q, named, playlistIds, cust, if (memberIds != null) emptySet() else hiddenCatIds, ::inCategory, now) // KevBox
             }
         }
         val stored = epgDao.countForSources(ids)
@@ -1011,6 +1022,7 @@ class EpgViewModel(
         _state.value = EpgUiState(
             channels = channels, windowStart = windowStart, windowEnd = windowEnd, now = now,
             loading = false, message = message, hasEpgSources = hasEpg,
+            headings = headings, // KevBox: the guide search's groups
         )
 
         tv.own.owntv.core.CorePerf.log {
@@ -1024,6 +1036,30 @@ class EpgViewModel(
         // A second background pass used to merge the older catch-up history in afterwards, because
         // the blocking pass could not afford the whole lookback. Both are gone: a row is read for
         // the full window in one query, so the history is simply there when the row is drawn.
+    }
+
+    /**
+     * KevBox: the guide's search finds a channel by its name or by a show it carries (Kevin, 2026-10-14).
+     * [named] is today's result, already through the hidden, rename and category filters. The shows come
+     * from the finder Search uses, which leaves out hidden channels and [hiddenCategoryIds] and applies
+     * renames; each show's channel then gets its manual guide match as [applyEpgMatches] gives it, and
+     * [inCategory] keeps out any channel the open category does not hold.
+     */
+    private suspend fun guideSearchGroups(
+        q: String,
+        named: List<ChannelEntity>,
+        playlistIds: List<Long>,
+        cust: tv.own.owntv.core.customize.SectionCustomizations,
+        hiddenCategoryIds: Set<Long>,
+        inCategory: (ChannelEntity) -> Boolean,
+        nowMs: Long,
+    ): tv.own.owntv.kevbox.live.GuideGroups {
+        val found = showSearch.find(q, playlistIds, cust, hiddenCategoryIds, nowMs)
+        val resolver = cust.epgMatchResolver
+        fun matched(show: tv.own.owntv.core.content.ProgrammeSearchResult) =
+            resolver.epgIdFor(show.channel)?.let { show.copy(channel = show.channel.copy(epgChannelId = it)) } ?: show
+        val shows = tv.own.owntv.kevbox.live.ShowMatches(found.onNow.map(::matched), found.later.map(::matched))
+        return tv.own.owntv.kevbox.live.groupGuideChannels(named, shows, inCategory)
     }
 
     /** Apply per-channel manual EPG overrides to the auto-matched guide list. */
