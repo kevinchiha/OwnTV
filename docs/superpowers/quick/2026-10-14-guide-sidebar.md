@@ -78,3 +78,4 @@ A new `app/src/main/java/tv/own/owntv/kevbox/live/GuideSidebar.kt` (with its tes
 **Verify:** `GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew compileStandardDebugKotlin`
 
 ## Build log
+- baseline: gate green (tests, lint, check-divergence 0 failures)
