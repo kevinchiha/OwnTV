@@ -1,0 +1,1 @@
+fix-3: done. No Interfaces deviations. Additive only: MiniGuideMemory is now internal with refresh(sample, load), the seam the new tests use; FavouritesPage and HistoryPage take onLeave (default {}), which MoreScreen wires to backToSheet.

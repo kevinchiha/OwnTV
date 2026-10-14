@@ -204,11 +204,15 @@ fun MoreScreen(
                 MoreItem.FAVORITES -> FavouritesPage(
                     vm = vm, setEntry = setEntry,
                     onPlayChannel = onPlayChannel, onPlayMovie = { onPlayMovie(it, 0L) }, onOpenSeries = onOpenSeries,
+                    // KevBox: the last favourite removed sends focus back to the sheet (AC-31).
+                    onLeave = backToSheet,
                 )
                 MoreItem.HISTORY -> HistoryPage(
                     vm = vm, setEntry = setEntry,
                     onClearHistory = { settingsVm.clearWatchHistory(it) },
                     onPlayChannel = onPlayChannel, onPlayMovie = onPlayMovie, onPlayEpisode = onPlayEpisode, onOpenSeries = onOpenSeries,
+                    // KevBox: a cleared or emptied history sends focus back to the sheet (AC-29).
+                    onLeave = backToSheet,
                 )
                 // KevBox: Backup and Local sync pages removed; Account shows the email and Sign out.
                 MoreItem.ACCOUNT -> tv.own.owntv.kevbox.ui.KevBoxAccountMorePage(entry = pageTarget)
