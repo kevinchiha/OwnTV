@@ -3,7 +3,7 @@ package tv.own.owntv.features.shell
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import tv.own.owntv.kevbox.settings.LiveOnlySettings
+import tv.own.owntv.kevbox.settings.LiveOnlySettings // KevBox: the hide list the filters below read (AC-12).
 import java.io.File
 
 /**
