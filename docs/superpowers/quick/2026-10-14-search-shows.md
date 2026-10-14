@@ -107,3 +107,4 @@ New files under `app/src/main/java/tv/own/owntv/kevbox/live/` (with tests), plus
 - Task 2: landed (f1899cb6). Outside Files: tools/i18n/safe_literals.txt (lazy keys h-onnow, h-later classified technical). Strings kevbox_shows_on_now / kevbox_shows_next_24_hours exist for Task 3; card body text now says next 24 hours.
 - Task 3: started at ea40d387
 - Task 3: landed (0a468959). Headings drawn inside the first row's lazy item (indices stay channel positions). EpgViewModel builds its own ShowSearch (Koin viewModelOf caps at 22 params). One-letter query: names only.
+- Task 4: started at 48d8deaf
