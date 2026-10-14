@@ -86,6 +86,8 @@ data class EpgUiState(
     val hasEpgSources: Boolean = true,
     /** KevBox: with text in the guide's search, the headings over its groups (kevbox/live/GuideShowGroups.kt); empty otherwise. */
     val headings: List<tv.own.owntv.kevbox.live.GuideHeading> = emptyList(),
+    /** KevBox: the trimmed query this load looked for shows with (the grid outlines its matches); null under two characters. */
+    val matchText: String? = null,
 )
 
 /**
@@ -967,18 +969,21 @@ class EpgViewModel(
             // Catch-up first, Favourites first. The last two only float those channels to the top.
             val byAlpha = compareBy<ChannelEntity> { it.name.lowercase() }
             val byProvider = compareBy<ChannelEntity>({ it.sourceId }, { it.sortOrder }, { it.name.lowercase() })
-            when (sortGuideMode) {
-                SettingsRepository.GuideSort.ALPHA -> matched.sortedWith(byAlpha)
-                SettingsRepository.GuideSort.PROVIDER -> matched.sortedWith(byProvider)
-                SettingsRepository.GuideSort.CATCHUP -> matched.sortedWith(compareByDescending<ChannelEntity> { it.catchup }.then(byProvider))
-                SettingsRepository.GuideSort.FAVORITES -> matched.sortedWith(compareByDescending<ChannelEntity> { it.id in favoriteIds }.then(byProvider))
+            // KevBox: the order is kept as guideOrder so the guide search's On now group follows it too.
+            // Was matched.sortedWith(...) in each branch below.
+            val guideOrder = when (sortGuideMode) {
+                SettingsRepository.GuideSort.ALPHA -> byAlpha // KevBox
+                SettingsRepository.GuideSort.PROVIDER -> byProvider // KevBox
+                SettingsRepository.GuideSort.CATCHUP -> compareByDescending<ChannelEntity> { it.catchup }.then(byProvider) // KevBox
+                SettingsRepository.GuideSort.FAVORITES -> compareByDescending<ChannelEntity> { it.id in favoriteIds }.then(byProvider) // KevBox
                 // LIVE_TV, the old default, is the provider's order too (Channel number was the same thing).
-                SettingsRepository.GuideSort.LIVE_TV -> matched.sortedWith(byProvider)
-            }.let { sorted ->
+                SettingsRepository.GuideSort.LIVE_TV -> byProvider // KevBox
+            }
+            matched.sortedWith(guideOrder).let { sorted -> // KevBox: guideOrder above
                 // KevBox: the category filter is inCategory above. Was a `when (filter)` here with the same branches.
                 val named = if (filter == null || filter == tv.own.owntv.core.live.LiveKey.All) sorted else sorted.filter { inCategory(it) }
                 if (q.isEmpty()) tv.own.owntv.kevbox.live.GuideGroups(named, emptyList())
-                else guideSearchGroups(q, named, playlistIds, cust, if (memberIds != null) emptySet() else hiddenCatIds, ::inCategory, now) // KevBox
+                else guideSearchGroups(q, named, playlistIds, cust, if (memberIds != null) emptySet() else hiddenCatIds, ::inCategory, guideOrder, now) // KevBox
             }
         }
         val stored = epgDao.countForSources(ids)
@@ -1023,6 +1028,8 @@ class EpgViewModel(
             channels = channels, windowStart = windowStart, windowEnd = windowEnd, now = now,
             loading = false, message = message, hasEpgSources = hasEpg,
             headings = headings, // KevBox: the guide search's groups
+            // KevBox: the text the shows were found with, so the outlines always match the rows and headings.
+            matchText = q.takeIf { it.length >= tv.own.owntv.kevbox.live.SHOW_QUERY_MIN },
         )
 
         tv.own.owntv.core.CorePerf.log {
@@ -1044,6 +1051,10 @@ class EpgViewModel(
      * from the finder Search uses, which leaves out hidden channels and [hiddenCategoryIds] and applies
      * renames; each show's channel then gets its manual guide match as [applyEpgMatches] gives it, and
      * [inCategory] keeps out any channel the open category does not hold.
+     *
+     * KevBox: every channel keeps its own shows (find's onePerFeed off): an HD and an SD copy on one guide id
+     * both get their row, and a copy inside the open category is not lost to one outside it. The On now
+     * group is put in [guideOrder], the grid's own order; Next 24 hours stays by earliest start.
      */
     private suspend fun guideSearchGroups(
         q: String,
@@ -1052,13 +1063,16 @@ class EpgViewModel(
         cust: tv.own.owntv.core.customize.SectionCustomizations,
         hiddenCategoryIds: Set<Long>,
         inCategory: (ChannelEntity) -> Boolean,
+        guideOrder: Comparator<ChannelEntity>, // KevBox: the grid's order
         nowMs: Long,
     ): tv.own.owntv.kevbox.live.GuideGroups {
-        val found = showSearch.find(q, playlistIds, cust, hiddenCategoryIds, nowMs)
+        val found = showSearch.find(q, playlistIds, cust, hiddenCategoryIds, nowMs, onePerFeed = false) // KevBox: each copy keeps its row
         val resolver = cust.epgMatchResolver
         fun matched(show: tv.own.owntv.core.content.ProgrammeSearchResult) =
             resolver.epgIdFor(show.channel)?.let { show.copy(channel = show.channel.copy(epgChannelId = it)) } ?: show
-        val shows = tv.own.owntv.kevbox.live.ShowMatches(found.onNow.map(::matched), found.later.map(::matched))
+        // KevBox: On now in the grid's own order (guideOrder); Next 24 hours stays by start.
+        val onNow = found.onNow.map(::matched).sortedWith(compareBy(guideOrder) { it.channel })
+        val shows = tv.own.owntv.kevbox.live.ShowMatches(onNow, found.later.map(::matched))
         return tv.own.owntv.kevbox.live.groupGuideChannels(named, shows, inCategory)
     }
 

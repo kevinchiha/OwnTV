@@ -43,6 +43,8 @@
     <string name="kevbox_search_nothing_found_body">Search looks in channel names and in the program titles of the downloaded guide. Hidden categories are not searched.</string>
     <!-- Search, the second tab under the field (the first is Channels): programs from the guide whose title matches, with their count after it. -->
     <string name="kevbox_search_tab_guide">TV guide</string>
+    <!-- Search key hint, after "▲", while the Channels / TV guide tabs are up: ▲ from the top row goes to the tabs. -->
+    <string name="kevbox_key_tabs">Tabs</string>
     <!-- Search's TV guide tab, and the Live TV guide grid while its search has text: heading over the matching programs (or their channels) on now, shown in capitals with the count ("ON NOW · 3"). -->
     <string name="kevbox_shows_on_now">On now</string>
     <!-- Search's TV guide tab, and the Live TV guide grid while its search has text: heading over the matching programs (or their channels) that start in the next 24 hours, shown in capitals with the count. -->

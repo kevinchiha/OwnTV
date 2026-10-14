@@ -22,6 +22,12 @@ import tv.own.owntv.core.settings.SettingsRepository
 /** How far past now a show may start and still be found. */
 const val SHOW_WINDOW_MS = 24 * 60 * 60_000L
 
+/**
+ * The shortest query that looks for shows. One letter matches nearly every title in the guide; it would
+ * read thousands of rows to say nothing useful.
+ */
+const val SHOW_QUERY_MIN = 2
+
 /** The shows found for a query: on now, in channel order, and starting later, by start time. */
 data class ShowMatches(
     val onNow: List<ProgrammeSearchResult>,
@@ -53,6 +59,15 @@ fun splitShows(found: List<ProgrammeSearchResult>, nowMs: Long): ShowMatches {
 }
 
 /**
+ * Each show in [keyed] paired with the guide id its channel reads. With [onePerFeed], a show carried by
+ * two channels on the same guide id (an HD and an SD copy, or two playlists) is kept on the first
+ * channel only, as core's search does; without it, every channel keeps its own copy.
+ */
+fun keepOnePerFeed(keyed: List<Pair<String, ProgrammeSearchResult>>, onePerFeed: Boolean): List<ProgrammeSearchResult> =
+    (if (onePerFeed) keyed.distinctBy { (key, show) -> Triple(key, show.programme.startMs, show.programme.title) } else keyed)
+        .map { it.second }
+
+/**
  * Looks up shows by title in the stored guide and pins each to a channel the profile may see.
  *
  * The mapping copies core's SearchReader (programmes), so a show found here sits on the same channel,
@@ -68,6 +83,9 @@ class ShowSearch(
      * Shows whose title contains [query] (any case), on now or starting within [SHOW_WINDOW_MS] of
      * [nowMs], on a channel from [liveSourceIds] that is neither hidden in [cust] nor in one of
      * [hiddenCategoryIds]. Channels keep their Customize names.
+     *
+     * [onePerFeed]: a show on a guide id two channels read is listed on the first channel only. Right
+     * for Search's list of shows; the guide sets it false, so each copy of a channel gets its row.
      */
     suspend fun find(
         query: String,
@@ -75,15 +93,16 @@ class ShowSearch(
         cust: SectionCustomizations,
         hiddenCategoryIds: Set<Long>,
         nowMs: Long,
+        onePerFeed: Boolean = true,
     ): ShowMatches {
         val text = query.trim()
-        // One letter matches nearly every title in the guide; it would read thousands of rows to say nothing useful.
-        if (text.length < MIN_QUERY || liveSourceIds.isEmpty()) return ShowMatches.EMPTY
+        if (text.length < SHOW_QUERY_MIN || liveSourceIds.isEmpty()) return ShowMatches.EMPTY
         // The stored times are before any guide shift, so the window is widened on both sides to keep
         // a shifted channel's rows; the exact window is applied after the shift, on the user's clock.
         val rows = epgDao.searchTitles(text, nowMs - SHIFT_SLACK_MS, nowMs + SHOW_WINDOW_MS + SHIFT_SLACK_MS, ROWS)
         if (rows.isEmpty()) return ShowMatches.EMPTY
-        val byKey = rows.groupBy { it.epgChannelId }
+        // Keyed as epgKeyOf keys a channel, trimmed and lower-cased; byEpgKeys compares LOWER(TRIM(...)) too.
+        val byKey = rows.groupBy { it.epgChannelId.trim().lowercase() }
         // A channel the user matched to a guide by hand does not carry that guide's id, so it is found
         // by the tail of its Customize key (its provider id or its name) instead.
         val matchedTails = cust.epgMatches
@@ -92,7 +111,7 @@ class ShowSearch(
         val candidates = byKey.keys.toList().chunked(KEY_CHUNK).flatMap { channelDao.byEpgKeys(liveSourceIds, it) } +
             matchedTails.chunked(KEY_CHUNK).flatMap { channelDao.byRemoteIdsOrNames(liveSourceIds, it) }
         val globalShift = settings.epgOffsetMinutes.first()
-        val found = candidates
+        val keyed = candidates
             .distinctBy { it.id }
             .filter { CustomizeKeys.channel(it) !in cust.hiddenItems && (it.categoryId == null || it.categoryId !in hiddenCategoryIds) }
             .sortedWith(compareBy({ liveSourceIds.indexOf(it.sourceId) }, { it.sortOrder }))
@@ -103,15 +122,10 @@ class ShowSearch(
                 EpgShift.apply(EpgDedupe.collapse(byKey[key].orEmpty()), shift)
                     .map { key to ProgrammeSearchResult(it, named) }
             }
-            // One feed carried by two playlists is one programme, as in core: the first channel keeps it.
-            .distinctBy { (key, show) -> Triple(key, show.programme.startMs, show.programme.title) }
-            .map { it.second }
-        return splitShows(found, nowMs)
+        return splitShows(keepOnePerFeed(keyed, onePerFeed), nowMs)
     }
 
     private companion object {
-        const val MIN_QUERY = 2
-
         /** The largest guide shift still allowed for when reading stored times (core uses the same). */
         const val SHIFT_SLACK_MS = 2 * 60 * 60_000L
 

@@ -64,6 +64,32 @@ class ShowSearchTest {
     }
 
     @Test
+    fun twoChannelsOnOneGuideIdKeepTheShowOnTheFirstOnlyWhenOnePerFeed() {
+        val hd = show(1, "News", now - hour, now + hour)
+        val sd = show(2, "News", now - hour, now + hour)
+        val keyed = listOf("news.fr" to hd, "news.fr" to sd)
+
+        assertEquals(listOf(hd), keepOnePerFeed(keyed, onePerFeed = true))
+        assertEquals(listOf(hd, sd), keepOnePerFeed(keyed, onePerFeed = false))
+    }
+
+    @Test
+    fun withoutOnePerFeedEachChannelGetsItsRowAndARepeatOnOneChannelIsStillDropped() {
+        val hd = show(1, "News", now - hour, now + hour)
+        val sd = show(2, "News", now - hour, now + hour)
+        val sdAgain = show(2, "News", now - hour, now + hour)
+        val hdLater = show(1, "News", now + 2 * hour, now + 3 * hour)
+        val sdLater = show(2, "News", now + 2 * hour, now + 3 * hour)
+        val keyed = listOf("news.fr" to hd, "news.fr" to sd, "news.fr" to sdAgain, "news.fr" to hdLater, "news.fr" to sdLater)
+
+        val split = splitShows(keepOnePerFeed(keyed, onePerFeed = false), now)
+
+        assertEquals(listOf(hd, sd), split.onNow)
+        assertEquals(listOf(hdLater, sdLater), split.later)
+        assertEquals(setOf(1L, 2L), split.channelIds)
+    }
+
+    @Test
     fun emptyHasNoShows() {
         assertEquals(0, ShowMatches.EMPTY.size)
         assertEquals(emptySet<Long>(), ShowMatches.EMPTY.channelIds)

@@ -843,9 +843,10 @@ fun EpgScreen(
                     // The number column fits the longest channel number (38 = the mockup's three digits).
                     val numberWidth = maxOf(38f, (state.channels.maxOfOrNull { it.number?.toString()?.length ?: 0 } ?: 0) * 11f).mpx
                     // KevBox: the guide search's group headings by the row they sit above, and the text that
-                    // outlines matching shows (null with the field empty, so the grid draws as before).
+                    // outlines matching shows: the query the load used (null under two letters, so the grid
+                    // draws as before), never the field's live text, so outlines, rows and headings agree.
                     val headingAt = remember(state.headings) { state.headings.associateBy { it.firstIndex } }
-                    val matchText = query.trim().takeIf { it.isNotEmpty() }
+                    val matchText = state.matchText // KevBox: the loaded query
                     GuideRuler(
                         windowStart = state.windowStart, windowEnd = state.windowEnd, now = liveNow, scrollPx = scrollPx,
                         modifier = Modifier.padding(start = gx).width(timelineW).height(40.mpx),
@@ -1259,7 +1260,7 @@ private fun GuideGroupHeading(heading: tv.own.owntv.kevbox.live.GuideHeading, fi
     )
     val sep = tv.own.owntv.features.settings.dotSeparator()
     Text(
-        label.uppercase(java.util.Locale.getDefault()) + sep + heading.count.toString(),
+        label.uppercase(androidx.compose.ui.text.intl.Locale.current.platformLocale) + sep + heading.count.toString(), // KevBox: as GuideStage.kt
         style = stageText(12.5f, 800, 0.13.em), color = StageColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis,
         modifier = Modifier.padding(start = 8.mpx, top = if (first) 0.mpx else 18.mpx, bottom = 8.mpx),
     )

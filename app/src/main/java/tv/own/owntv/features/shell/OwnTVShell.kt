@@ -998,11 +998,14 @@ fun OwnTVShell(
     var shortcutHoldJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // KevBox: holding Back also opens the box's channel full screen, as OK on it does, wherever focus sits
     // on Live TV or Search (kevbox/live/HoldBack.kt). Every shell dialog counts, the avatar ones included.
-    val holdOpensBox = tv.own.owntv.kevbox.live.holdBackOpensBox(
-        playerIdle = playerMode == PlayerMode.NONE, section = selectedSection, boxSection = liveVideoStage.boxSection,
+    // KevBox: a function, so the 600 ms hold asks again when it fires, with the state as it is then.
+    val sectionNow by androidx.compose.runtime.rememberUpdatedState(selectedSection)
+    fun holdOpensBoxNow() = tv.own.owntv.kevbox.live.holdBackOpensBox(
+        playerIdle = playerMode == PlayerMode.NONE, section = sectionNow, boxSection = liveVideoStage.boxSection,
         hasBoxChannel = liveVideoStage.boxChannel != null,
         dialogOpen = showExit || showAvatarPicker || showAvatarChooser || showAvatarFilePicker || showAvatarRemote || showPlaylistPicker,
     )
+    val holdOpensBox = holdOpensBoxNow() // KevBox
     val longPressBackArmed = (playerMode == PlayerMode.MINI && !showExit && !showAvatarPicker && !showPlaylistPicker) ||
         holdOpensBox // KevBox: the box's hold, above
     // Media keys (§8 tier 3) act on the docked window wherever focus is — but only if nothing nearer
@@ -1044,13 +1047,15 @@ fun OwnTVShell(
                             backHoldJob = scope.launch {
                                 kotlinx.coroutines.delay(600)
                                 if (holdOpensBox) {
-                                    // KevBox: the box's channel, through OK's path (guidePlayChannel). A box
-                                    // emptied or a player opened during the hold leaves Back as it was. Live
-                                    // TV notes it as the guide's tuned channel first, as its OK does, so Back
-                                    // from full screen lands on its row.
-                                    val boxed = liveVideoStage.boxChannel?.takeIf { playerMode == PlayerMode.NONE } ?: return@launch
+                                    // KevBox: the box's channel, through OK's path (guidePlayChannel). The rule is
+                                    // asked again now: a box emptied or moved, another section, a dialog or a
+                                    // player opened during the hold does nothing, and the release runs a normal
+                                    // Back. Live TV notes it as the guide's tuned channel first, as its OK does,
+                                    // so Back from full screen lands on its row.
+                                    if (!holdOpensBoxNow()) return@launch // KevBox: asked again
+                                    val boxed = liveVideoStage.boxChannel ?: return@launch
                                     backLongFired = true
-                                    if (selectedSection == MainSection.LIVE_TV) epgVm.noteChannelTuned(boxed)
+                                    if (sectionNow == MainSection.LIVE_TV) epgVm.noteChannelTuned(boxed)
                                     guidePlayChannel(boxed, emptyList())
                                     return@launch
                                 }

@@ -121,3 +121,4 @@ New files under `app/src/main/java/tv/own/owntv/kevbox/live/` (with tests), plus
 - review: minor SearchScreen.kt:644 "▲ Search" key hint now one step off: fix.
 - review: minor SearchScreen.kt:203-208 results.copy per recomposition makes both entry lists compare up to 500 rows per key press: fix.
 - review: minor SearchScreen.kt:305/307/502 changed lines 5-7 from a KevBox: comment: fix.
+- review fixes: all 10 findings fixed (lint locale, guide keeps every channel's shows via find(onePerFeed = false), hold Back re-checks when it fires, guide rows keyed trimmed lower-case, Search shows recompute on playlist change and catch errors, Search waits for both lists before "Nothing found" or a tab pick, outline from the loaded query, On now in the grid's order, ▲ Tabs hint, `shown` remembered, KevBox markers). Outside Files: tools/i18n/safe_literals.txt (two more empty literals in SearchViewModel.kt). Gate green.
