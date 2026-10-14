@@ -180,6 +180,8 @@ fun SearchScreen(
     val metadataMode by vm.metadataMode.collectAsStateWithLifecycle()
     val nowPlaying by liveVm.nowPlaying.collectAsStateWithLifecycle()
     val nowNext by liveVm.nowNext.collectAsStateWithLifecycle()
+    // KevBox: Live TV's Preview setting is no longer read here. Search plays a channel only when OK puts it in
+    // the box, never on focus, so the setting that turns focus previews on or off has nothing to switch.
     val singleSessionBlocked by liveVm.previewBlockedSingleSession.collectAsStateWithLifecycle()
 
     val fieldFocus = remember { FocusRequester() }
@@ -453,7 +455,7 @@ fun SearchScreen(
                             SearchRow(
                                 title = name.name, line = AnnotatedString(line), tags = name.tags, mark = marks[ch.sourceId],
                                 onClick = { goTo(e) },
-                                onLongClick = { openInGuide(e) }, // KevBox
+                                onLongClick = { openInGuide(e) }, // KevBox: Hold OK opens the channel in Live TV's guide
                                 leading = { LivePlate(ch.displayLogoUrl, 76.mpx, 54.mpx) },
                                 modifier = rowModifier.onPreviewKeyEvent { k ->
                                     // ▶ reaches the schedule under the preview, as on Live TV.
@@ -476,7 +478,7 @@ fun SearchScreen(
                                 ),
                                 tags = emptyList(), mark = marks[ch.sourceId],
                                 onClick = { goTo(e) },
-                                onLongClick = { openInGuide(e) }, // KevBox
+                                onLongClick = { openInGuide(e) }, // KevBox: Hold OK opens the channel in Live TV's guide
                                 leading = { LivePlate(ch.displayLogoUrl, 76.mpx, 54.mpx) },
                                 modifier = rowModifier,
                             )
