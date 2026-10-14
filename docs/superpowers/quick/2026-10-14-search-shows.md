@@ -104,3 +104,4 @@ New files under `app/src/main/java/tv/own/owntv/kevbox/live/` (with tests), plus
 - Task 1: started at 7dd93b3b
 - Task 1: landed (ec2c012e)
 - Task 2: started at 53f5fe79
+- Task 2: landed (f1899cb6). Outside Files: tools/i18n/safe_literals.txt (lazy keys h-onnow, h-later classified technical). Strings kevbox_shows_on_now / kevbox_shows_next_24_hours exist for Task 3; card body text now says next 24 hours.
