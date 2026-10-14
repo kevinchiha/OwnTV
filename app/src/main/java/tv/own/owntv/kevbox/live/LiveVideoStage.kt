@@ -105,10 +105,11 @@ internal fun lerpRect(from: Rect, to: Rect, t: Float): Rect = Rect(
 )
 
 /**
- * True when leaving the player hands the stream back to the Live TV grid's box: full screen, opened
- * from Live TV with Live TV on screen, the live channel on ExoPlayer at the live edge (no catch-up
+ * True when leaving the player hands the stream back to a box: full screen, opened as a live channel
+ * with Live TV's grid or Search on screen, the channel on ExoPlayer at the live edge (no catch-up
  * archive, no rewind). Only then does Back keep the stream and shrink the video into the box; every
- * other exit stops it.
+ * other exit stops it. Search joined on 2026-10-14 (Kevin): OK there previews, OK again goes full
+ * screen, Back comes back to the results.
  */
 internal fun isBackToGrid(
     playerMode: PlayerMode,
@@ -118,8 +119,28 @@ internal fun isBackToGrid(
     catchupActive: Boolean,
     rewound: Boolean,
 ): Boolean = playerMode == PlayerMode.FULLSCREEN &&
-    section == MainSection.LIVE_TV && zapSource == MainSection.LIVE_TV &&
+    (section == MainSection.LIVE_TV || section == MainSection.SEARCH) && zapSource == MainSection.LIVE_TV &&
     liveOnExo && !catchupActive && !rewound
+
+/** What showing a section does to the box and the preview stream, from [sectionShown]. */
+data class SectionShown(val clearBox: Boolean, val stopPreview: Boolean)
+
+/**
+ * The shell shows [section] with the player [playerIdle] or not, and the box filled by [boxSection]
+ * (null for an empty box). The box's own screen keeps it. Any other screen empties it, and stops the
+ * stream unless the box was Live TV's and the new screen is one of the two that share its preview
+ * engine (Live TV, the TV Guide page): that was the rule before Search had a box. With no box, every
+ * screen but those two stops the preview.
+ */
+fun sectionShown(section: MainSection, playerIdle: Boolean, boxSection: MainSection?): SectionShown {
+    if (!playerIdle) return SectionShown(clearBox = false, stopPreview = false)
+    if (boxSection != null && boxSection == section) return SectionShown(clearBox = false, stopPreview = false)
+    val liveScreen = section == MainSection.LIVE_TV || section == MainSection.EPG
+    return SectionShown(
+        clearBox = boxSection != null,
+        stopPreview = !liveScreen || boxSection == MainSection.SEARCH,
+    )
+}
 
 /** The clock reports and frames share: Choreographer frame times are on the System.nanoTime base. */
 internal fun stageNowMs(): Long = System.nanoTime() / 1_000_000L
@@ -154,11 +175,39 @@ class LiveVideoStage(durationMs: Int = 320) {
     private var bridgeArmed by mutableStateOf(false)
 
     /**
-     * The channel in the grid's box, kept here so it outlives the grid while full screen shows. The
-     * grid writes it on OK; the shell sets it to the playing channel on Back to the grid and clears it
-     * on any other exit, or when Live TV closes.
+     * The channel in the box, kept here so it outlives the screen while full screen shows. Live TV's
+     * grid and Search each write it on OK ([putInBox]); the shell sets it to the playing channel on Back
+     * and clears it on any other exit, or when the screen that filled it closes ([sectionShown]).
      */
     var boxChannel: ChannelEntity? by mutableStateOf(null)
+        private set
+
+    /** The screen that filled the box: Live TV or Search. Null with an empty box. */
+    var boxSection: MainSection? by mutableStateOf(null)
+        private set
+
+    fun putInBox(channel: ChannelEntity, section: MainSection) {
+        boxChannel = channel
+        boxSection = section
+    }
+
+    fun clearBox() {
+        boxChannel = null
+        boxSection = null
+    }
+
+    /**
+     * Hand the box from screen [from] to screen [to], stream and all, when [from] filled it (and, with
+     * [onlyChannelId], only when that is the channel in it). True when it moved. Holding OK on Search's
+     * channel takes it to Live TV's grid, and the Back that returns to Search brings the grid's box back.
+     */
+    fun moveBox(from: MainSection, to: MainSection, onlyChannelId: Long? = null): Boolean {
+        val ch = boxChannel ?: return false
+        if (boxSection != from) return false
+        if (onlyChannelId != null && ch.id != onlyChannelId) return false
+        boxSection = to
+        return true
+    }
 
     /** The window's rectangle now, in window pixels; null while there is no window. */
     var current: Rect? by mutableStateOf(null)
