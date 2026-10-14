@@ -4,8 +4,12 @@ import android.content.ContextWrapper
 import io.sentry.Breadcrumb
 import io.sentry.SentryEvent
 import io.sentry.android.core.SentryAndroidOptions
+import io.sentry.protocol.Device
+import io.sentry.protocol.Mechanism
 import io.sentry.protocol.Message
+import io.sentry.protocol.Response
 import io.sentry.protocol.SentryException
+import io.sentry.protocol.SentryThread
 import io.sentry.protocol.User
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,6 +40,75 @@ class KevBoxSentryTest {
         assertEquals(1, calls)
         assertEquals(DSN, options.dsn)
         assertEquals("production", options.environment)
+    }
+
+    @Test
+    fun `a key fills the secret words from the stored session before Sentry starts`() {
+        var seenAtInit: Set<String>? = null
+        val started = KevBoxSentry.start(
+            ContextWrapper(null),
+            DSN,
+            init = { _, _ -> seenAtInit = SecretWords.current() },
+            startupSecrets = { setOf("startup-refresh-token") },
+        )
+
+        assertTrue(started)
+        assertTrue(seenAtInit.orEmpty().contains("startup-refresh-token"))
+    }
+
+    @Test
+    fun `a failing secret read never stops Sentry from starting`() {
+        var calls = 0
+        val started = KevBoxSentry.start(
+            ContextWrapper(null),
+            DSN,
+            init = { _, _ -> calls++ },
+            startupSecrets = { throw IllegalStateException("keystore") },
+        )
+
+        assertTrue(started)
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun `scrubber cleans thread names, exception mechanism data and contexts`() {
+        val password = "S3cretPass"
+        val address = "http://panel.example:8080/live/kevuser42/$password/1.ts"
+        val event = SentryEvent().apply {
+            threads = listOf(SentryThread().apply { name = "OkHttp $address" })
+            exceptions = listOf(
+                SentryException().apply {
+                    value = "boom"
+                    mechanism = Mechanism().apply {
+                        description = "while opening $address"
+                        data = mapOf("url" to address, "attempt" to 2)
+                    }
+                },
+            )
+            contexts.put("player", mapOf("stream" to address, "tries" to listOf("again $address"), "ok" to true))
+            contexts.put("note", "login $password")
+            contexts.setDevice(Device().apply { name = "Kevin's Fire TV"; model = "AFTMM" })
+            contexts.setResponse(Response().apply { statusCode = 404 })
+        }
+
+        val out = KevBoxSentry.scrub(event, setOf(password))
+
+        val texts = listOfNotNull(
+            out.threads!!.single().name,
+            out.exceptions!!.single().mechanism!!.description,
+            out.exceptions!!.single().mechanism!!.data!!["url"]?.toString(),
+            out.contexts["player"].toString(),
+            out.contexts["note"].toString(),
+        )
+        assertEquals(5, texts.size)
+        listOf("panel.example", password).forEach { secret ->
+            texts.forEach { assertFalse("$secret in $it", it.contains(secret, ignoreCase = true)) }
+        }
+        assertEquals(2, out.exceptions!!.single().mechanism!!.data!!["attempt"])
+        assertEquals(true, (out.contexts["player"] as Map<*, *>)["ok"])
+        assertNull(out.contexts.device!!.name)
+        assertEquals("AFTMM", out.contexts.device!!.model)
+        assertNull(out.contexts.response)
     }
 
     @Test

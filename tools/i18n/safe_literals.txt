@@ -938,6 +938,7 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt	items
 1	json	app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt	next_id
 1	json	app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt	rejections
+1	json	app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt	solo
 1	json	app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt	user
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/errors/ErrorReporter.kt	full
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/errors/ErrorReporter.kt	preview

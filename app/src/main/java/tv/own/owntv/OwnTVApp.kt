@@ -128,10 +128,11 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         GlobalContext.get().get<tv.own.owntv.kevbox.release.UpdateProfileAttacher>().start()
         // KevBox: the usage check-in (every 6 hours while signed in) starts without holding up start-up.
         GlobalContext.get().get<tv.own.owntv.kevbox.usage.LiveCheckin>().start()
+        // KevBox: Sentry's user is the member's id (never the email) and its breadcrumbs are the reporter's entries.
+        // KevBox: bound before the watchers start the reporter, so the first entries become breadcrumbs too.
+        tv.own.owntv.kevbox.errors.KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)
         // KevBox: error reports to KevBox (players, channel-list sync, guide feeds); starts the reporter too.
         GlobalContext.get().get<tv.own.owntv.kevbox.errors.ErrorWatchers>().start()
-        // KevBox: Sentry's user is the member's id (never the email) and its breadcrumbs are the reporter's entries.
-        tv.own.owntv.kevbox.errors.KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)
         // KevBox: Cloudflare DNS-over-HTTPS on, once per install, unless the member set their own DNS.
         appScope.launch { runCatching { GlobalContext.get().get<tv.own.owntv.kevbox.network.DnsDefault>().applyOnce() } }
         // A chosen icon colour ("Later", the first-run pick, a restore) reaches the launcher when the app

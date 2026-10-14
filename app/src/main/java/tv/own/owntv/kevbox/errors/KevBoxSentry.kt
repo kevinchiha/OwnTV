@@ -9,6 +9,7 @@ import io.sentry.SentryLevel
 import io.sentry.SentryOptions
 import io.sentry.android.core.SentryAndroid
 import io.sentry.android.core.SentryAndroidOptions
+import io.sentry.protocol.Response
 import io.sentry.protocol.User
 import java.util.Date
 import kotlinx.coroutines.CoroutineScope
@@ -33,13 +34,23 @@ object KevBoxSentry {
     /**
      * Starts Sentry with [dsn]. Returns false, without calling [init], when [dsn] is blank (a
      * keyless build), and false when [init] throws, so start-up carries on either way.
+     *
+     * Before [init] it fills [SecretWords] from [startupSecrets]: Sentry sends the last run's
+     * freezes and native crashes while it starts, long before the reporter fills the set.
      */
     fun start(
         context: Context,
         dsn: String,
+        // Before init, so a trailing lambda still means init.
+        startupSecrets: (Context) -> Set<String> = ::startupSecretWords,
         init: (Context, Sentry.OptionsConfiguration<SentryAndroidOptions>) -> Unit = SentryAndroid::init,
     ): Boolean {
         if (dsn.isBlank()) return false
+        try {
+            SecretWords.set(startupSecrets(context))
+        } catch (_: Exception) {
+            // Patterns still scrub addresses, tokens and emails; the reporter fills the set later.
+        }
         return try {
             init(context, Sentry.OptionsConfiguration { options -> configure(options, dsn) })
             true
@@ -83,7 +94,8 @@ object KevBoxSentry {
         options.isEnableUserInteractionBreadcrumbs = false
         options.maxBreadcrumbs = MAX_BREADCRUMBS
 
-        // Scrub at send time, with the secrets the reporter keeps in memory (no disk read on a crash).
+        // Scrub at send time, with the secrets kept in memory (no disk read on a crash): filled by
+        // start from the stored session, then kept current by the reporter.
         options.beforeSend = SentryOptions.BeforeSendCallback { event, _ -> scrub(event, SecretWords.current()) }
         options.beforeBreadcrumb = SentryOptions.BeforeBreadcrumbCallback { breadcrumb, _ ->
             scrubBreadcrumb(breadcrumb, SecretWords.current())
@@ -92,8 +104,9 @@ object KevBoxSentry {
 
     /**
      * Runs [Scrubber.text] (no length cap) over every text an event carries: the message, each
-     * exception value, each breadcrumb, the tags and the extras. Drops the user's email, username
-     * and IP address and keeps the id (AC-6).
+     * exception value and mechanism, each thread name (OkHttp names its threads after the address it
+     * calls), each breadcrumb, the tags, the extras and the free-form contexts. Drops the user's
+     * email, username and IP address and keeps the id (AC-6).
      */
     fun scrub(event: SentryEvent, secrets: Collection<String>): SentryEvent {
         event.message?.let { message ->
@@ -101,7 +114,15 @@ object KevBoxSentry {
             message.message = clean(message.message, secrets)
             message.params = message.params?.map { clean(it, secrets).orEmpty() }
         }
-        event.exceptions?.forEach { it.value = clean(it.value, secrets) }
+        event.exceptions?.forEach { exception ->
+            exception.value = clean(exception.value, secrets)
+            exception.mechanism?.let { mechanism ->
+                mechanism.description = clean(mechanism.description, secrets)
+                mechanism.data = mechanism.data?.mapValues { (_, value) -> cleanDeep(value, secrets) }
+            }
+        }
+        event.threads?.forEach { it.name = clean(it.name, secrets) }
+        scrubContexts(event, secrets)
         event.breadcrumbs?.forEach { scrubBreadcrumb(it, secrets) }
         event.tags?.toMap()?.forEach { (key, value) -> event.setTag(key, clean(value, secrets).orEmpty()) }
         event.extras?.toMap()?.forEach { (key, value) -> cleanValue(value, secrets)?.let { event.setExtra(key, it) } }
@@ -139,6 +160,31 @@ object KevBoxSentry {
             auth.userId.collect { id -> Sentry.setUser(id?.let { User().apply { this.id = it } }) }
         }
         reporter.addListener { entry -> Sentry.addBreadcrumb(breadcrumbOf(entry)) }
+    }
+
+    /**
+     * Contexts set by code (maps, lists, text) are scrubbed whole. The SDK's own typed contexts carry
+     * device and app facts; of those only the device name can be personal, so it goes. A response
+     * block would hold an address and headers, so it goes too.
+     */
+    private fun scrubContexts(event: SentryEvent, secrets: Collection<String>) {
+        val contexts = event.contexts
+        contexts.remove(Response.TYPE)
+        contexts.device?.name = null
+        contexts.entrySet().toList().forEach { (key, value) ->
+            if (value is String || value is Map<*, *> || value is Collection<*> || value is Array<*>) {
+                cleanDeep(value, secrets)?.let { contexts.put(key, it) }
+            }
+        }
+    }
+
+    /** Scrubs text inside maps and lists at any depth; keys stay, numbers and booleans pass through. */
+    private fun cleanDeep(value: Any?, secrets: Collection<String>): Any? = when (value) {
+        null, is Number, is Boolean -> value
+        is Map<*, *> -> value.entries.associate { (key, inner) -> key.toString() to cleanDeep(inner, secrets) }
+        is Collection<*> -> value.map { cleanDeep(it, secrets) }
+        is Array<*> -> value.map { cleanDeep(it, secrets) }
+        else -> clean(value.toString(), secrets)
     }
 
     private fun scrubBreadcrumb(breadcrumb: Breadcrumb, secrets: Collection<String>): Breadcrumb {
