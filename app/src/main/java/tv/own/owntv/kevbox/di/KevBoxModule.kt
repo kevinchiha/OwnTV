@@ -29,6 +29,7 @@ import tv.own.owntv.kevbox.errors.PlaybackScene
 import tv.own.owntv.kevbox.errors.secretWordsOf
 import tv.own.owntv.kevbox.expiry.ExpiryMonitor
 import tv.own.owntv.kevbox.expiry.PrefsExpiryPrefs
+import tv.own.owntv.kevbox.network.ProxyInUse
 import tv.own.owntv.kevbox.playlist.CoreLocalSources
 import tv.own.owntv.kevbox.playlist.LocalSources
 import tv.own.owntv.kevbox.playlist.ManagedSourceStore
@@ -87,6 +88,12 @@ val kevboxModule = module {
             now = System::currentTimeMillis,
         )
     }
+    // The one proxy flag error entries and play notes report: Core's stored setting, which its
+    // ProxyConfigHolder routes every request by.
+    single {
+        val settings = get<SettingsRepository>()
+        ProxyInUse(config = { settings.proxyConfig.first() })
+    }
     single {
         val xtream = get<XtreamClient>()
         AccountCheck(fetch = { source -> xtream.fetchAccountStatus(source) }, now = System::currentTimeMillis)
@@ -96,9 +103,9 @@ val kevboxModule = module {
         val sessions = get<SessionStore>()
         val reconciler = get<PlaylistReconciler>()
         val sourceDao = get<SourceDao>()
-        val settings = get<SettingsRepository>()
         val connectivity = get<ConnectivityObserver>()
         val sender = get<ErrorSender>()
+        val proxyInUse = get<ProxyInUse>()
         val currentSource: suspend () -> SourceEntity? = { reconciler.currentSourceId()?.let { sourceDao.getById(it) } }
         ErrorReporter(
             queue = get(),
@@ -107,7 +114,7 @@ val kevboxModule = module {
             accountCheck = get(),
             currentSource = currentSource,
             sourceById = { id -> sourceDao.getById(id) },
-            proxyUsable = { settings.proxyConfig.first().usable },
+            proxyUsable = proxyInUse::current,
             isOnline = connectivity::isOnlineNow,
             // sessionVersion moves when a refresh rotates the tokens, which leaves the email and id alone.
             secretChanges = merge(auth.email, auth.userId, auth.sessionVersion, sourceDao.observeAll()),
