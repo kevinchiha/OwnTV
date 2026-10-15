@@ -127,6 +127,8 @@ internal fun ProgrammeStripCanvas(
         if (matchText == null) emptySet() else programmes.indices.filterTo(HashSet()) { programmes[it].title.contains(matchText, ignoreCase = true) }
     }
     val recRed = Color(0xFFFF5B5B)
+    val matchOrange = Color(0xFFFF9A3C) // KevBox: guide-search matches (Kevin, 2026-10-15)
+    val matchOnOrange = Color(0xFF221200) // KevBox: text on a focused match
     val textColor = tv.own.owntv.ui.theme.StageColors.Text
     val dimColor = tv.own.owntv.ui.theme.StageColors.Dim
     val ink = tv.own.owntv.ui.theme.StageColors.Ink
@@ -182,31 +184,29 @@ internal fun ProgrammeStripCanvas(
             val isNow = now in p.startMs until p.stopMs
             val fade = if (!focused && p.stopMs <= now) 0.5f else 1f
             val box = androidx.compose.ui.geometry.Rect(x, 0f, x + w, h)
+            // KevBox: a match for the guide search is orange, outline and fill, so it stands apart from the
+            // blue cursor (Kevin, 2026-10-15). Focused, the cell fills solid orange instead of the accent.
+            val isMatch = i in matching
+            val cellFill = if (isMatch) matchOrange else a.accent // KevBox: see isMatch
             if (focused) {
-                drawBoxShadow(a.accent.copy(alpha = 0.4f), 34 * px, r.x, dy = 12 * px, bounds = box)
-                drawRoundRect(a.accent, Offset(x, 0f), Size(w, h), r)
+                drawBoxShadow(cellFill.copy(alpha = 0.4f), 34 * px, r.x, dy = 12 * px, bounds = box)
+                drawRoundRect(cellFill, Offset(x, 0f), Size(w, h), r)
                 focusRing(x, w, h, r)
+            } else if (isMatch) {
+                // KevBox: an orange tint with an orange outline just inside the cell's edge.
+                drawRoundRect(matchOrange.copy(alpha = 0.22f * fade), Offset(x, 0f), Size(w, h), r)
+                drawRoundRect(matchOrange.copy(alpha = fade), Offset(x + px, px), Size(w - 2 * px, h - 2 * px), CornerRadius(r.x - px), style = Stroke(2 * px))
             } else {
                 drawRoundRect(ink.copy(alpha = (if (isNow) 0.085f else 0.045f) * fade), Offset(x, 0f), Size(w, h), r)
-            }
-            // KevBox: a match for the guide search keeps an accent outline, focused or not. Unfocused it runs
-            // just inside the cell's edge. A focused cell is filled with the accent, so in dark the outline goes
-            // round its focus ring, a gap out; in light that ring is already the accent.
-            if (i in matching) {
-                if (!focused) {
-                    drawRoundRect(a.accent.copy(alpha = fade), Offset(x + px, px), Size(w - 2 * px, h - 2 * px), CornerRadius(r.x - px), style = Stroke(2 * px))
-                } else if (!palette.isLight) {
-                    val out = 4.5f * px
-                    drawRoundRect(a.accent, Offset(x - out, -out), Size(w + 2 * out, h + 2 * out), CornerRadius(r.x + out), style = Stroke(2 * px))
-                }
             }
             // Text starts at the visible part of a cell that began before the timeline's left edge.
             val tx = maxOf(x, 0f)
             val textW = (x + w - tx - 28 * px).toInt()
             if (textW <= 4) return@forEachIndexed
-            val titleColor = if (focused) a.onAccent else textColor.copy(alpha = fade)
+            val onFill = if (isMatch) matchOnOrange else a.onAccent // KevBox: dark text on the orange fill
+            val titleColor = if (focused) onFill else textColor.copy(alpha = fade)
             val smallColor = if (focused) Color.Black.copy(alpha = 0.6f) else dimColor.copy(alpha = fade)
-            val iconColor = if (focused) a.onAccent else a.accent.copy(alpha = fade)
+            val iconColor = if (focused) onFill else a.accent.copy(alpha = fade) // KevBox: onFill, see above
             val title = measurer.measure(p.title, titleStyle.copy(color = titleColor), overflow = TextOverflow.Ellipsis, maxLines = 1, softWrap = false, constraints = Constraints(maxWidth = textW))
             drawText(title, topLeft = Offset(tx + 14 * px, 8 * px))
             // The small line: icons first, 8 apart, then the time.
@@ -218,7 +218,7 @@ internal fun ProgrammeStripCanvas(
                 drawStageGlyph(g, c, Offset(cx, lineTop + 2 * px), icon, filled)
                 cx += icon + 8 * px
             }
-            if (p.startMs in recordingStarts) glyph(OwnTVIcon.REC, if (focused) a.onAccent else recRed.copy(alpha = fade), filled = true)
+            if (p.startMs in recordingStarts) glyph(OwnTVIcon.REC, if (focused) onFill else recRed.copy(alpha = fade), filled = true) // KevBox: onFill
             if (p.startMs in reminderStarts) glyph(OwnTVIcon.BELL, iconColor)
             if (p.id in catchupIds) glyph(OwnTVIcon.REWIND, iconColor)
             val timeW = (x + w - 14 * px - cx).toInt()
