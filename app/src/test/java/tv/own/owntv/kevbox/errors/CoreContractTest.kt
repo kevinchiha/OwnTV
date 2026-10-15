@@ -56,10 +56,12 @@ class CoreContractTest {
         val previewPlaying: LivePreviewEngine.State = LivePreviewEngine.State.PLAYING
         val playerPlaying: KProperty1<OwnTVPlayer, StateFlow<Boolean>> = OwnTVPlayer::isPlaying
         val playerLive: KProperty1<OwnTVPlayer, Boolean> = OwnTVPlayer::isLiveContent
+        // isPlaying stays true through mpv's silent retries; buffering says no frame shows yet.
+        val playerBuffering: KProperty1<OwnTVPlayer, StateFlow<Boolean>> = OwnTVPlayer::buffering
 
         listOf(playerErrors, exoActive, previewErrors, reason, raw, result, finishedAt, failedMessage, lastError, playerFailure, previewFailure)
             .forEach { assertNotNull(it) }
-        listOf(previewState, previewPlaying, playerPlaying, playerLive)
+        listOf(previewState, previewPlaying, playerPlaying, playerLive, playerBuffering)
             .forEach { assertNotNull(it) }
         assertNotNull(lastStats)
         assertNotNull(accountStatus)

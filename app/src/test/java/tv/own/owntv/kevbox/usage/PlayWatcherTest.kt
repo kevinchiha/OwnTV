@@ -12,6 +12,7 @@ import org.junit.Test
 import tv.own.owntv.kevbox.errors.ErrorEntry
 import tv.own.owntv.kevbox.errors.PlaybackScene
 import tv.own.owntv.kevbox.errors.SceneSnapshot
+import tv.own.owntv.player.LivePreviewEngine
 
 class PlayWatcherTest {
 
@@ -60,6 +61,56 @@ class PlayWatcherTest {
             run.onView(playing(TWO), 59_000)
             assertTrue("after $end", run.proven(59_000))
         }
+    }
+
+    @Test
+    fun `a failure recorded while a proven run plays on proves it again 30 s later`() {
+        // The startup channel proves at 30 s, a channel-list sync fails at 60 s, the same channel plays on.
+        val run = PlayRun()
+        run.onView(playing(ONE), 0)
+        run.onView(playing(ONE), 30_000)
+        assertTrue(run.proven(30_000))
+
+        run.onView(playing(ONE), 60_000)
+        run.onFailureRecorded(60_000)
+        run.onView(playing(ONE), 89_999)
+        assertFalse(run.proven(89_999))
+        run.onView(playing(ONE), 90_000)
+        assertTrue(run.proven(90_000))
+        run.onView(playing(ONE), 200_000)
+        assertFalse(run.proven(200_000))
+    }
+
+    @Test
+    fun `a failure recorded with no run playing starts nothing`() {
+        val run = PlayRun()
+        run.onFailureRecorded(0)
+        assertFalse(run.running)
+        assertFalse(run.proven(60_000))
+    }
+
+    @Test
+    fun `the full-screen player counts only while a frame shows`() {
+        // Core keeps isPlaying true from the start of an mpv load through its retries; buffering is the tell.
+        assertFalse(playerLook(isPlaying = true, buffering = true, failed = false).playing)
+        assertFalse(playerLook(isPlaying = false, buffering = false, failed = false).playing)
+        assertTrue(playerLook(isPlaying = true, buffering = false, failed = false).playing)
+        assertTrue(playerLook(isPlaying = true, buffering = false, failed = true).failed)
+
+        val scene = SceneSnapshot(channel = "One", category = "News", streamUrl = ONE, inBox = false, catchup = false)
+        val stuck = playLookOf(scene, IDLE, playerLook(isPlaying = true, buffering = true, failed = false), playerLive = true)
+        val run = PlayRun()
+        run.onView(stuck.view, 0)
+        run.onView(stuck.view, 30_000)
+        assertFalse(run.proven(30_000))
+    }
+
+    @Test
+    fun `the Live engine counts only in its PLAYING state`() {
+        assertTrue(liveEngineLook(LivePreviewEngine.State.PLAYING, failed = false).playing)
+        listOf(LivePreviewEngine.State.IDLE, LivePreviewEngine.State.LOADING, LivePreviewEngine.State.ERROR)
+            .forEach { assertFalse("$it", liveEngineLook(it, failed = false).playing) }
+        assertTrue(liveEngineLook(LivePreviewEngine.State.PLAYING, failed = true).failed)
     }
 
     @Test

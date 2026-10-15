@@ -1,6 +1,7 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.usage
 
+import android.util.Log
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -58,7 +59,8 @@ data class PlayNote(val playedAt: String, val proxy: Boolean, val userId: String
  * play, so the server sees the TV watching again soon after an error.
  *
  * One note waits at a time, in memory only; a newer play replaces it. It goes again on the
- * 15-minute tick and on each app open, never in a tight loop. Nothing here logs.
+ * 15-minute tick and on each app open, never in a tight loop. The only log line is an exception's
+ * class name.
  */
 class PlayNotes(
     private val auth: KevBoxAuth,
@@ -88,14 +90,25 @@ class PlayNotes(
         scope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(PLAY_NOTE_TICK_MS)
-                sendPendingNow()
+                guarded { sendPendingNow() }
             }
         }
     }
 
-    /** A live channel just reached 30 seconds. Returns at once. */
+    /**
+     * A live channel just reached 30 seconds. Returns at once. The note's time and failure count are
+     * read now, and the proxy flag before waiting on a slow send, so a note never carries a later time.
+     */
     fun onPlayed() {
-        scope.launch(Dispatchers.IO) { played() }
+        val at = now()
+        val failuresNow = failures.get()
+        scope.launch(Dispatchers.IO) {
+            guarded {
+                val playedAt = playedAtText(at, zone())
+                val proxy = proxyFlag()
+                played(at, playedAt, proxy, failuresNow)
+            }
+        }
     }
 
     /** A failure was recorded: the next 30-second play sends at once, whatever the hour says. */
@@ -105,20 +118,32 @@ class PlayNotes(
 
     /** Each app open: the pending note, if any, goes again. Returns at once. */
     fun onForeground() {
-        scope.launch(Dispatchers.IO) { sendPendingNow() }
+        scope.launch(Dispatchers.IO) { guarded { sendPendingNow() } }
     }
 
     /** Sends the pending note, if any. Internal so tests drive it. */
     internal suspend fun sendPendingNow() = lock.withLock { sendLocked() }
 
-    private suspend fun played() = lock.withLock {
+    private suspend fun played(at: Long, playedAt: String, proxy: Boolean, failuresNow: Long) = lock.withLock {
         val member = auth.userId.value ?: return@withLock
         val last = if (member == lastSentFor) lastSentAtMs else null
-        val failuresNow = failures.get()
-        val at = now()
         if (!playNoteDue(last, failureSinceLastSent = failuresNow != failuresCleared, nowMs = at)) return@withLock
-        pending = PlayNote(playedAtText(at, zone()), proxyFlag(), member, failuresNow)
+        pending = PlayNote(playedAt, proxy, member, failuresNow)
         sendLocked()
+    }
+
+    /**
+     * The app scope has no exception handler, so anything thrown here would crash the app. A note
+     * that fails this way is lost; the next play builds another. The class name only reaches the log.
+     */
+    private suspend fun guarded(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(LOG_TAG, "play note failed: ${e.javaClass.simpleName}")
+        }
     }
 
     private suspend fun proxyFlag(): Boolean = try {
@@ -157,6 +182,7 @@ class PlayNotes(
     }
 
     private companion object {
+        const val LOG_TAG = "KevBoxUsage"
         val HTTP_SUCCESS = 200..299
     }
 }
