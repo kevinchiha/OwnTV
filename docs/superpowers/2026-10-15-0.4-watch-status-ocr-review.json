@@ -1,0 +1,214 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 4 finding(s) across 8 selected item(s).",
+  "summary": {
+    "files_reviewed": 8,
+    "comments": 4,
+    "total_tokens": 606380,
+    "input_tokens": 588877,
+    "output_tokens": 17503,
+    "cache_read_tokens": 452105,
+    "cache_write_tokens": 136706,
+    "elapsed": "3m33s"
+  },
+  "tool_calls": {
+    "total": 34,
+    "by_tool": {
+      "code_comment": 2,
+      "code_search": 16,
+      "file_find": 4,
+      "file_read": 7,
+      "file_read_diff": 5
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt",
+      "content": "`ErrorEntry.proxy` is `Boolean?`, and `ErrorReporter` sets it to null when the proxy read throws (`guardedOrNull { proxyUsable() }`). As written, a newer repeat whose read failed replaces a known `true`/`false` with null, so the merged entry loses the flag this fix is meant to keep. Only take the newer value when it is non-null.",
+      "suggestion_code": "                proxy = if (latest) entry.proxy ?: target.entry.proxy else target.entry.proxy ?: entry.proxy,",
+      "existing_code": "                proxy = if (latest) entry.proxy else target.entry.proxy,",
+      "start_line": 70,
+      "end_line": 70,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt",
+      "content": "The app scope from AppModule is a `SupervisorJob` with no `CoroutineExceptionHandler`. On Android, any uncaught exception in these `launch` blocks therefore crashes the process. In `played()`, only the network call is wrapped. `zone()` (`ZoneId.systemDefault()` can throw `ZoneRulesException`/`DateTimeException`), `playedAtText` and `now()` all run outside the try. PlayWatcher has a `guarded` wrapper, but PlayNotes does not. Wrap the bodies of `start`, `onPlayed` and `onForeground` in the same guard (rethrow `CancellationException`, swallow the rest), so a telemetry feature can never take down playback.",
+      "suggestion_code": "    fun onPlayed() {\n        scope.launch(Dispatchers.IO) { guarded { played() } }\n    }\n\n    private suspend fun guarded(block: suspend () -\u003e Unit) {\n        try { block() } catch (e: CancellationException) { throw e } catch (_: Exception) { }\n    }",
+      "existing_code": "    fun onPlayed() {\n        scope.launch(Dispatchers.IO) { played() }\n    }",
+      "start_line": 97,
+      "end_line": 99,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt",
+      "content": "`ErrorReporter` calls its listeners for every queued entry, including `Failure.Guide` (EPG feed) and `Failure.Playlist` entries, not only playback failures. A guide-feed error on a TV that plays fine will lift the hourly limit, so the next 30-second play sends an extra note. If the server's incident logic only cares about playback failures, filter here, for example `addFailureListener { if (it.engine != null) onFailureRecorded() }`. Otherwise, document that every entry kind counts.",
+      "suggestion_code": "        addFailureListener { entry -\u003e if (entry.engine != null) onFailureRecorded() }",
+      "existing_code": "        addFailureListener { onFailureRecorded() }",
+      "start_line": 146,
+      "end_line": 146,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt",
+      "content": "`lastSentAtMs` is only set on a successful send. While the network is down, every new 30-second run (for example after each channel change) builds a note and tries to send at once, outside the 15-minute tick and app-open retries. The same happens while a failure stays uncleared. It is not a tight loop, but it contradicts the class doc. When a note is already pending and the send fails, consider replacing the pending note's content without sending it right away.",
+      "existing_code": "        if (!playNoteDue(last, failureSinceLastSent = failuresNow != failuresCleared, nowMs = at)) return@withLock",
+      "start_line": 119,
+      "end_line": 119,
+      "category": "other",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Playback usage tracking (PlayWatcher, PlayNotes, Supabase reporting)",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt"
+      ]
+    },
+    {
+      "label": "Proxy detection and error queue support",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/network/ProxyInUse.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt"
+      ]
+    },
+    {
+      "label": "DI wiring and app/coordinator integration",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+        "app/src/main/java/tv/own/owntv/OwnTVApp.kt"
+      ]
+    }
+  ],
+  "session_id": "bc361dba-d45e-4530-9d94-8c2a78e2123b",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "bc361dba-d45e-4530-9d94-8c2a78e2123b",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "phase/0.4-watch-status",
+      "resolved_base": "ac81210e37292219899d390266581d454a22572d",
+      "resolved_head": "57e5ec4a5e562dbf50c068cd2a19d34a080294b3",
+      "exact_range": "ac81210e37292219899d390266581d454a22572d..57e5ec4a5e562dbf50c068cd2a19d34a080294b3",
+      "source_artifact_sha256": "74b5eaa7895819d6fa02476acb009b65b447796e1addc970608bd489f7e899eb"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "0446d213c62b1a7456299cd2c806b61635ef6eac97c8c4f6139a943d06ce5cf6"
+        },
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "8eb443677bdfffda0ad29bf7f1abbcaeba51c1c55cbf4fc54844c6b9b5bed94e"
+        },
+        {
+          "item_id": "39f60474762ff91a42043bbca6b5614e0cc477506b9a42b477f111e071737757",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt",
+          "fingerprint": "243ad79a7ad59ff342f50fd1ff8dd2bb84861c1509a0eb73bd043b5bd716fd13"
+        },
+        {
+          "item_id": "6551b995f66935c9c4845ce0f2a353a000406793ab758fc100551783c0f9e553",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt",
+          "fingerprint": "fff18c07c601fda815a47451e23a6dc501f98b1c81cb980d158ce683ed53524a"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "518bae98bda8c60233e7539cbd75623c208241ff22f88b9fac26e87dc7141b1e"
+        },
+        {
+          "item_id": "a08e83c0323946a298e13ed436b1de3dff4032ca947a5317679a0d3062cc3ef2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt",
+          "fingerprint": "0ee0a38ffd1d8501f9bdb2fe1aaed12754079fc1c21469cd35095c24dc2bbb16"
+        },
+        {
+          "item_id": "b86018c5572fb659e6252858b5a065a193cf5a3234a5e7fa126f552c43dad84d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/network/ProxyInUse.kt",
+          "fingerprint": "3cea681759de647bff9347e9af8aa1cceb03e9e894a7c76baac7d2b9a089112a"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "2c3a5f4428688bd482ba5255c00581be117c38b525e62beff94c7dcc9e946164"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "0446d213c62b1a7456299cd2c806b61635ef6eac97c8c4f6139a943d06ce5cf6"
+        },
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "8eb443677bdfffda0ad29bf7f1abbcaeba51c1c55cbf4fc54844c6b9b5bed94e"
+        },
+        {
+          "item_id": "39f60474762ff91a42043bbca6b5614e0cc477506b9a42b477f111e071737757",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorQueue.kt",
+          "fingerprint": "243ad79a7ad59ff342f50fd1ff8dd2bb84861c1509a0eb73bd043b5bd716fd13"
+        },
+        {
+          "item_id": "6551b995f66935c9c4845ce0f2a353a000406793ab758fc100551783c0f9e553",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt",
+          "fingerprint": "fff18c07c601fda815a47451e23a6dc501f98b1c81cb980d158ce683ed53524a"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "518bae98bda8c60233e7539cbd75623c208241ff22f88b9fac26e87dc7141b1e"
+        },
+        {
+          "item_id": "a08e83c0323946a298e13ed436b1de3dff4032ca947a5317679a0d3062cc3ef2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt",
+          "fingerprint": "0ee0a38ffd1d8501f9bdb2fe1aaed12754079fc1c21469cd35095c24dc2bbb16"
+        },
+        {
+          "item_id": "b86018c5572fb659e6252858b5a065a193cf5a3234a5e7fa126f552c43dad84d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/network/ProxyInUse.kt",
+          "fingerprint": "3cea681759de647bff9347e9af8aa1cceb03e9e894a7c76baac7d2b9a089112a"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "2c3a5f4428688bd482ba5255c00581be117c38b525e62beff94c7dcc9e946164"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 212516
+  }
+}
