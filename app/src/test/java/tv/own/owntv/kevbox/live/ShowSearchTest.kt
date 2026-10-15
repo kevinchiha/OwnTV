@@ -2,6 +2,7 @@
 package tv.own.owntv.kevbox.live
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.core.content.ProgrammeSearchResult
 import tv.own.owntv.core.database.entity.ChannelEntity
@@ -87,6 +88,16 @@ class ShowSearchTest {
         assertEquals(listOf(hd, sd), split.onNow)
         assertEquals(listOf(hdLater, sdLater), split.later)
         assertEquals(setOf(1L, 2L), split.channelIds)
+    }
+
+    @Test
+    fun theTitleLookupHasOneGlobPerWordAndTheLimitLast() {
+        val sql = programmeTitlesSql(2)
+
+        assertTrue(sql.contains("AND title GLOB ? AND title GLOB ? ORDER BY"))
+        assertEquals(6, sql.count { it == '?' })
+        assertTrue(sql.endsWith("LIMIT ?"))
+        assertEquals(1, programmeTitlesSql(1).split("title GLOB ?").size - 1)
     }
 
     @Test

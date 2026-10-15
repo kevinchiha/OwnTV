@@ -24,6 +24,41 @@ class AccentFoldTest {
     }
 
     @Test
+    fun everyWordMustAppearButNotAsOnePhrase() {
+        assertTrue(titleMatches("Manchester City v Arsenal", "man city"))
+        assertTrue(titleMatches("Manchester City v Arsenal", "city man"))
+        assertTrue(titleMatches("Manchester City v Arsenal", "  man   city "))
+        assertTrue(titleMatches("Man City TV", "man city"))
+        assertFalse(titleMatches("Manchester United v Arsenal", "man city"))
+        assertTrue(titleMatches("Télématin", "tele matin"))
+    }
+
+    @Test
+    fun anEmptyQueryMatchesEverything() {
+        assertTrue(titleMatches("Anything", ""))
+        assertTrue(titleMatches("Anything", "   "))
+    }
+
+    @Test
+    fun theQueryIsSplitAtSpacesOnly() {
+        assertEquals(listOf("man", "city"), queryWords("  man   city "))
+        assertEquals(listOf("canal+", "sport"), queryWords("canal+ sport"))
+        assertEquals(emptyList<String>(), queryWords("  "))
+    }
+
+    @Test
+    fun oneGlobPerWord() {
+        assertEquals(listOf(accentGlob("man"), accentGlob("city")), accentGlobs("man city"))
+    }
+
+    @Test
+    fun theLongestWordNarrowsTheChannelRead() {
+        assertEquals("city", longestWord("man city"))
+        assertEquals("sports", longestWord("sky sports 1"))
+        assertEquals("", longestWord("  "))
+    }
+
+    @Test
     fun globLetsEveryLetterMatchItsAccentedFormsInAnyCase() {
         val e = accentGlob("e")
         assertTrue(e.startsWith("*[") && e.endsWith("]*"))

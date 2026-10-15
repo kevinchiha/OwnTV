@@ -1012,10 +1012,13 @@
 2	empty	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	[
 1	regex	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	\\p{Mn}+
+1	regex	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	\\s+
 1	technical	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	]
 1	technical	app/src/main/java/tv/own/owntv/kevbox/live/LiveOnly.kt	#6FB0FF
+1	sql	app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt	AND title GLOB ?
+1	sql	app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt	ORDER BY startMs ASC LIMIT ?
 1	sql	app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt	SELECT id, sourceId, epgChannelId, startMs, stopMs, title FROM epg_programmes
-1	sql	app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt	WHERE startMs > ? - 86400000 AND startMs < ? AND stopMs > ? AND title GLOB ? ORDER BY startMs ASC LIMIT ?
+1	sql	app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt	WHERE startMs > ? - 86400000 AND startMs < ? AND stopMs > ?
 1	empty	app/src/main/java/tv/own/owntv/kevbox/network/DnsDefault.kt	\0
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/DnsDefault.kt	cloudflare_doh_applied
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/DnsDefault.kt	kevbox_dns_default
