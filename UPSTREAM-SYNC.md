@@ -407,6 +407,45 @@ The error codes live in `tools/kevbox/live-error-codes.json`, and kevbox keeps a
 copy for its labels (`kevbox:src/lib/live-error-codes.json`). `release.sh` refuses to release when
 the two differ, so a new code goes into kevbox first.
 
+## Watch status (0.4)
+
+When a live channel has played for 30 seconds with no error, stop or channel change, the TV sends a
+play note to kevbox.dev (`record_live_play`): its device id, app version, the TV clock time and the
+proxy flag. kevbox.dev compares notes with `live_error` rows to tell when a customer can't watch and
+when they are watching again. The code is fork-only: `kevbox/usage/PlayWatcher.kt` notices the
+30 seconds, `kevbox/usage/PlayNotes.kt` holds and sends the note, and `kevbox/network/ProxyInUse.kt`
+reads the proxy flag. One upstream line carries the hook: `OwnTVApp.kt` starts the play watcher on
+the line before the error watchers start, so the reporter's first failure already reaches the play
+notes (its row in the table above greps that line). Keep that order through a merge.
+`MainActivity.onStart` already calls `KevBoxCoordinator.onForeground()`, which now also hands a
+pending note its retry, so no other upstream line changes.
+
+Core is read, never patched. The play watcher reads four things and changes none of them:
+`LivePreviewEngine.state` (and its `State.PLAYING` value) for the Live TV box, `OwnTVPlayer.isPlaying`
+and `OwnTVPlayer.isLiveContent` for full screen, plus the two `errorInfo` flows 0.3 already reads.
+`ProxyInUse` reads Core's stored proxy setting (`SettingsRepository.proxyConfig`) and its
+`ProxyConfig.usable`, the same check Core's `ProxyConfigHolder` routes every request and mpv load
+by. No Core class is subclassed, wrapped or copied.
+
+After every Core bump, the Core contract test from 0.3 covers these too: `CoreContractTest` has a
+typed pin for `LivePreviewEngine::state`, `LivePreviewEngine.State.PLAYING`, `OwnTVPlayer::isPlaying`
+and `OwnTVPlayer::isLiveContent`, so it stops compiling when Core renames one or changes its type.
+Run it as the 0.3 section above says. A failure there means the TV would stop sending play notes,
+and every customer would look stuck on their last failure on kevbox.dev: fix the watcher before
+releasing. The test cannot see a change in when Core moves `state` to `PLAYING` or sets
+`isLiveContent`. If Core's release notes touch either player's states, play a channel on the
+emulator for 30 seconds and check that `live_device.last_play_at` moves
+(`docs/superpowers/2026-10-15-0.4-watch-status-e2e.md` shows how).
+
+The proxy flag rule (fixed in 0.4): when the TV merges repeats of one failure into one entry, every
+field stays the first repeat's except `proxy`, which is the latest repeat's
+(`ErrorQueue.add`). Before the fix, a failure seen just before the playlist check switched the
+proxy on kept saying `false` for every later repeat through the proxy (client 237, 2026-10-15). The
+server merge in kevbox's `record_live_errors_as` (migration 0016) follows the same rule. If an
+upstream merge or a Core bump changes how the proxy is switched on, keep both reading through
+`ProxyInUse`, and keep the latest repeat's flag on a merge (`ErrorQueueTest`, "a merged entry
+reports the proxy flag of its latest repeat").
+
 ## Regenerating the rebrand
 
 Both scripts read Core's resources at the pinned version (`owntvCore`), downloaded once into
