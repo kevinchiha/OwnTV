@@ -1,13 +1,15 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.live
 
+import androidx.room.useReaderConnection
 import kotlinx.coroutines.flow.first
 import tv.own.owntv.core.content.ProgrammeSearchResult
 import tv.own.owntv.core.customize.CustomizeKeys
 import tv.own.owntv.core.customize.SectionCustomizations
 import tv.own.owntv.core.database.dao.ChannelDao
-import tv.own.owntv.core.database.dao.EpgDao
+import tv.own.owntv.core.database.OwnTVDatabase
 import tv.own.owntv.core.database.entity.ChannelEntity
+import tv.own.owntv.core.database.entity.EpgProgrammeEntity
 import tv.own.owntv.core.epg.EpgDedupe
 import tv.own.owntv.core.epg.EpgShift
 import tv.own.owntv.core.settings.SettingsRepository
@@ -73,14 +75,48 @@ fun keepOnePerFeed(keyed: List<Pair<String, ProgrammeSearchResult>>, onePerFeed:
  * The mapping copies core's SearchReader (programmes), so a show found here sits on the same channel,
  * at the same shifted time, as the guide grid draws it.
  */
+/**
+ * Programme titles from the stored guide, matched without caring about accents or case ([accentGlob]).
+ * The same read as core's EpgDao.searchTitles (the window, the order, the columns it fills, the
+ * description left out), except that its `title LIKE` only ignores the case of A to Z.
+ */
+class ProgrammeTitles(private val db: OwnTVDatabase) {
+
+    suspend fun search(query: String, fromMs: Long, toMs: Long, limit: Int): List<EpgProgrammeEntity> =
+        db.useReaderConnection { connection ->
+            connection.usePrepared(SQL) { st ->
+                st.bindLong(1, fromMs)
+                st.bindLong(2, toMs)
+                st.bindLong(3, fromMs)
+                st.bindText(4, accentGlob(query))
+                st.bindLong(5, limit.toLong())
+                buildList {
+                    while (st.step()) {
+                        add(
+                            EpgProgrammeEntity(
+                                id = st.getLong(0), sourceId = st.getLong(1), epgChannelId = st.getText(2),
+                                startMs = st.getLong(3), stopMs = st.getLong(4), title = st.getText(5),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+    private companion object {
+        const val SQL = "SELECT id, sourceId, epgChannelId, startMs, stopMs, title FROM epg_programmes " +
+            "WHERE startMs > ? - 86400000 AND startMs < ? AND stopMs > ? AND title GLOB ? ORDER BY startMs ASC LIMIT ?"
+    }
+}
+
 class ShowSearch(
-    private val epgDao: EpgDao,
+    private val titles: ProgrammeTitles,
     private val channelDao: ChannelDao,
     private val settings: SettingsRepository,
 ) {
 
     /**
-     * Shows whose title contains [query] (any case), on now or starting within [SHOW_WINDOW_MS] of
+     * Shows whose title contains [query] (any case, with or without accents), on now or starting within [SHOW_WINDOW_MS] of
      * [nowMs], on a channel from [liveSourceIds] that is neither hidden in [cust] nor in one of
      * [hiddenCategoryIds]. Channels keep their Customize names.
      *
@@ -99,7 +135,7 @@ class ShowSearch(
         if (text.length < SHOW_QUERY_MIN || liveSourceIds.isEmpty()) return ShowMatches.EMPTY
         // The stored times are before any guide shift, so the window is widened on both sides to keep
         // a shifted channel's rows; the exact window is applied after the shift, on the user's clock.
-        val rows = epgDao.searchTitles(text, nowMs - SHIFT_SLACK_MS, nowMs + SHOW_WINDOW_MS + SHIFT_SLACK_MS, ROWS)
+        val rows = titles.search(text, nowMs - SHIFT_SLACK_MS, nowMs + SHOW_WINDOW_MS + SHIFT_SLACK_MS, ROWS)
         if (rows.isEmpty()) return ShowMatches.EMPTY
         // Keyed as epgKeyOf keys a channel, trimmed and lower-cased; byEpgKeys compares LOWER(TRIM(...)) too.
         val byKey = rows.groupBy { it.epgChannelId.trim().lowercase() }

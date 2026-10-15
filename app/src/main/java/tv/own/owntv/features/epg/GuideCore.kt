@@ -124,7 +124,7 @@ internal fun ProgrammeStripCanvas(
     }
     // KevBox: which programmes match the guide search, worked out once per row rather than on every draw.
     val matching = remember(programmes, matchText) {
-        if (matchText == null) emptySet() else programmes.indices.filterTo(HashSet()) { programmes[it].title.contains(matchText, ignoreCase = true) }
+        if (matchText == null) emptySet() else programmes.indices.filterTo(HashSet()) { tv.own.owntv.kevbox.live.titleMatches(programmes[it].title, matchText) }
     }
     val recRed = Color(0xFFFF5B5B)
     val matchOrange = Color(0xFFFF9A3C) // KevBox: guide-search matches (Kevin, 2026-10-15)

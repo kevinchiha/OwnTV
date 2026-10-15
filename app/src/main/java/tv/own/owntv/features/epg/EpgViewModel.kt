@@ -135,9 +135,9 @@ class EpgViewModel(
     /** The match scan itself — core's, so the television, the phone and the single-channel run agree. */
     private val autoMatcher = EpgAutoMatcher(channelDao, guideCandidates)
 
-    // KevBox: the show finder Search uses too, for the guide's own search. Built here rather than injected:
-    // this constructor already takes 22 parameters, the most Koin's viewModelOf accepts.
-    private val showSearch = tv.own.owntv.kevbox.live.ShowSearch(epgDao, channelDao, settings)
+    // KevBox: the show finder Search uses too, for the guide's own search. Taken from Koin here rather than
+    // through the constructor: it already takes 22 parameters, the most Koin's viewModelOf accepts.
+    private val showSearch: tv.own.owntv.kevbox.live.ShowSearch by lazy { org.koin.java.KoinJavaComponent.get(tv.own.owntv.kevbox.live.ShowSearch::class.java) }
 
     // --- Recording, from the guide (Plan D, Feature A) ------------------------------------------
 
