@@ -127,3 +127,4 @@ New files under `app/src/main/java/tv/own/owntv/kevbox/live/` (with tests), plus
 - fix round 1 (ced23947): ▼'s wait on the field moves focus only with both lists in for the same query, the field still focused and Search on show; a timeout, a new query or a new ▼ moves nothing. The ▲ hint says Search while a tab has focus. Gate green, check-divergence 0 failures.
 - re-review round 1: gate green (tests, lint, check-divergence 0). The ▼-while-loading wait and the ▲ hint on a tab are closed; no new critical or important.
 - final review: done
+- emulator test 2026-10-15: release build crashed on launch, VerifyError in OwnTVShell's content lambda (R8 output). Bisect: c2f95c81 opens, 61d6e8b2 crashes. Cause: the local `fun holdOpensBoxNow()` inlined by R8. Fixed 15470c3d: a lambda value instead. Debug builds and unit tests can't see this; only a release build on a device does.
