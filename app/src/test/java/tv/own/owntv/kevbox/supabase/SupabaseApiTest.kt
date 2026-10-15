@@ -113,6 +113,31 @@ class SupabaseApiTest {
         assertEquals("11", sent.getString("p_android"))
     }
 
+    @Test
+    fun `recordLivePlay posts the contract body`() = runBlocking {
+        val server = Recording()
+        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon-key")
+
+        val response = api.recordLivePlay("a1", "device-1", "1.2.3", "2026-10-15T22:21:00.000+03:00", proxy = true)
+
+        assertEquals(ApiResponse.Http(204, ""), response)
+        val request = server.requests.single()
+        assertEquals("POST", request.method)
+        assertEquals("/rest/v1/rpc/record_live_play", request.url.encodedPath)
+        assertEquals("Bearer a1", request.header("Authorization"))
+        assertEquals("anon-key", request.header("apikey"))
+        val sent = JSONObject(server.bodies.single())
+        // Exactly these four: no channel, stream address or account rides along (AC-6).
+        assertEquals(
+            setOf("p_device_id", "p_app_version", "p_played_at", "p_proxy"),
+            sent.keys().asSequence().toSet(),
+        )
+        assertEquals("device-1", sent.getString("p_device_id"))
+        assertEquals("1.2.3", sent.getString("p_app_version"))
+        assertEquals("2026-10-15T22:21:00.000+03:00", sent.getString("p_played_at"))
+        assertEquals(true, sent.getBoolean("p_proxy"))
+    }
+
     private companion object {
         const val BASE = "https://test.supabase.local"
     }

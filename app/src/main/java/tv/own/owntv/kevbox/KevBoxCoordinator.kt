@@ -70,6 +70,8 @@ class KevBoxCoordinator(
     private val proxy: tv.own.owntv.kevbox.network.ManagedProxy? = null,
     /** The usage check-in's own foreground check ([tv.own.owntv.kevbox.usage.LiveCheckin.onForeground]). */
     private val checkinOnForeground: () -> Unit = {},
+    /** The play notes' foreground retry ([tv.own.owntv.kevbox.usage.PlayNotes.onForeground]). */
+    private val playNotesOnForeground: () -> Unit = {},
 ) {
     /** True when the store held a visible pick at [start]: an offline start opens on it. */
     private val storedPick = MutableStateFlow(false)
@@ -151,12 +153,14 @@ class KevBoxCoordinator(
 
     /**
      * MainActivity.onStart. Also the usage check-in's foreground check: its 6-hour timer stops while
-     * the TV sleeps, so an app open is where an overdue check-in goes out (AC-36).
+     * the TV sleeps, so an app open is where an overdue check-in goes out (AC-36). A play note
+     * still waiting to go out goes again here too (AC-5).
      */
     fun onForeground() {
         scope.launch { playlistCheck() }
         scope.launch { verdictCheck() }
         checkinOnForeground()
+        playNotesOnForeground()
     }
 
     suspend fun signIn(email: String, password: String): SignInResult {

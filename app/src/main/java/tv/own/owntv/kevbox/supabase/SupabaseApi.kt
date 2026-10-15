@@ -103,6 +103,25 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         return post(LIVE_CHECKIN_PATH, emptyMap(), body, accessToken)
     }
 
+    /**
+     * One play note (record_live_play): which TV, which app version, when on the TV clock, and
+     * whether the customer's proxy was in use. No channel, stream address or account goes out.
+     */
+    suspend fun recordLivePlay(
+        accessToken: String,
+        deviceId: String,
+        appVersion: String,
+        playedAt: String,
+        proxy: Boolean,
+    ): ApiResponse {
+        val body = JSONObject()
+            .put(P_DEVICE_ID, deviceId)
+            .put(P_APP_VERSION, appVersion)
+            .put(P_PLAYED_AT, playedAt)
+            .put(P_PROXY, proxy)
+        return post(LIVE_PLAY_PATH, emptyMap(), body, accessToken)
+    }
+
     private suspend fun post(
         path: String,
         query: Map<String, String>,
@@ -158,6 +177,9 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val GRANT_TYPE = "grant_type"
         const val LIVE_ERRORS_PATH = "rest/v1/rpc/record_live_errors"
         const val LIVE_CHECKIN_PATH = "rest/v1/rpc/record_live_checkin"
+        const val LIVE_PLAY_PATH = "rest/v1/rpc/record_live_play"
+        const val P_PLAYED_AT = "p_played_at"
+        const val P_PROXY = "p_proxy"
         const val P_DEVICE_ID = "p_device_id"
         const val P_APP_VERSION = "p_app_version"
         const val P_ENTRIES = "p_entries"

@@ -95,6 +95,19 @@ val kevboxModule = module {
         ProxyInUse(config = { settings.proxyConfig.first() })
     }
     single {
+        val proxyInUse = get<ProxyInUse>()
+        tv.own.owntv.kevbox.usage.PlayNotes(
+            auth = get(),
+            api = get(),
+            deviceId = get(),
+            appVersion = BuildConfig.VERSION_NAME,
+            proxyInUse = proxyInUse::current,
+            scope = get(),
+            now = System::currentTimeMillis,
+            zone = { java.time.ZoneId.systemDefault() },
+        )
+    }
+    single {
         val xtream = get<XtreamClient>()
         AccountCheck(fetch = { source -> xtream.fetchAccountStatus(source) }, now = System::currentTimeMillis)
     }
@@ -183,6 +196,7 @@ val kevboxModule = module {
             now = System::currentTimeMillis,
             proxy = tv.own.owntv.kevbox.network.ManagedProxy(tv.own.owntv.kevbox.network.CoreProxyTarget(get())),
             checkinOnForeground = get<tv.own.owntv.kevbox.usage.LiveCheckin>()::onForeground,
+            playNotesOnForeground = get<tv.own.owntv.kevbox.usage.PlayNotes>()::onForeground,
         )
     }
     single {

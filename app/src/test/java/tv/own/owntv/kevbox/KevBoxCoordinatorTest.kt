@@ -184,6 +184,7 @@ class KevBoxCoordinatorTest {
         @Volatile var testResult: SourceTestResult = SourceTestResult.Ok()
         var clock = 1_000_000_000_000L
         @Volatile var checkinForegrounds = 0
+        @Volatile var playNotesForegrounds = 0
 
         // The timer's sleep: tell the test the loop is idle, then wait for the test to move the clock.
         private val idle = Channel<Unit>()
@@ -224,6 +225,7 @@ class KevBoxCoordinatorTest {
                 sleep = { idle.send(Unit); go.receive() },
                 proxy = tv.own.owntv.kevbox.network.ManagedProxy(proxyTarget),
                 checkinOnForeground = { checkinForegrounds += 1 },
+                playNotesOnForeground = { playNotesForegrounds += 1 },
             )
             coordinator.start()
             idle.receive()
@@ -403,6 +405,18 @@ class KevBoxCoordinatorTest {
         coordinator.onForeground()
         coordinator.onForeground()
         assertEquals(2, checkinForegrounds)
+    }
+
+    @Test
+    fun `each foreground hands the play notes their foreground retry, and start does not`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        assertEquals(0, playNotesForegrounds)
+
+        coordinator.onForeground()
+        coordinator.onForeground()
+        assertEquals(2, playNotesForegrounds)
     }
 
     @Test
