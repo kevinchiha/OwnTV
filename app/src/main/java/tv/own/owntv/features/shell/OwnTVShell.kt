@@ -999,12 +999,17 @@ fun OwnTVShell(
     // KevBox: holding Back also opens the box's channel full screen, as OK on it does, wherever focus sits
     // on Live TV or Search (kevbox/live/HoldBack.kt). Every shell dialog counts, the avatar ones included.
     // KevBox: a function, so the 600 ms hold asks again when it fires, with the state as it is then.
+    // KevBox: a lambda value, NOT a local `fun`. A local fun compiles to a static method taking every captured
+    // state as an argument; R8 inlined it into the shell's content lambda and the release build failed ART's
+    // verifier (VerifyError on launch, 2026-10-15). Debug builds and unit tests never show it.
     val sectionNow by androidx.compose.runtime.rememberUpdatedState(selectedSection)
-    fun holdOpensBoxNow() = tv.own.owntv.kevbox.live.holdBackOpensBox(
-        playerIdle = playerMode == PlayerMode.NONE, section = sectionNow, boxSection = liveVideoStage.boxSection,
-        hasBoxChannel = liveVideoStage.boxChannel != null,
-        dialogOpen = showExit || showAvatarPicker || showAvatarChooser || showAvatarFilePicker || showAvatarRemote || showPlaylistPicker,
-    )
+    val holdOpensBoxNow: () -> Boolean = {
+        tv.own.owntv.kevbox.live.holdBackOpensBox(
+            playerIdle = playerMode == PlayerMode.NONE, section = sectionNow, boxSection = liveVideoStage.boxSection,
+            hasBoxChannel = liveVideoStage.boxChannel != null,
+            dialogOpen = showExit || showAvatarPicker || showAvatarChooser || showAvatarFilePicker || showAvatarRemote || showPlaylistPicker,
+        )
+    }
     val holdOpensBox = holdOpensBoxNow() // KevBox
     val longPressBackArmed = (playerMode == PlayerMode.MINI && !showExit && !showAvatarPicker && !showPlaylistPicker) ||
         holdOpensBox // KevBox: the box's hold, above
