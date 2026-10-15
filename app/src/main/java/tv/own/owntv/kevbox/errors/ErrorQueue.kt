@@ -63,11 +63,13 @@ class ErrorQueue(
         if (target != null) {
             // Every other field stays the first repeat's. The proxy is the latest repeat's: a failure
             // before the playlist check switched the proxy on must not mark the later ones as off.
+            // A latest repeat whose proxy read failed (null) keeps the known flag, as the server's
+            // merge does with coalesce(v_proxy, proxy) (kevbox migration 0016).
             val latest = entry.lastAtMs >= target.entry.lastAtMs
             target.entry = target.entry.copy(
                 repeatCount = target.entry.repeatCount + entry.repeatCount,
                 lastAtMs = maxOf(target.entry.lastAtMs, entry.lastAtMs),
-                proxy = if (latest) entry.proxy else target.entry.proxy,
+                proxy = if (latest) entry.proxy ?: target.entry.proxy else target.entry.proxy,
             )
             // New occurrences: the count of refusals starts again.
             target.rejections = 0

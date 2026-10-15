@@ -245,6 +245,20 @@ class ErrorQueueTest {
     }
 
     @Test
+    fun `a latest repeat with no proxy reading keeps the known flag`() {
+        // The server's merge does coalesce(v_proxy, proxy): a failed read never wipes a known flag.
+        listOf(true, false).forEach { known ->
+            val queue = queue(File(folder.root, "errors-$known.json"))
+            queue.add(playlistEntry(at = NOW, proxy = known))
+            queue.add(playlistEntry(at = NOW + 30_000L, proxy = null))
+
+            val merged = queue.takeBatch(10).single().entry
+            assertEquals(2, merged.repeatCount)
+            assertEquals(known, merged.proxy)
+        }
+    }
+
+    @Test
     fun `proxy off stays false`() {
         val queue = queue()
         repeat(6) { queue.add(playlistEntry(at = NOW + it * 30_000L, proxy = false)) }

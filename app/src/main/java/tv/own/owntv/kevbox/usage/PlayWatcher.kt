@@ -36,6 +36,18 @@ data class EngineLook(val playing: Boolean, val failed: Boolean)
 /** One look at Live TV and the engine it came from (null when no engine shows a live channel). */
 data class PlayLook(val source: PlaySource?, val view: PlayView)
 
+/** Pure: the Live engine plays only in `State.PLAYING`, which Core sets on Exo's ready state alone. */
+fun liveEngineLook(state: LivePreviewEngine.State, failed: Boolean): EngineLook =
+    EngineLook(playing = state == LivePreviewEngine.State.PLAYING, failed = failed)
+
+/**
+ * Pure: the full-screen player plays only while [isPlaying] and not [buffering]. Core sets
+ * `isPlaying` when an mpv load starts and keeps it through its silent retries and offline waits;
+ * only `buffering` says no frame is showing. 30 s of a stream that never shows one is not play.
+ */
+fun playerLook(isPlaying: Boolean, buffering: Boolean, failed: Boolean): EngineLook =
+    EngineLook(playing = isPlaying && !buffering, failed = failed)
+
 /**
  * Pure: what Live TV shows now. The Live engine counts whenever it plays, since only Live TV puts a
  * channel on it (the box, and full screen on Exo). The full-screen player counts only while it plays
@@ -59,7 +71,9 @@ fun playLookOf(scene: SceneSnapshot, liveEngine: EngineLook, player: EngineLook,
 /**
  * Pure 30-second rule. Feed every change and every tick; true exactly once per uninterrupted run.
  * A run is a live channel (not catch-up) playing with no failure; anything else ends it, and a new
- * channel key starts a new one. The next run counts from 0 (AC-2).
+ * channel key starts a new one. The next run counts from 0 (AC-2). A failure recorded elsewhere
+ * (a channel-list sync, say) while a run plays on restarts its count ([onFailureRecorded]), so the
+ * same run proves again 30 s later and the server hears the TV is still watching (AC-4).
  */
 class PlayRun {
     private var startedAtMs: Long? = null
@@ -82,6 +96,13 @@ class PlayRun {
             channelKey = view.channelKey
             proved = false
         }
+    }
+
+    /** A failure was recorded: a run that counts starts its 30 s again from [nowMs], proven or not. */
+    fun onFailureRecorded(nowMs: Long) {
+        if (startedAtMs == null) return
+        startedAtMs = nowMs
+        proved = false
     }
 
     fun proven(nowMs: Long): Boolean {
@@ -137,13 +158,20 @@ class PlayWatcher internal constructor(
     private val started = AtomicBoolean(false)
     private val run = PlayRun()
 
+    /** Set on the reporter's thread when a failure is recorded; the next look restarts the run's count. */
+    private val failureSeen = AtomicBoolean(false)
+
     /** Only the watch coroutine touches this, one look at a time. */
     private var lastSource: PlaySource? = null
 
     /** Registers the reporter listener, starts PlayNotes, then watches. A second call does nothing. */
     fun start() {
         if (!started.compareAndSet(false, true)) return
-        addFailureListener { onFailureRecorded() }
+        addFailureListener {
+            // PlayNotes counts the failure first, so the run it restarts sends at once when it proves.
+            onFailureRecorded()
+            failureSeen.set(true)
+        }
         startNotes()
         scope.launch(Dispatchers.Default) { guarded { watch() } }
     }
@@ -152,10 +180,12 @@ class PlayWatcher internal constructor(
         scene.shown.first { it }
         val preview = livePreview.value
         val full = player.value
-        combine(preview.state, preview.errorInfo, full.isPlaying, full.errorInfo) { state, previewError, playing, playerError ->
+        combine(
+            preview.state, preview.errorInfo, full.isPlaying, full.buffering, full.errorInfo,
+        ) { state, previewError, playing, buffering, playerError ->
             Engines(
-                EngineLook(playing = state == LivePreviewEngine.State.PLAYING, failed = previewError != null),
-                EngineLook(playing = playing, failed = playerError != null),
+                liveEngineLook(state, failed = previewError != null),
+                playerLook(isPlaying = playing, buffering = buffering, failed = playerError != null),
             )
         }.collectLatest { engines ->
             look(engines, full)
@@ -176,6 +206,8 @@ class PlayWatcher internal constructor(
             lastSource = look.source
         }
         run.onView(look.view, at)
+        // A run that plays on ticks every second, so a failure restarts its count within a second.
+        if (failureSeen.getAndSet(false)) run.onFailureRecorded(at)
         if (run.proven(at)) onPlayed()
     }
 

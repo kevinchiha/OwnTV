@@ -6,6 +6,10 @@ import java.net.UnknownHostException
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -61,6 +65,9 @@ class PlayNotesTest {
         val playAnswers = ArrayDeque<Int>()
         var nextUser = "user-1"
 
+        /** While set, each play note waits here after it is counted: a slow send. */
+        @Volatile var hold: CountDownLatch? = null
+
         fun plays() = playBodies.size
 
         override fun intercept(chain: Interceptor.Chain): Response {
@@ -68,6 +75,7 @@ class PlayNotesTest {
             val (code, body) = when (request.url.encodedPath) {
                 PLAY_PATH -> {
                     playBodies += JSONObject(Buffer().also { request.body!!.writeTo(it) }.readUtf8())
+                    hold?.await(30, TimeUnit.SECONDS)
                     val answer = playAnswers.removeFirstOrNull() ?: 204
                     if (answer == NO_NETWORK) throw UnknownHostException("no network")
                     answer to ""
@@ -137,24 +145,30 @@ class PlayNotesTest {
     }
 
     private val server = FakeServer()
-    private var clock = at(10, 0)
-    private var proxy = false
+    @Volatile private var clock = at(10, 0)
+    @Volatile private var proxy = false
+    private val proxyReads = AtomicInteger(0)
     private val store = PrefsSessionStore(MemoryPrefs(), PlainCipher())
     private val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon-key")
-    private val scope = CoroutineScope(SupervisorJob())
+    /** What escaped PlayNotes' work: in the app, each of these would crash the TV app. */
+    private val crashes: MutableList<Throwable> = Collections.synchronizedList(mutableListOf())
+    private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, e -> crashes += e })
 
     private fun at(hour: Int, minute: Int) =
         ZonedDateTime.of(2026, 10, 15, hour, minute, 0, 0, BEIRUT).toInstant().toEpochMilli()
 
-    private fun notes(auth: KevBoxAuth) = PlayNotes(
+    private fun notes(auth: KevBoxAuth, zone: () -> ZoneId = { BEIRUT }) = PlayNotes(
         auth = auth,
         api = api,
         deviceId = DeviceId(MemoryPrefs()),
         appVersion = "5.1.0.15",
-        proxyInUse = { proxy },
+        proxyInUse = {
+            proxyReads.incrementAndGet()
+            proxy
+        },
         scope = scope,
         now = { clock },
-        zone = { BEIRUT },
+        zone = zone,
     )
 
     private fun signedIn(): KevBoxAuth {
@@ -168,6 +182,53 @@ class PlayNotesTest {
     private suspend fun PlayNotes.play() {
         onPlayed()
         settle()
+    }
+
+    /** Waits up to 3 s (well inside [FakeServer.hold]'s 30) for [done]; the assertions after it tell whether it came. */
+    private fun waitFor(done: () -> Boolean) {
+        val until = System.currentTimeMillis() + 3_000
+        while (!done() && System.currentTimeMillis() < until) Thread.sleep(10)
+    }
+
+    @Test
+    fun `a play waiting on a slow send keeps the time and proxy flag of when it reached 30 s`() = runBlocking {
+        val notes = notes(signedIn())
+        val slowSend = CountDownLatch(1)
+        server.hold = slowSend
+        server.playAnswers.addAll(listOf(500, 204))
+
+        notes.onPlayed()
+        waitFor { server.plays() == 1 }
+
+        // The second play reaches 30 s at 10:01 through the proxy, while the first send still hangs.
+        clock = at(10, 1)
+        proxy = true
+        notes.onPlayed()
+        waitFor { proxyReads.get() == 2 }
+
+        // The first send ends at 10:20, after the proxy went off; the waiting note keeps 10:01 and on.
+        clock = at(10, 20)
+        proxy = false
+        server.hold = null
+        slowSend.countDown()
+        settle()
+
+        assertEquals(2, server.plays())
+        val sent = server.playBodies.last()
+        assertEquals("2026-10-15T10:01:00.000+03:00", sent.getString("p_played_at"))
+        assertEquals(true, sent.getBoolean("p_proxy"))
+    }
+
+    @Test
+    fun `an exception in a play note's work never reaches the app scope`() = runBlocking {
+        val notes = notes(signedIn(), zone = { throw IllegalStateException("no zone data") })
+
+        notes.play()
+        notes.onForeground()
+        settle()
+
+        assertEquals(emptyList<Throwable>(), crashes.toList())
+        assertEquals(0, server.plays())
     }
 
     @Test
