@@ -219,6 +219,44 @@ class ErrorQueueTest {
         )
     }
 
+    @Test
+    fun `a merged entry reports the proxy flag of its latest repeat`() {
+        // 2026-10-15, client 237: the first channel-list failure came before the playlist check
+        // switched the proxy on, the next five went through it.
+        val queue = queue()
+        queue.add(playlistEntry(at = NOW, proxy = false))
+        (1..5).forEach { queue.add(playlistEntry(at = NOW + it * 30_000L, proxy = true)) }
+
+        val merged = queue.takeBatch(10).single().entry
+        assertEquals(6, merged.repeatCount)
+        assertEquals(true, merged.proxy)
+        assertEquals(NOW, merged.firstAtMs)
+    }
+
+    @Test
+    fun `an older repeat does not overwrite a newer flag`() {
+        val queue = queue()
+        queue.add(playlistEntry(at = NOW + MINUTE, proxy = true))
+        queue.add(playlistEntry(at = NOW, proxy = false))
+
+        val merged = queue.takeBatch(10).single().entry
+        assertEquals(2, merged.repeatCount)
+        assertEquals(true, merged.proxy)
+    }
+
+    @Test
+    fun `proxy off stays false`() {
+        val queue = queue()
+        repeat(6) { queue.add(playlistEntry(at = NOW + it * 30_000L, proxy = false)) }
+
+        val merged = queue.takeBatch(10).single().entry
+        assertEquals(6, merged.repeatCount)
+        assertEquals(false, merged.proxy)
+    }
+
+    private fun playlistEntry(at: Long, proxy: Boolean?) =
+        entry(at = at, code = "playlist_download_failed", channel = null, host = "provider.example").copy(proxy = proxy)
+
     /** The single entry's rejection count; the peek puts it back unsent. */
     private fun rejections(queue: ErrorQueue): Int {
         val only = queue.takeBatch(10).single()
