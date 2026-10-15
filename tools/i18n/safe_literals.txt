@@ -1149,6 +1149,8 @@
 1	technical	app/src/main/java/tv/own/owntv/kevbox/ui/QuietAccessibility.kt	androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat
 2	empty	app/src/main/java/tv/own/owntv/kevbox/ui/SignInScreen.kt	\0
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt	yyyy-MM-dd'T'HH:mm:ss.SSSXXX
+1	log	app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt	KevBoxUsage
+1	log	app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt	play watcher stopped: ${e.javaClass.simpleName}
 2	empty	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	eq
 1	technical	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	eqBar$i
