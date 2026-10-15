@@ -76,20 +76,23 @@ fun keepOnePerFeed(keyed: List<Pair<String, ProgrammeSearchResult>>, onePerFeed:
  * at the same shifted time, as the guide grid draws it.
  */
 /**
- * Programme titles from the stored guide, matched without caring about accents or case ([accentGlob]).
+ * Programme titles from the stored guide holding every word of the search, in any order, without caring
+ * about accents or case ([accentGlobs]).
  * The same read as core's EpgDao.searchTitles (the window, the order, the columns it fills, the
  * description left out), except that its `title LIKE` only ignores the case of A to Z.
  */
 class ProgrammeTitles(private val db: OwnTVDatabase) {
 
-    suspend fun search(query: String, fromMs: Long, toMs: Long, limit: Int): List<EpgProgrammeEntity> =
-        db.useReaderConnection { connection ->
-            connection.usePrepared(SQL) { st ->
+    suspend fun search(query: String, fromMs: Long, toMs: Long, limit: Int): List<EpgProgrammeEntity> {
+        val globs = accentGlobs(query)
+        if (globs.isEmpty()) return emptyList()
+        return db.useReaderConnection { connection ->
+            connection.usePrepared(programmeTitlesSql(globs.size)) { st ->
                 st.bindLong(1, fromMs)
                 st.bindLong(2, toMs)
                 st.bindLong(3, fromMs)
-                st.bindText(4, accentGlob(query))
-                st.bindLong(5, limit.toLong())
+                globs.forEachIndexed { i, glob -> st.bindText(4 + i, glob) }
+                st.bindLong(4 + globs.size, limit.toLong())
                 buildList {
                     while (st.step()) {
                         add(
@@ -102,12 +105,18 @@ class ProgrammeTitles(private val db: OwnTVDatabase) {
                 }
             }
         }
-
-    private companion object {
-        const val SQL = "SELECT id, sourceId, epgChannelId, startMs, stopMs, title FROM epg_programmes " +
-            "WHERE startMs > ? - 86400000 AND startMs < ? AND stopMs > ? AND title GLOB ? ORDER BY startMs ASC LIMIT ?"
     }
 }
+
+/**
+ * The title lookup for a search of [words] words: the window (from, to, from), then one `title GLOB ?` per
+ * word, all of which must match, then the limit.
+ */
+fun programmeTitlesSql(words: Int): String =
+    "SELECT id, sourceId, epgChannelId, startMs, stopMs, title FROM epg_programmes " +
+        "WHERE startMs > ? - 86400000 AND startMs < ? AND stopMs > ?" +
+        " AND title GLOB ?".repeat(words) +
+        " ORDER BY startMs ASC LIMIT ?"
 
 class ShowSearch(
     private val titles: ProgrammeTitles,

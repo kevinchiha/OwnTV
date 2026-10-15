@@ -919,7 +919,11 @@ class EpgViewModel(
         val rawChannels = if (filter is tv.own.owntv.core.live.LiveKey.Folder && q.isEmpty()) {
             channelDao.channelsAfterCategory(filter.id, Int.MIN_VALUE, Long.MIN_VALUE, MAX_CHANNELS).filter { it.sourceId in playlistIds }
         } else {
-            channelDao.channelsForGuide(playlistIds, q, MAX_CHANNELS)
+            // KevBox: a search matches names word by word, so "man city" finds "Manchester City" (Kevin,
+            // 2026-10-15). Core's query only takes one piece of text, so it reads the names holding the
+            // longest word and the rest are checked here. Was: channelsForGuide(playlistIds, q, MAX_CHANNELS).
+            channelDao.channelsForGuide(playlistIds, tv.own.owntv.kevbox.live.longestWord(q), MAX_CHANNELS)
+                .filter { tv.own.owntv.kevbox.live.titleMatches(it.name, q) }
         }
         val favoriteIds = favoriteDao.observeFavoriteIds(pid, MediaType.LIVE).first().toSet()
         val sortGuideMode = settings.sortGuide.first()
@@ -1114,7 +1118,7 @@ class EpgViewModel(
                 val ch = resolved[CustomizeKeys.tailOf(key)]?.singleOrNull() ?: continue
                 if (CustomizeKeys.channel(ch) in byKey) continue // already in the list, already overridden
                 val name = cust.itemNames[key] ?: ch.name
-                if (query.isNotBlank() && !name.contains(query, ignoreCase = true)) continue
+                if (!tv.own.owntv.kevbox.live.titleMatches(name, query)) continue // KevBox: word by word, as above
                 overridden.add(ch.copy(epgChannelId = epgId, name = name))
             }
         }
