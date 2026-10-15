@@ -1,5 +1,6 @@
 package tv.own.owntv.features.epg
 
+import tv.own.owntv.kevbox.live.swallowsBack // KevBox: held Back (HoldBack.kt)
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -315,7 +316,10 @@ fun EpgScreen(
     // Row stage (false): ▲ ▼ move between channels, ◀ leaves for the menu. Cell stage (true): ◀ ▶ go
     // through the programmes. Without it, reaching the channel list meant ◀ past every programme.
     var inCellMode by remember { mutableStateOf(false) }
-    BackHandler(enabled = inCellMode && gridHasFocus) { inCellMode = false }
+    BackHandler(enabled = inCellMode && gridHasFocus) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
+        inCellMode = false
+    }
     // The programme the block on top shows and the buttons act on: the one under the cursor.
     var selected by remember { mutableStateOf<Pair<ChannelEntity, EpgProgrammeEntity?>?>(null) }
 
@@ -545,15 +549,23 @@ fun EpgScreen(
     // KevBox: Back on a Live TV channel row (not inside its programmes) goes back to the category column;
     // Back in the column goes on to the main menu, and Back there to the exit prompt. A search typed in
     // the column is cleared first: LiveCategories' own Back handler comes later and wins while it is on.
-    BackHandler(enabled = liveMode && gridHasFocus && !inCellMode) { leaveRow() }
-    BackHandler(enabled = liveMode && columnHasFocus) { openMenu() }
+    BackHandler(enabled = liveMode && gridHasFocus && !inCellMode) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
+        leaveRow()
+    }
+    BackHandler(enabled = liveMode && columnHasFocus) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
+        openMenu()
+    }
     // KevBox: opened from Search by holding OK, the first Back from the grid or the column goes back to
     // Search instead (Kevin, 2026-10-14). Composed after the two above, so it wins over them.
     BackHandler(enabled = liveMode && onBackToSearch != null && ((gridHasFocus && !inCellMode) || columnHasFocus)) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
         onBackToSearch?.invoke()
     }
     // KevBox: Back on Live TV's channel search clears what is typed, then goes back to the grid.
     BackHandler(enabled = liveMode && liveSearchHasFocus && !liveSearchEditing) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
         if (query.isNotEmpty()) vm.setQuery("") else focusGrid(0)
     }
 

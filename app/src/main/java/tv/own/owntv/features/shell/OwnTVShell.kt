@@ -941,8 +941,17 @@ fun OwnTVShell(
         if (openedSeries == null && searchReturn == MainSection.SERIES && selectedSection == MainSection.SERIES) returnToSearch()
     }
 
+    // KevBox: the long-press Back state, moved up from the long-press block below so this BackHandler can read it.
+    var backHoldJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var backLongFired by remember { mutableStateOf(false) }
     BackHandler {
         when {
+            // KevBox: the release of a held Back that already acted. On Android 13+ with predictive back (always
+            // on for targetSdk 36 on Android 16) the system hands Back to the Back handlers BEFORE the key handler
+            // below sees the release, so that handler cannot swallow it. Swallow it here (screens' handlers do the
+            // same, kevbox/live/HoldBack.kt swallowsBack); the key handler gets the release next and resets the
+            // flag as before (emulator, Android 16, 2026-10-15).
+            backLongFired -> Unit // KevBox: see above
             playerMode == PlayerMode.FULLSCREEN -> exitPlayer()
             showAvatarPicker -> showAvatarPicker = false
             showPlaylistPicker -> showPlaylistPicker = false
@@ -991,8 +1000,7 @@ fun OwnTVShell(
     // the long-press the instant Back is touched. Short Back is never consumed, so every existing Back
     // handler — HUD hide, search clear, dialog dismiss, direct-tune cancel — behaves exactly as before.
     val backDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    var backHoldJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var backLongFired by remember { mutableStateOf(false) }
+    // KevBox: backHoldJob and backLongFired are declared above the shell's BackHandler, which reads backLongFired.
     var shortcutKeyCode by remember { mutableStateOf(android.view.KeyEvent.KEYCODE_UNKNOWN) }
     var shortcutLongFired by remember { mutableStateOf(false) }
     var shortcutHoldJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -1047,6 +1055,9 @@ fun OwnTVShell(
                 if (e.key != Key.Back) return@onPreviewKeyEvent false
                 when (e.type) {
                     KeyEventType.KeyDown -> {
+                        // KevBox: a fresh press clears a hold whose release never reached this handler.
+                        if (e.nativeKeyEvent.repeatCount == 0 && backLongFired) { backLongFired = false; backHoldJob = null }
+                        if (e.nativeKeyEvent.repeatCount == 0) liveVideoStage.heldBackActed = false // KevBox: likewise
                         if (longPressBackArmed && backHoldJob == null) {
                             backLongFired = false
                             backHoldJob = scope.launch {
@@ -1060,6 +1071,8 @@ fun OwnTVShell(
                                     if (!holdOpensBoxNow()) return@launch // KevBox: asked again
                                     val boxed = liveVideoStage.boxChannel ?: return@launch
                                     backLongFired = true
+                                    // KevBox: screens' Back handlers skip this hold's release (swallowsBack, HoldBack.kt).
+                                    liveVideoStage.heldBackActed = true
                                     if (sectionNow == MainSection.LIVE_TV) epgVm.noteChannelTuned(boxed)
                                     guidePlayChannel(boxed, emptyList())
                                     return@launch
@@ -1075,6 +1088,7 @@ fun OwnTVShell(
                         backHoldJob = null
                         val fired = backLongFired
                         backLongFired = false
+                        liveVideoStage.heldBackActed = false // KevBox: the release has now reached every Back handler
                         fired // consume ONLY when the long-press already acted, so Back isn't run twice
                     }
                     else -> false

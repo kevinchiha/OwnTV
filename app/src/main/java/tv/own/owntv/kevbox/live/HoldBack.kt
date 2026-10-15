@@ -18,3 +18,18 @@ fun holdBackOpensBox(
     dialogOpen: Boolean,
 ): Boolean = playerIdle && hasBoxChannel && !dialogOpen && section == boxSection &&
     (section == MainSection.LIVE_TV || section == MainSection.SEARCH)
+
+/**
+ * True when a Back handler on Search or Live TV must ignore this Back: it is the release of a held Back
+ * that already opened full screen ([LiveVideoStage.heldBackActed]).
+ *
+ * Why the handlers need this: on Android 13+ with predictive back (always on for targetSdk 36 on Android
+ * 16) the system starts a Back on the handler on top when the key goes DOWN and runs that same handler on
+ * release, before any key handler sees the release and even if the handler was switched off in between.
+ * The handler on top at the press belongs to the screen now behind full screen (Search's clear, the
+ * guide's leave-row), so it would act on the hidden screen and stop the stream just opened. Found on the
+ * Android 16 emulator, 2026-10-15; Android 12 (Kevin's TCL) has no predictive back.
+ * `OnBackPressedDispatcher.dispatchOnBackCancelled()` cannot stop it: it cancels only the dispatcher's own
+ * input, not the system's.
+ */
+fun LiveVideoStage?.swallowsBack(): Boolean = this?.heldBackActed == true

@@ -1,5 +1,6 @@
 package tv.own.owntv.features.search
 
+import tv.own.owntv.kevbox.live.swallowsBack // KevBox: held Back (HoldBack.kt)
 import tv.own.owntv.ui.theme.stageTone
 import tv.own.owntv.ui.theme.stageShadow
 import androidx.activity.compose.BackHandler
@@ -253,6 +254,7 @@ fun SearchScreen(
     // KevBox: `onScreen &&`, so Back in full screen reaches the player; and the box's channel stops with
     // the search it came from.
     BackHandler(enabled = onScreen && (returnToHomeOnBack || query.isNotBlank() || intent != null)) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
         if (box != null) {
             liveVm.stopPreview()
             videoStage.clearBox()

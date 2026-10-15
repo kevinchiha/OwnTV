@@ -1,5 +1,6 @@
 package tv.own.owntv.features.live
 
+import tv.own.owntv.kevbox.live.swallowsBack // KevBox: held Back (HoldBack.kt)
 import tv.own.owntv.ui.theme.stageTone
 import tv.own.owntv.ui.theme.stageShadow
 import androidx.compose.foundation.background
@@ -548,7 +549,9 @@ internal fun LiveCategories(
     }
     // The search stays until it is cleared: Back inside the list clears it and returns to the field,
     // so a long filtered list is one press from the top. With no search, Back does what it always did.
+    val holdStage = tv.own.owntv.kevbox.live.LocalLiveVideoStage.current // KevBox: for swallowsBack below
     androidx.activity.compose.BackHandler(enabled = hasFocus && query.isNotEmpty()) {
+        if (holdStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
         setQuery("")
         scope.launch {
             runCatching { listState.scrollToItem(0) }

@@ -46,4 +46,15 @@ class HoldBackTest {
         assertFalse(holds(hasBoxChannel = false))
         assertFalse(holds(boxSection = null, hasBoxChannel = false))
     }
+
+    @Test
+    fun screensSkipOnlyTheReleaseOfAHoldThatActed() {
+        val stage = LiveVideoStage()
+        assertFalse(stage.swallowsBack())
+        stage.heldBackActed = true
+        assertTrue(stage.swallowsBack())
+        stage.heldBackActed = false
+        assertFalse(stage.swallowsBack())
+        assertFalse((null as LiveVideoStage?).swallowsBack())
+    }
 }
