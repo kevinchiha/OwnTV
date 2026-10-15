@@ -1,1 +1,0 @@
-fix-1 done. Interfaces deviations: PlayRun gains fun onFailureRecorded(nowMs: Long) (additive, F-1: restarts a live run's 30 s count on a recorded failure); new pure helpers liveEngineLook(state, failed) and playerLook(isPlaying, buffering, failed) in PlayWatcher.kt (additive, F-2: make the full-screen rule testable). PlayNotes and PlayWatcher signatures unchanged.
