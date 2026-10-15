@@ -197,6 +197,13 @@ class LiveVideoStage(durationMs: Int = 320) {
     }
 
     /**
+     * True from a held Back opening the box full screen until that Back is released (see HoldBack.kt).
+     * The shell sets and clears it; screens' Back handlers skip the release while it is set. Not
+     * snapshot state: only Back handlers read it, and they run outside composition.
+     */
+    var heldBackActed: Boolean = false
+
+    /**
      * Hand the box from screen [from] to screen [to], stream and all, when [from] filled it (and, with
      * [onlyChannelId], only when that is the channel in it). True when it moved. Holding OK on Search's
      * channel takes it to Live TV's grid, and the Back that returns to Search brings the grid's box back.

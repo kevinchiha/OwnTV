@@ -1,0 +1,333 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 11 finding(s) across 12 selected item(s).",
+  "summary": {
+    "files_reviewed": 12,
+    "comments": 11,
+    "total_tokens": 1170676,
+    "input_tokens": 1140554,
+    "output_tokens": 30122,
+    "cache_read_tokens": 889502,
+    "cache_write_tokens": 250954,
+    "elapsed": "2m51s"
+  },
+  "tool_calls": {
+    "total": 47,
+    "by_tool": {
+      "code_comment": 4,
+      "code_search": 21,
+      "file_find": 2,
+      "file_read": 18,
+      "file_read_diff": 2
+    },
+    "failure": 1,
+    "failure_by_tool": {
+      "code_search": 1
+    },
+    "failure_details": [
+      {
+        "tool_call_number": 35,
+        "tool_name": "code_search",
+        "file_path": "app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt,app/src/main/java/tv/own/owntv/features/search/SearchViewModel.kt,app/src/main/java/tv/own/owntv/kevbox/live/SearchBox.kt,app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt",
+        "arguments": "{\"search_text\":\"class Programme(|class Channel(|class Heading(\",\"file_patterns\":[\"app/src/main/java/tv/own/owntv/features/search/\"],\"use_perl_regexp\":true}",
+        "error": "git grep failed: exit status 128: fatal: -e option, 'class Programme(|class Channel(|class Heading(': missing closing parenthesis"
+      }
+    ]
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+      "content": "`holdOpensBox` is a plain `val` that the coroutine captures at KeyDown time. After the 600 ms delay the code checks `playerMode` and `boxChannel` again, but it does not check the section, `boxSection` or the dialog flags. If, during the hold, the section changes or a shell dialog opens (exit, avatar or playlist picker, for example from a Back handler that acts on a repeated KeyDown), the box channel still opens full screen and the KeyUp is consumed. Run the predicate again with current state when the job fires. This also makes the separate `playerMode` check in `takeIf` unnecessary.",
+      "suggestion_code": "                                if (holdOpensBox) {\n                                    val stillArmed = tv.own.owntv.kevbox.live.holdBackOpensBox(\n                                        playerIdle = playerMode == PlayerMode.NONE, section = selectedSection, boxSection = liveVideoStage.boxSection,\n                                        hasBoxChannel = liveVideoStage.boxChannel != null,\n                                        dialogOpen = showExit || showAvatarPicker || showAvatarChooser || showAvatarFilePicker || showAvatarRemote || showPlaylistPicker,\n                                    )\n                                    val boxed = liveVideoStage.boxChannel?.takeIf { stillArmed } ?: return@launch",
+      "existing_code": "                                if (holdOpensBox) {",
+      "start_line": 1046,
+      "end_line": 1046,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt",
+      "content": "`byKey` is keyed on the raw `epgChannelId`, but every lookup uses a trimmed, lower-cased key: `epgKeyOf(ch, cust)` and `it.trim().lowercase() in byKey`. If any stored guide id has upper case or surrounding spaces, `byKey[key]` returns null and that channel's shows quietly never appear. Nothing in this repo shows that ids are lower-cased on import, and LiveViewModel normalises them itself. Normalise the grouping key here. `byEpgKeys` may still need the raw ids, depending on how core compares them.",
+      "suggestion_code": "        val byKey = rows.groupBy { it.epgChannelId.trim().lowercase() }",
+      "existing_code": "        val byKey = rows.groupBy { it.epgChannelId }",
+      "start_line": 86,
+      "end_line": 86,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt",
+      "content": "`liveSourceIds.indexOf` runs on every comparison, so the sort costs O(n log n · m). Build a `sourceId -\u003e index` map once before sorting.",
+      "suggestion_code": "            .let { list -\u003e val order = liveSourceIds.withIndex().associate { it.value to it.index }; list.sortedWith(compareBy({ order[it.sourceId] ?: Int.MAX_VALUE }, { it.sortOrder })) }",
+      "existing_code": "            .sortedWith(compareBy({ liveSourceIds.indexOf(it.sourceId) }, { it.sortOrder }))",
+      "start_line": 98,
+      "end_line": 98,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt",
+      "content": "The file header says there is \"no cap\", but `searchTitles` stops at 2000 rows. A common title carried by many guide channels can reach that limit, and which shows get dropped depends on the DAO's ORDER BY, which is not visible here. Shows that are on now could go missing without any sign. Either confirm the query orders by start time, or say in the docs that results are capped.",
+      "existing_code": "        const val ROWS = 2000",
+      "start_line": 119,
+      "end_line": 119,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/search/SearchViewModel.kt",
+      "content": "Nothing catches errors here. If `findShows` throws once (a DB or DataStore error), the `shows` StateFlow ends and the TV guide tab stays frozen until the ViewModel is recreated. The query is also the only key, so a query typed before `ctx` loads its live sources stays EMPTY. `nowMs` is fixed when the query runs, so the On now and Next 24 hours groups drift out of date while the screen stays open. At minimum, wrap the call in runCatching and fall back to EMPTY. Better, combine with `ctx` so the shows are recomputed when the sources load.",
+      "suggestion_code": "        .mapLatest { q -\u003e runCatching { findShows(q) }.getOrDefault(tv.own.owntv.kevbox.live.ShowMatches.EMPTY) }",
+      "existing_code": "        .mapLatest { q -\u003e findShows(q) }",
+      "start_line": 92,
+      "end_line": 92,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/search/SearchViewModel.kt",
+      "content": "This duplicates `ShowSearch.MIN_QUERY` (which is private) as a literal, so the two minimums can drift apart. `ShowSearch.find` already returns EMPTY for short queries, so this check could go. Otherwise, make the constant public and use it here.",
+      "existing_code": "        if (q.length \u003c 2) return tv.own.owntv.kevbox.live.ShowMatches.EMPTY",
+      "start_line": 105,
+      "end_line": 105,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt",
+      "content": "`results` and `shows` come from separate debounced pipelines, so `shows` can still hold the previous query's matches for a moment after `results` updates. In that gap, `pickShowTab` can open SHOWS based on old shows, `nothingFound` and `showTabsRow` can flicker, and the header total adds counts from two different queries. Consider tagging `ShowMatches` with the query it answers and treating a mismatched one as EMPTY or still loading.",
+      "existing_code": "    val openShowTab = tv.own.owntv.kevbox.live.pickShowTab(chosenShowTab, shown.channels.size, shows.size)",
+      "start_line": 206,
+      "end_line": 206,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt",
+      "content": "In the TV guide tab this now picks the first show row on the playing channel, which may be a Next 24 hours row rather than the show on now. The old code only matched `Entry.Channel` rows. Check that this is the intended Back target after CH+/CH−. If not, prefer an on-now row first.",
+      "existing_code": "                playingRowKey = rows.firstOrNull { it.isResult() \u0026\u0026 it.channel()?.id == box?.id }?.key,",
+      "start_line": 307,
+      "end_line": 307,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt",
+      "content": "The heading counts (`shows.onNow.size`, `shows.later.size`) are computed before `distinctBy { it.key }` runs. The tab count `shows.size` and the header total don't account for it either. When the dedupe actually removes a row (same `programme.id` on the same channel in both groups, or twice in one group), the headings, the tab badge and the total will be higher than the number of rows listed. Either dedupe in `splitShows`/`ShowSearch.find` by the same `(programme.id, channel.id)` key so that `ShowMatches` is already unique, or count the rows after the dedupe.",
+      "existing_code": "        }.distinctBy { it.key } // one key per lazy row, whatever the guide holds",
+      "start_line": 724,
+      "end_line": 724,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+      "content": "`matchText` doesn't follow the same rules as the show search, in two ways:\n1. **One-letter queries.** `ShowSearch.find` returns nothing below `MIN_QUERY = 2` characters, because one letter matches nearly every title. This line still outlines with a single letter, so typing \"a\" puts an accent outline on almost every programme in the grid, but no On now / Next 24 hours group appears.\n2. **Timing.** `query` is the live field text, but `state.channels` and `state.headings` only change when the async reload finishes. Between a keystroke and the reload, the outlines use the new text while the rows and headings still come from the old one.\n\nFix: have the ViewModel publish the trimmed query it actually loaded with, in `EpgUiState` (set only when `q.length \u003e= 2`), and read it here. Outlines, rows and headings then always come from the same query.",
+      "suggestion_code": "val matchText = state.matchText // set by the load alongside channels/headings; null below ShowSearch's 2-char minimum",
+      "existing_code": "                    val matchText = query.trim().takeIf { it.isNotEmpty() }",
+      "start_line": 848,
+      "end_line": 848,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+      "content": "Putting the heading inside the row's item makes those items taller than the others. `stepTo` assumes every item is the same height: it takes its step from `info.visibleItemsInfo.firstOrNull()?.size`, and that size is used both as the scroll amount when the target row is off screen and as the edge margin. During a search, item 0 always carries a heading, so the step includes the heading's height (plus 18 for later headings). ▲ ▼ and CH± then scroll too far and leave an uneven margin at the viewport edges. Fix: take the step from a row without a heading, or from a fixed row height such as `GuideGridDefaults` row height + gap, rather than from the first visible item.",
+      "existing_code": "                                    headingAt[index]?.let { GuideGroupHeading(it, first = index == 0) }",
+      "start_line": 889,
+      "end_line": 889,
+      "category": "bug",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Show search: search logic, view model, and UI",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/search/SearchViewModel.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/live/SearchBox.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt"
+      ]
+    },
+    {
+      "label": "EPG guide show grouping and screen updates",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt",
+        "app/src/main/java/tv/own/owntv/features/epg/GuideCore.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/live/GuideShowGroups.kt"
+      ]
+    },
+    {
+      "label": "Shell, DI wiring, hold-back helper, and strings",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/live/HoldBack.kt",
+        "app/src/main/res/values/kevbox_strings.xml"
+      ]
+    }
+  ],
+  "session_id": "db8616ed-55a3-4ff3-867c-c1a52e607623",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "db8616ed-55a3-4ff3-867c-c1a52e607623",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "quick/search-shows",
+      "resolved_base": "e58039ab83785f541cd9a986583696d5c930c6cb",
+      "resolved_head": "2e55a0e59ee7758ed3142f993f017e6de71ccbff",
+      "exact_range": "e58039ab83785f541cd9a986583696d5c930c6cb..2e55a0e59ee7758ed3142f993f017e6de71ccbff",
+      "source_artifact_sha256": "40d953661c4efda2fbd705c7bbac154ac89e70c735f97901447ea7635e9e9c07"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "107a49074dee3e0167e1d22c6b85f6c12b008de8fde1db0df05af320b7028916",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/GuideCore.kt",
+          "fingerprint": "5d90cbb5db30e87bed0f7c2ee6f96b157a7972f524b6fffd0684fbb74ef63fc4"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "74fba6af5d45babd0410aa4cf3e0cd95819df1e59b40f646e5af7af7973b92e9"
+        },
+        {
+          "item_id": "620f837706ba144cf643853c54f943c6165ea42deec54de748e9c46fff4f7fa1",
+          "path": "app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt",
+          "fingerprint": "38bbee64eb26ba8891125f5ca71c91253baca90d0765f5a5b2e92866a0ca188d"
+        },
+        {
+          "item_id": "6b674e1b69d9e2aff62ff9b4dde2b62e341da5213fa6b91c1d9ec0d5f8860fb7",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/HoldBack.kt",
+          "fingerprint": "eba29b0fea25cd8fb8a8b16f4603978755c38a30c95afb4b3ddb43a15f5e1ff7"
+        },
+        {
+          "item_id": "8e73ae79db4737219cde4cc93f101d6c6ac78843634a83a8895a90f1f22a3175",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/SearchBox.kt",
+          "fingerprint": "db1be9811a89a867eab6e6817bfa0b852b9d1e33818b1ee04b3a959358e3ec24"
+        },
+        {
+          "item_id": "9be7f622c3d716b416c90bf8aa826e021584351db4cb2dee96c8b92a4fb5966e",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/GuideShowGroups.kt",
+          "fingerprint": "dd319b397d0c8c9fd927220fe16faa64cea9abfc42d13853bdaff140ce4d8060"
+        },
+        {
+          "item_id": "ac8f67cb53751eacbd0e4299875f3963338d09358b7dc398de95aa64ab32c0f8",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+          "fingerprint": "2e2065bc4ad22f2c979682f78f8c13ba91d81cc5324224122e7e54fd099999c7"
+        },
+        {
+          "item_id": "b149d6ec1f11db212ec2020c55b6c8d50abcbbe11c4b4320ae0dbd9834cf2e69",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt",
+          "fingerprint": "28167e77d63e5b1e10570ae06814df75819280d51f5977102fbd14c6ae0e300c"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "e46f924b1dced88336779040533617ea4a4fc1ec38af6bb07eab1aaf491cbd1a"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "00dbdadf1eb35cf80a94d0f6559e145185d9c8db909038e96d1801c3032c1d92"
+        },
+        {
+          "item_id": "d7835a5829238dc87e7d0fc807ae7d8d74e66c5490fb1d0dfbf15fb9f239fc30",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt",
+          "fingerprint": "a23a4ea576f209ba5a41c6379fce057ae9ed9b427ff5784c4a4cf6375d00d1fb"
+        },
+        {
+          "item_id": "f41b80c870c2549a95f37ff90db10126e97f2ec736f86e7458793a5f7bb24745",
+          "path": "app/src/main/java/tv/own/owntv/features/search/SearchViewModel.kt",
+          "fingerprint": "408e301026cae5810937f98c71cd55ed14848d326da2021342509d26c2c83faa"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "107a49074dee3e0167e1d22c6b85f6c12b008de8fde1db0df05af320b7028916",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/GuideCore.kt",
+          "fingerprint": "5d90cbb5db30e87bed0f7c2ee6f96b157a7972f524b6fffd0684fbb74ef63fc4"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "74fba6af5d45babd0410aa4cf3e0cd95819df1e59b40f646e5af7af7973b92e9"
+        },
+        {
+          "item_id": "620f837706ba144cf643853c54f943c6165ea42deec54de748e9c46fff4f7fa1",
+          "path": "app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt",
+          "fingerprint": "38bbee64eb26ba8891125f5ca71c91253baca90d0765f5a5b2e92866a0ca188d"
+        },
+        {
+          "item_id": "6b674e1b69d9e2aff62ff9b4dde2b62e341da5213fa6b91c1d9ec0d5f8860fb7",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/HoldBack.kt",
+          "fingerprint": "eba29b0fea25cd8fb8a8b16f4603978755c38a30c95afb4b3ddb43a15f5e1ff7"
+        },
+        {
+          "item_id": "8e73ae79db4737219cde4cc93f101d6c6ac78843634a83a8895a90f1f22a3175",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/SearchBox.kt",
+          "fingerprint": "db1be9811a89a867eab6e6817bfa0b852b9d1e33818b1ee04b3a959358e3ec24"
+        },
+        {
+          "item_id": "9be7f622c3d716b416c90bf8aa826e021584351db4cb2dee96c8b92a4fb5966e",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/GuideShowGroups.kt",
+          "fingerprint": "dd319b397d0c8c9fd927220fe16faa64cea9abfc42d13853bdaff140ce4d8060"
+        },
+        {
+          "item_id": "ac8f67cb53751eacbd0e4299875f3963338d09358b7dc398de95aa64ab32c0f8",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt",
+          "fingerprint": "2e2065bc4ad22f2c979682f78f8c13ba91d81cc5324224122e7e54fd099999c7"
+        },
+        {
+          "item_id": "b149d6ec1f11db212ec2020c55b6c8d50abcbbe11c4b4320ae0dbd9834cf2e69",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/live/ShowSearch.kt",
+          "fingerprint": "28167e77d63e5b1e10570ae06814df75819280d51f5977102fbd14c6ae0e300c"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "e46f924b1dced88336779040533617ea4a4fc1ec38af6bb07eab1aaf491cbd1a"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "00dbdadf1eb35cf80a94d0f6559e145185d9c8db909038e96d1801c3032c1d92"
+        },
+        {
+          "item_id": "d7835a5829238dc87e7d0fc807ae7d8d74e66c5490fb1d0dfbf15fb9f239fc30",
+          "path": "app/src/main/java/tv/own/owntv/features/epg/EpgViewModel.kt",
+          "fingerprint": "a23a4ea576f209ba5a41c6379fce057ae9ed9b427ff5784c4a4cf6375d00d1fb"
+        },
+        {
+          "item_id": "f41b80c870c2549a95f37ff90db10126e97f2ec736f86e7458793a5f7bb24745",
+          "path": "app/src/main/java/tv/own/owntv/features/search/SearchViewModel.kt",
+          "fingerprint": "408e301026cae5810937f98c71cd55ed14848d326da2021342509d26c2c83faa"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 171454
+  }
+}

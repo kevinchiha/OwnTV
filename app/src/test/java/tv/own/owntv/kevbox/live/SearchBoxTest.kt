@@ -45,6 +45,28 @@ class SearchBoxTest {
     @Test
     fun nothingToLandOn() = assertNull(searchReturnKey(null, lastKeyChannelId = null, playingChannelId = null, playingRowKey = null))
 
+    // --- Which tab a search opens on ------------------------------------------------------------
+
+    @Test
+    fun aQueryThatFindsChannelsOpensOnChannels() {
+        assertEquals(SearchShowTab.CHANNELS, pickShowTab(chosen = null, channelCount = 3, showCount = 0))
+        assertEquals(SearchShowTab.CHANNELS, pickShowTab(chosen = null, channelCount = 3, showCount = 12))
+    }
+
+    @Test
+    fun aQueryThatFindsOnlyShowsOpensOnTheGuideTab() =
+        assertEquals(SearchShowTab.SHOWS, pickShowTab(chosen = null, channelCount = 0, showCount = 4))
+
+    @Test
+    fun aQueryThatFindsNothingOpensOnChannels() =
+        assertEquals(SearchShowTab.CHANNELS, pickShowTab(chosen = null, channelCount = 0, showCount = 0))
+
+    @Test
+    fun theTabTheUserMovedToWins() {
+        assertEquals(SearchShowTab.SHOWS, pickShowTab(chosen = SearchShowTab.SHOWS, channelCount = 3, showCount = 0))
+        assertEquals(SearchShowTab.CHANNELS, pickShowTab(chosen = SearchShowTab.CHANNELS, channelCount = 0, showCount = 4))
+    }
+
     // --- Whose box it is ------------------------------------------------------------------------
 
     @Test

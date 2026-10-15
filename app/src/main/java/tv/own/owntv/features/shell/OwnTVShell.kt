@@ -608,7 +608,11 @@ fun OwnTVShell(
             liveVm.onFullscreenExited(keepStream = true)
             // KevBox: the box channel becomes core's previewed one, so OK on it opens full screen at once.
             if (playingChannel != null) liveVm.keepInBox(playingChannel)
-            if (selectedSection == MainSection.LIVE_TV && playingChannel != null && playingChannel.id != openedChannel?.id) liveVm.revealChannel(playingChannel)
+            // KevBox: also when the grid no longer lists the channel: held Back can open the box from the
+            // column after it showed another category, and the grid's own restore would land on row 0.
+            if (selectedSection == MainSection.LIVE_TV && playingChannel != null &&
+                (playingChannel.id != openedChannel?.id || epgVm.state.value.channels.none { it.id == playingChannel.id })
+            ) liveVm.revealChannel(playingChannel)
         } else {
             liveVideoStage.clearBox() // KevBox: any other exit empties the box, as before
             liveVm.onFullscreenExited() // no longer full-screen on ExoPlayer → let the preview re-take the engine
@@ -937,8 +941,17 @@ fun OwnTVShell(
         if (openedSeries == null && searchReturn == MainSection.SERIES && selectedSection == MainSection.SERIES) returnToSearch()
     }
 
+    // KevBox: the long-press Back state, moved up from the long-press block below so this BackHandler can read it.
+    var backHoldJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var backLongFired by remember { mutableStateOf(false) }
     BackHandler {
         when {
+            // KevBox: the release of a held Back that already acted. On Android 13+ with predictive back (always
+            // on for targetSdk 36 on Android 16) the system hands Back to the Back handlers BEFORE the key handler
+            // below sees the release, so that handler cannot swallow it. Swallow it here (screens' handlers do the
+            // same, kevbox/live/HoldBack.kt swallowsBack); the key handler gets the release next and resets the
+            // flag as before (emulator, Android 16, 2026-10-15).
+            backLongFired -> Unit // KevBox: see above
             playerMode == PlayerMode.FULLSCREEN -> exitPlayer()
             showAvatarPicker -> showAvatarPicker = false
             showPlaylistPicker -> showPlaylistPicker = false
@@ -963,17 +976,51 @@ fun OwnTVShell(
     val glass = LocalGlass.current
     val shellBase = if (glass.isGlassy(GlassSurface.PANELS) || glass.isGlassy(GlassSurface.SIDEBAR)) Color.Transparent else colors.background
 
+    // Live TV's view (List / Guide, G14), and how a guide — the TV Guide or Live TV's Guide view —
+    // starts a channel or an archive programme: through LiveViewModel, the one live path.
+    // KevBox: the stored List/Guide choice is no longer read; Live TV is always the grid. Declared here,
+    // above the hold-Back detector below, which opens the box's channel through it too (2026-10-15).
+    val guidePlayChannel: (ChannelEntity, List<ChannelEntity>) -> Unit = { ch, _ ->
+        restoreFocus = false
+        // KevBox: the box channel full screen opens from. Back compares it with the channel then
+        // playing, to move the grid's cursor after CH+/CH−. Set here too because with the focus
+        // preview on, one OK opens full screen without the grid writing it. Search opens its
+        // channels here too (2026-10-14), with CH+/CH− in the channel's own category.
+        if (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.SEARCH) liveVideoStage.putInBox(ch, selectedSection)
+        liveVm.watchFromGuide(ch)
+        zapSource = MainSection.LIVE_TV
+        homeVm.stopPreview()
+        // Live TV set to play externally → the channel went to another app;
+        // don't mount the fullscreen player over it.
+        if (playerMode != PlayerMode.MINI && !liveVm.externalPlayerOn.value) playerMode = PlayerMode.FULLSCREEN
+    }
+
     // Long-press Back (§8 tier 2). Deliberately timed from the FIRST KeyDown rather than counted from
     // key repeats: several TVs re-fire KeyDown while a key is held, so a repeat-counting version fires
     // the long-press the instant Back is touched. Short Back is never consumed, so every existing Back
     // handler — HUD hide, search clear, dialog dismiss, direct-tune cancel — behaves exactly as before.
     val backDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    var backHoldJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var backLongFired by remember { mutableStateOf(false) }
+    // KevBox: backHoldJob and backLongFired are declared above the shell's BackHandler, which reads backLongFired.
     var shortcutKeyCode by remember { mutableStateOf(android.view.KeyEvent.KEYCODE_UNKNOWN) }
     var shortcutLongFired by remember { mutableStateOf(false) }
     var shortcutHoldJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val longPressBackArmed = playerMode == PlayerMode.MINI && !showExit && !showAvatarPicker && !showPlaylistPicker
+    // KevBox: holding Back also opens the box's channel full screen, as OK on it does, wherever focus sits
+    // on Live TV or Search (kevbox/live/HoldBack.kt). Every shell dialog counts, the avatar ones included.
+    // KevBox: a function, so the 600 ms hold asks again when it fires, with the state as it is then.
+    // KevBox: a lambda value, NOT a local `fun`. A local fun compiles to a static method taking every captured
+    // state as an argument; R8 inlined it into the shell's content lambda and the release build failed ART's
+    // verifier (VerifyError on launch, 2026-10-15). Debug builds and unit tests never show it.
+    val sectionNow by androidx.compose.runtime.rememberUpdatedState(selectedSection)
+    val holdOpensBoxNow: () -> Boolean = {
+        tv.own.owntv.kevbox.live.holdBackOpensBox(
+            playerIdle = playerMode == PlayerMode.NONE, section = sectionNow, boxSection = liveVideoStage.boxSection,
+            hasBoxChannel = liveVideoStage.boxChannel != null,
+            dialogOpen = showExit || showAvatarPicker || showAvatarChooser || showAvatarFilePicker || showAvatarRemote || showPlaylistPicker,
+        )
+    }
+    val holdOpensBox = holdOpensBoxNow() // KevBox
+    val longPressBackArmed = (playerMode == PlayerMode.MINI && !showExit && !showAvatarPicker && !showPlaylistPicker) ||
+        holdOpensBox // KevBox: the box's hold, above
     // Media keys (§8 tier 3) act on the docked window wherever focus is — but only if nothing nearer
     // claimed them first, which is why this is a bubbling handler: a focused browse list still gets its
     // CH+/CH− paging, and the full-screen HUD still owns zapping.
@@ -1008,10 +1055,28 @@ fun OwnTVShell(
                 if (e.key != Key.Back) return@onPreviewKeyEvent false
                 when (e.type) {
                     KeyEventType.KeyDown -> {
+                        // KevBox: a fresh press clears a hold whose release never reached this handler.
+                        if (e.nativeKeyEvent.repeatCount == 0 && backLongFired) { backLongFired = false; backHoldJob = null }
+                        if (e.nativeKeyEvent.repeatCount == 0) liveVideoStage.heldBackActed = false // KevBox: likewise
                         if (longPressBackArmed && backHoldJob == null) {
                             backLongFired = false
                             backHoldJob = scope.launch {
                                 kotlinx.coroutines.delay(600)
+                                if (holdOpensBox) {
+                                    // KevBox: the box's channel, through OK's path (guidePlayChannel). The rule is
+                                    // asked again now: a box emptied or moved, another section, a dialog or a
+                                    // player opened during the hold does nothing, and the release runs a normal
+                                    // Back. Live TV notes it as the guide's tuned channel first, as its OK does,
+                                    // so Back from full screen lands on its row.
+                                    if (!holdOpensBoxNow()) return@launch // KevBox: asked again
+                                    val boxed = liveVideoStage.boxChannel ?: return@launch
+                                    backLongFired = true
+                                    // KevBox: screens' Back handlers skip this hold's release (swallowsBack, HoldBack.kt).
+                                    liveVideoStage.heldBackActed = true
+                                    if (sectionNow == MainSection.LIVE_TV) epgVm.noteChannelTuned(boxed)
+                                    guidePlayChannel(boxed, emptyList())
+                                    return@launch
+                                }
                                 backLongFired = true
                                 toggleNowPlayingFocus()
                             }
@@ -1023,6 +1088,7 @@ fun OwnTVShell(
                         backHoldJob = null
                         val fired = backLongFired
                         backLongFired = false
+                        liveVideoStage.heldBackActed = false // KevBox: the release has now reached every Back handler
                         fired // consume ONLY when the long-press already acted, so Back isn't run twice
                     }
                     else -> false
@@ -1181,23 +1247,7 @@ fun OwnTVShell(
                         } else Modifier,
                     ),
             ) {
-                // Live TV's view (List / Guide, G14), and how a guide — the TV Guide or Live TV's Guide view —
-                // starts a channel or an archive programme: through LiveViewModel, the one live path.
-                // KevBox: the stored List/Guide choice is no longer read; Live TV is always the grid.
-                val guidePlayChannel: (ChannelEntity, List<ChannelEntity>) -> Unit = { ch, _ ->
-                    restoreFocus = false
-                    // KevBox: the box channel full screen opens from. Back compares it with the channel then
-                    // playing, to move the grid's cursor after CH+/CH−. Set here too because with the focus
-                    // preview on, one OK opens full screen without the grid writing it. Search opens its
-                    // channels here too (2026-10-14), with CH+/CH− in the channel's own category.
-                    if (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.SEARCH) liveVideoStage.putInBox(ch, selectedSection)
-                    liveVm.watchFromGuide(ch)
-                    zapSource = MainSection.LIVE_TV
-                    homeVm.stopPreview()
-                    // Live TV set to play externally → the channel went to another app;
-                    // don't mount the fullscreen player over it.
-                    if (playerMode != PlayerMode.MINI && !liveVm.externalPlayerOn.value) playerMode = PlayerMode.FULLSCREEN
-                }
+                // KevBox: guidePlayChannel moved up, above the hold-Back detector, which calls it too.
                 val guidePlayCatchup: (ChannelEntity, tv.own.owntv.core.database.entity.EpgProgrammeEntity) -> Unit = { ch, prog ->
                     restoreFocus = false
                     liveVm.playCatchupProgramme(ch, prog)

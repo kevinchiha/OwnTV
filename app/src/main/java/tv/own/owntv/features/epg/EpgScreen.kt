@@ -1,5 +1,6 @@
 package tv.own.owntv.features.epg
 
+import tv.own.owntv.kevbox.live.swallowsBack // KevBox: held Back (HoldBack.kt)
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -50,6 +51,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em // KevBox: the guide search's group headings (GuideGroupHeading)
 import kotlinx.coroutines.flow.first
 import tv.own.owntv.kevbox.live.GuideSidebar
 import tv.own.owntv.ui.theme.ownTvTween
@@ -314,7 +316,10 @@ fun EpgScreen(
     // Row stage (false): ▲ ▼ move between channels, ◀ leaves for the menu. Cell stage (true): ◀ ▶ go
     // through the programmes. Without it, reaching the channel list meant ◀ past every programme.
     var inCellMode by remember { mutableStateOf(false) }
-    BackHandler(enabled = inCellMode && gridHasFocus) { inCellMode = false }
+    BackHandler(enabled = inCellMode && gridHasFocus) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
+        inCellMode = false
+    }
     // The programme the block on top shows and the buttons act on: the one under the cursor.
     var selected by remember { mutableStateOf<Pair<ChannelEntity, EpgProgrammeEntity?>?>(null) }
 
@@ -544,15 +549,23 @@ fun EpgScreen(
     // KevBox: Back on a Live TV channel row (not inside its programmes) goes back to the category column;
     // Back in the column goes on to the main menu, and Back there to the exit prompt. A search typed in
     // the column is cleared first: LiveCategories' own Back handler comes later and wins while it is on.
-    BackHandler(enabled = liveMode && gridHasFocus && !inCellMode) { leaveRow() }
-    BackHandler(enabled = liveMode && columnHasFocus) { openMenu() }
+    BackHandler(enabled = liveMode && gridHasFocus && !inCellMode) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
+        leaveRow()
+    }
+    BackHandler(enabled = liveMode && columnHasFocus) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
+        openMenu()
+    }
     // KevBox: opened from Search by holding OK, the first Back from the grid or the column goes back to
     // Search instead (Kevin, 2026-10-14). Composed after the two above, so it wins over them.
     BackHandler(enabled = liveMode && onBackToSearch != null && ((gridHasFocus && !inCellMode) || columnHasFocus)) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
         onBackToSearch?.invoke()
     }
     // KevBox: Back on Live TV's channel search clears what is typed, then goes back to the grid.
     BackHandler(enabled = liveMode && liveSearchHasFocus && !liveSearchEditing) {
+        if (videoStage.swallowsBack()) return@BackHandler // KevBox: a held Back's release (HoldBack.kt)
         if (query.isNotEmpty()) vm.setQuery("") else focusGrid(0)
     }
 
@@ -841,6 +854,11 @@ fun EpgScreen(
                     val gx = fx(48) + labelW
                     // The number column fits the longest channel number (38 = the mockup's three digits).
                     val numberWidth = maxOf(38f, (state.channels.maxOfOrNull { it.number?.toString()?.length ?: 0 } ?: 0) * 11f).mpx
+                    // KevBox: the guide search's group headings by the row they sit above, and the text that
+                    // outlines matching shows: the query the load used (null under two letters, so the grid
+                    // draws as before), never the field's live text, so outlines, rows and headings agree.
+                    val headingAt = remember(state.headings) { state.headings.associateBy { it.firstIndex } }
+                    val matchText = state.matchText // KevBox: the loaded query
                     GuideRuler(
                         windowStart = state.windowStart, windowEnd = state.windowEnd, now = liveNow, scrollPx = scrollPx,
                         modifier = Modifier.padding(start = gx).width(timelineW).height(40.mpx),
@@ -877,49 +895,56 @@ fun EpgScreen(
                                 // KevBox: each row reads only whether it is the selected one, so a ▲ ▼ re-runs the
                                 // two rows that changed instead of every row on screen.
                                 val isSelectedRow by remember(index) { derivedStateOf { gridHasFocus && index == focusedRow } }
-                                GuideRow(
-                                    vm = vm,
-                                    channel = channel,
-                                    name = rowName(channel),
-                                    dot = playlistMarks[channel.sourceId]?.shownColor,
-                                    labelWidth = labelW,
-                                    numberWidth = numberWidth,
-                                    windowStart = state.windowStart,
-                                    windowEnd = state.windowEnd,
-                                    now = liveNow,
-                                    scrollPx = scrollPx,
-                                    focusRequester = rowFocus(index),
-                                    selectedRow = isSelectedRow, // KevBox: see isSelectedRow
-                                    cursorTime = cursorTime,
-                                    cellMode = inCellMode,
-                                    onEnterCell = { cursorTime = System.currentTimeMillis(); inCellMode = true },
-                                    recordingStarts = recordingsByChannel[channel.id].orEmpty(),
-                                    reminderStarts = remindersByChannel[channel.id].orEmpty(),
-                                    onFocused = {
-                                        focusedRow = index
-                                        if (cursorTime !in state.windowStart until state.windowEnd) cursorTime = System.currentTimeMillis()
-                                        liveVm.onChannelFocused(channel)
-                                    },
-                                    onCursor = { cursorTime = it },
-                                    onShow = { p -> selected = channel to p },
-                                    onStep = { delta ->
-                                        val from = stepTarget ?: index
-                                        val to = from + delta
-                                        when {
-                                            // ▲ from the first row: up to the control line. KevBox: Live TV has
-                                            // none, so ▲ stays on the first row (the focus search could pick the
-                                            // category column hidden off screen).
-                                            // KevBox: there, ▲ goes up to the channel search instead.
-                                            to < 0 -> liveMode && run { runCatching { liveSearchFocus.requestFocus() }; true }
-                                            to >= state.channels.size -> true
-                                            else -> { stepTo(to); true }
-                                        }
-                                    },
-                                    onOk = { p -> onOk(channel, p) },
-                                    okOnRow = liveMode, // KevBox: OK on a Live TV row previews, then watches
+                                // KevBox: a guide-search group's heading sits above its first row, inside that row's item, so an
+                                // item's index stays its channel's place in state.channels: ▲ ▼, CH+ / CH−, focusedRow, the jumps
+                                // and the prefetch all count channels, and no step can land on a heading.
+                                Column {
+                                    headingAt[index]?.let { GuideGroupHeading(it, first = index == 0) }
+                                    GuideRow(
+                                        vm = vm,
+                                        channel = channel,
+                                        name = rowName(channel),
+                                        dot = playlistMarks[channel.sourceId]?.shownColor,
+                                        labelWidth = labelW,
+                                        numberWidth = numberWidth,
+                                        windowStart = state.windowStart,
+                                        windowEnd = state.windowEnd,
+                                        now = liveNow,
+                                        scrollPx = scrollPx,
+                                        focusRequester = rowFocus(index),
+                                        selectedRow = isSelectedRow, // KevBox: see isSelectedRow
+                                        cursorTime = cursorTime,
+                                        cellMode = inCellMode,
+                                        onEnterCell = { cursorTime = System.currentTimeMillis(); inCellMode = true },
+                                        recordingStarts = recordingsByChannel[channel.id].orEmpty(),
+                                        reminderStarts = remindersByChannel[channel.id].orEmpty(),
+                                        onFocused = {
+                                            focusedRow = index
+                                            if (cursorTime !in state.windowStart until state.windowEnd) cursorTime = System.currentTimeMillis()
+                                            liveVm.onChannelFocused(channel)
+                                        },
+                                        onCursor = { cursorTime = it },
+                                        onShow = { p -> selected = channel to p },
+                                        onStep = { delta ->
+                                            val from = stepTarget ?: index
+                                            val to = from + delta
+                                            when {
+                                                // ▲ from the first row: up to the control line. KevBox: Live TV has
+                                                // none, so ▲ stays on the first row (the focus search could pick the
+                                                // category column hidden off screen).
+                                                // KevBox: there, ▲ goes up to the channel search instead.
+                                                to < 0 -> liveMode && run { runCatching { liveSearchFocus.requestFocus() }; true }
+                                                to >= state.channels.size -> true
+                                                else -> { stepTo(to); true }
+                                            }
+                                        },
+                                        onOk = { p -> onOk(channel, p) },
+                                        okOnRow = liveMode, // KevBox: OK on a Live TV row previews, then watches
+                                        matchText = matchText, // KevBox: matching shows get an accent outline
 
-                                    onMenu = { p -> returnTo = null; if (p != null) menuFor = channel to p else channelMenuFor = channel },
-                                )
+                                        onMenu = { p -> returnTo = null; if (p != null) menuFor = channel to p else channelMenuFor = channel },
+                                    )
+                                } // KevBox: the Column above
                             }
                         }
                     }
@@ -1153,6 +1178,8 @@ private fun GuideRow(
     onMenu: (EpgProgrammeEntity?) -> Unit,
     // KevBox: OK on the row (outside its programmes) goes to onOk(null) instead of into the programmes.
     okOnRow: Boolean = false,
+    // KevBox: the guide search's text; programmes whose title contains it are outlined in the accent.
+    matchText: String? = null,
 ) {
     // Cache peek first, so a row scrolled back into view draws at once; a miss reads this one channel.
     val cacheRevision by vm.cacheRevision.collectAsStateWithLifecycle()
@@ -1222,10 +1249,33 @@ private fun GuideRow(
                     recordingStarts = recordingStarts,
                     reminderStarts = reminderStarts,
                     scrollPx = scrollPx,
+                    matchText = matchText, // KevBox
                 )
             }
         }
     }
+}
+
+/**
+ * KevBox: a heading over one of the guide search's groups, "CHANNELS · 4", "ON NOW · 2" or "NEXT 24 HOURS · 7",
+ * drawn as Search draws its group headings (12.5/800, wide tracking, dim), in line with the channel labels.
+ * It is part of its first row's item and takes no focus. [first]: the grid's top, where it needs no gap above.
+ */
+@Composable
+private fun GuideGroupHeading(heading: tv.own.owntv.kevbox.live.GuideHeading, first: Boolean) {
+    val label = stringResource(
+        when (heading.kind) {
+            tv.own.owntv.kevbox.live.GuideHeading.Kind.NAMES -> R.string.search_channels
+            tv.own.owntv.kevbox.live.GuideHeading.Kind.ON_NOW -> R.string.kevbox_shows_on_now
+            tv.own.owntv.kevbox.live.GuideHeading.Kind.LATER -> R.string.kevbox_shows_next_24_hours
+        },
+    )
+    val sep = tv.own.owntv.features.settings.dotSeparator()
+    Text(
+        label.uppercase(androidx.compose.ui.text.intl.Locale.current.platformLocale) + sep + heading.count.toString(), // KevBox: as GuideStage.kt
+        style = stageText(12.5f, 800, 0.13.em), color = StageColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(start = 8.mpx, top = if (first) 0.mpx else 18.mpx, bottom = 8.mpx),
+    )
 }
 
 /** An empty guide: what is missing, and — with no EPG added — the way to add one. */

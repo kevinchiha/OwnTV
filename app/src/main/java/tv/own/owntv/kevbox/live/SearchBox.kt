@@ -25,3 +25,13 @@ fun searchOk(channelId: Long, boxChannelId: Long?, previewAvailable: Boolean): S
  */
 fun searchReturnKey(lastKey: String?, lastKeyChannelId: Long?, playingChannelId: Long?, playingRowKey: String?): String? =
     if (playingChannelId != null && playingChannelId != lastKeyChannelId && playingRowKey != null) playingRowKey else lastKey
+
+/** The two tabs over a typed search's results: channels by name, and shows from the guide. */
+enum class SearchShowTab { CHANNELS, SHOWS }
+
+/**
+ * The tab a search shows. The one the user moved to ([chosen]) wins; with none, a new query opens on
+ * Channels, unless it found no channel and at least one show, which opens the TV guide tab.
+ */
+fun pickShowTab(chosen: SearchShowTab?, channelCount: Int, showCount: Int): SearchShowTab =
+    chosen ?: if (channelCount == 0 && showCount > 0) SearchShowTab.SHOWS else SearchShowTab.CHANNELS
