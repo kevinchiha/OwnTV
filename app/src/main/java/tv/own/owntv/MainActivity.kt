@@ -163,6 +163,8 @@ open class MainActivity : ComponentActivity() {
 
     // KevBox: every remote key press this window receives sets the watching diary's last-press time (0.5 AC-5).
     // KevBox: dispatchKeyEvent, not onUserInteraction: Android calls onUserInteraction on Home too, which would stamp every background close as a press.
+    // KevBox: the lint suppression is needed because androidx.core's ComponentActivity marks its override library-only; the framework Activity.dispatchKeyEvent it overrides is public.
+    @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (event.action == android.view.KeyEvent.ACTION_DOWN) get<tv.own.owntv.kevbox.usage.LastPress>().press()
         return super.dispatchKeyEvent(event)
