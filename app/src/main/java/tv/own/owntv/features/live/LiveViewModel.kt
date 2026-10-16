@@ -2127,10 +2127,12 @@ class LiveViewModel(
         }
     }
 
-    fun removeFromHistory(channelId: Long) {
+    // KevBox: onDone, run once the row is gone, so the player's history panel can read the list again.
+    fun removeFromHistory(channelId: Long, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             val pid = currentProfileId() ?: return@launch
             userDataWriter.removeHistory(pid, MediaType.LIVE, channelId)
+            onDone() // KevBox
         }
     }
 

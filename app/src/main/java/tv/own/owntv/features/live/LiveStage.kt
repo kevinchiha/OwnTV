@@ -1,6 +1,8 @@
 package tv.own.owntv.features.live
 
 import tv.own.owntv.kevbox.live.swallowsBack // KevBox: held Back (HoldBack.kt)
+import tv.own.owntv.kevbox.live.categoryGroupPaging // KevBox: CH+ / CH− by stretch (CategoryGroupPaging.kt)
+import androidx.compose.runtime.mutableIntStateOf // KevBox: focusedPos
 import tv.own.owntv.ui.theme.stageTone
 import tv.own.owntv.ui.theme.stageShadow
 import androidx.compose.foundation.background
@@ -511,6 +513,9 @@ internal fun LiveCategories(
     // KevBox: Hold OK on a category opens the "Jump to" list of its blocks (FR|, US|…) instead of
     // [onLongSelect], while no search is typed (kevbox/live/CategoryJumps.kt, Kevin 2026-10-14).
     jumpToBlocks: Boolean = false,
+    // KevBox: the remote's paging keys (CH+ / CH−) step a whole stretch of categories, FR| to UK|, while
+    // no search is typed (kevbox/live/CategoryGroupPaging.kt, Kevin 2026-10-16). Live TV's guide column.
+    groupPaging: Boolean = false,
 ) {
     var localQuery by remember { mutableStateOf("") }
     val query = searchQuery ?: localQuery
@@ -588,6 +593,8 @@ internal fun LiveCategories(
         }
     }
     val longSelect: (pos: Int, index: Int) -> Unit = { pos, index -> if (jumpsOn) jumpFrom = pos else onLongSelect(index) }
+    // KevBox: the row with focus, -1 on the search field, for the CH+ / CH− stretch steps (groupPaging).
+    var focusedPos by remember { mutableIntStateOf(-1) }
     val a = stageAccent
     Column(
         modifier
@@ -628,6 +635,20 @@ internal fun LiveCategories(
                     }
                 }
                 .trapVerticalFocusExit()
+                // KevBox: CH+ / CH− by stretch (groupPaging); a step goes through the stepper as ▲ ▼ do, and a
+                // burst counts on from the row a step is still heading to. Rows are entry indices here, since
+                // no search is typed.
+                .categoryGroupPaging(
+                    enabled = groupPaging,
+                    isActive = { hasFocus && query.isBlank() && !searchEditing && jumpFrom == null },
+                    onStep = { delta ->
+                        val from = stepper.target?.let { tv.own.owntv.kevbox.live.CategorySteps.rowPos(it, headingPos) } ?: focusedPos
+                        jumps.groupStep(from, delta)?.let { stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex(it, headingPos)) }
+                    },
+                    onEnd = { toFirst ->
+                        if (visible.isNotEmpty()) stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex(if (toFirst) 0 else visible.lastIndex, headingPos))
+                    },
+                )
                 .focusGroup(),
             // Room for the 2 px outer focus ring, which the list would otherwise clip.
             contentPadding = PaddingValues(start = 4.mpx, end = 4.mpx, top = 4.mpx, bottom = 8.mpx),
@@ -652,7 +673,7 @@ internal fun LiveCategories(
                             true
                         }
                         .focusRequester(searchFocus)
-                        .onFocusChanged { if (it.hasFocus) onSearchFocus() } // KevBox: see onSearchFocus
+                        .onFocusChanged { if (it.hasFocus) { focusedPos = -1; onSearchFocus() } } // KevBox: see onSearchFocus, focusedPos
                         .then(if (query.isEmpty()) rightKey else Modifier),
                     height = if (sheet) 54.mpx else 48.mpx,
                     radius = if (sheet) 16.mpx else 15.mpx,
@@ -687,7 +708,7 @@ internal fun LiveCategories(
                             stepper.stepTo(tv.own.owntv.kevbox.live.CategorySteps.itemIndex(to, headingPos))
                             true
                         }
-                        .onFocusChanged { if (it.hasFocus) onRowFocus(index) }
+                        .onFocusChanged { if (it.hasFocus) { focusedPos = pos; onRowFocus(index) } } // KevBox: focusedPos
                     val selected = index == selectedIndex
                     if (sheet) {
                         StageSheetItem(
@@ -738,7 +759,11 @@ internal fun LiveCategories(
         // KevBox: the one key this list adds, under it.
         if (jumpsOn) {
             tv.own.owntv.ui.stage.StageKeyHints(
-                listOf(stringResource(R.string.content_key_hold_ok) to stringResource(R.string.kevbox_key_jump)),
+                listOfNotNull(
+                    stringResource(R.string.content_key_hold_ok) to stringResource(R.string.kevbox_key_jump),
+                    // KevBox: CH+ / CH− by stretch (groupPaging).
+                    (stringResource(R.string.kevbox_key_ch) to stringResource(R.string.kevbox_key_groups)).takeIf { groupPaging },
+                ),
                 modifier = Modifier.padding(start = 14.mpx, top = 10.mpx),
                 textSize = 15,
             )

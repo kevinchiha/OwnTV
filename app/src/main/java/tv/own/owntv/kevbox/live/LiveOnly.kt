@@ -29,4 +29,10 @@ object LiveOnly {
      * [tv.own.owntv.kevbox.settings.LiveOnlySettings], so members can no longer change it.
      */
     const val ACCENT_HEX = "#6FB0FF"
+
+    /**
+     * Whether the top bar shows the "Last channel" pill between the mini player and the playlist
+     * pill. Hidden (Kevin, 2026-10-16). The Continue remote shortcut does not depend on it.
+     */
+    const val SHOW_CONTINUE_PILL = false
 }

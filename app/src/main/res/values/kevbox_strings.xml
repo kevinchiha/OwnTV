@@ -31,6 +31,14 @@
     <string name="kevbox_key_guide">Guide</string>
     <!-- Category list key hint, after "Hold OK": opens the Jump to list of category blocks. -->
     <string name="kevbox_key_jump">Jump</string>
+    <!-- Category list key hint: the remote's channel up/down keys. -->
+    <string name="kevbox_key_ch">CH±</string>
+    <!-- Category list key hint, after "CH±": the channel keys step from one block of categories (FR|, UK|...) to the next. -->
+    <string name="kevbox_key_groups">Groups</string>
+    <!-- Recently watched panel key hint, after "Hold OK": takes the channel off the Recently watched list. -->
+    <string name="kevbox_key_remove">Remove</string>
+    <!-- Short note after a channel is taken off the Recently watched list in the player. -->
+    <string name="kevbox_history_removed">Removed from Recently watched</string>
     <!-- Title of the list Hold OK opens in the category list: one line per block of categories (FR|, US|...). -->
     <string name="kevbox_jump_title">Jump to</string>
     <!-- Jump to line for the fixed rows at the top of the category list. -->

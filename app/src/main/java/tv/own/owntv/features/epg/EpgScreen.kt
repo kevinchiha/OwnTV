@@ -991,6 +991,7 @@ fun EpgScreen(
                 onSearchFocus = { columnCursor = null; sidebarExit = null },
                 focusFollowsSelection = false,
                 jumpToBlocks = true, // KevBox: Hold OK opens "Jump to" (kevbox/live/CategoryJumps.kt)
+                groupPaging = gridChNavEnabled, // KevBox: CH+ / CH− step by stretch (kevbox/live/CategoryGroupPaging.kt)
                 modifier = Modifier
                     .padding(start = menuRoom)
                     .width(GuideSidebar.COLUMN_WIDTH_MPX.mpx)

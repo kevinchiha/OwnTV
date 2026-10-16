@@ -91,4 +91,43 @@ class CategoryJumpsTest {
         val j = CategoryJumps.of(listOf("Favorites", "All channels"), firstCategoryRow = -1)
         assertEquals(listOf(Block.Top), j.groups.map { it.block })
     }
+
+    // CH+ / CH− in the guide's column (Kevin, 2026-10-16): stretches in list order, as on screen.
+    // Stretch starts in [labels]: 0 fixed, 4 FR|, 6 US|, 7 Other, 8 US|, 10 24/7, 12 Other, 13 AFR|, 14 UK|.
+
+    @Test
+    fun chMinusGoesToTheStartOfTheNextStretchDownTheList() {
+        assertEquals(4, jumps.groupStep(0, +1))
+        assertEquals(4, jumps.groupStep(3, +1))
+        assertEquals(6, jumps.groupStep(5, +1))
+        assertEquals(7, jumps.groupStep(6, +1)) // a one-row US| stretch, then a loner
+        assertEquals(10, jumps.groupStep(9, +1))
+        assertEquals(14, jumps.groupStep(13, +1))
+    }
+
+    @Test
+    fun chPlusGoesToTheStartOfThisStretchThenThePreviousOne() {
+        assertEquals(8, jumps.groupStep(9, -1)) // mid-stretch: its own start
+        assertEquals(7, jumps.groupStep(8, -1)) // at a start: the stretch above
+        assertEquals(4, jumps.groupStep(5, -1))
+        assertEquals(0, jumps.groupStep(4, -1))
+        assertEquals(0, jumps.groupStep(2, -1))
+    }
+
+    @Test
+    fun theStepsWrapAtTheEnds() {
+        assertEquals(0, jumps.groupStep(14, +1))
+        assertEquals(14, jumps.groupStep(0, -1))
+    }
+
+    @Test
+    fun fromTheSearchFieldTheStepsGoToTheFirstOrLastStretch() {
+        assertEquals(0, jumps.groupStep(-1, +1))
+        assertEquals(14, jumps.groupStep(-1, -1))
+    }
+
+    @Test
+    fun anEmptyListHasNowhereToStep() {
+        assertNull(CategoryJumps.of(emptyList(), firstCategoryRow = -1).groupStep(-1, +1))
+    }
 }
