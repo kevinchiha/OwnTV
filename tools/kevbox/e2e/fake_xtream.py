@@ -7,6 +7,7 @@ KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
     python3 tools/kevbox/e2e/fake_xtream.py --port 8091 --media /tmp/clip.ts
     python3 tools/kevbox/e2e/fake_xtream.py --port 8091 --stream-status 403
     python3 tools/kevbox/e2e/fake_xtream.py --port 8091 --stream-status 401 --account-status Expired
+    python3 tools/kevbox/e2e/fake_xtream.py --port 8091 --media /tmp/clip.ts --guide-title 'E2E Evening News'
 
 The emulator reaches the host at 10.0.2.2, so a playlist row with server URL
 http://10.0.2.2:8091 points the TV here. player_api.php accepts any username and password and
@@ -21,14 +22,20 @@ given, so a channel can play; without it they answer 404. --stream-status N make
 answer N instead, whatever --media says, so the error reporter sees a panel refusing a channel.
 --account-status WORD puts WORD in player_api.php's status field (auth stays 1), the way a panel
 reports an expired or banned line: Expired, Banned, Disabled.
+--guide-title TEXT gives the first channel (E2E News One) the guide key e2e.news.one and one
+programme called TEXT, on air from 6 hours before the request to 6 hours after it, in both
+xmltv.php and get_short_epg. Without it both stay empty and every epg_channel_id stays blank (Core
+skips a channel with no guide key, so it would never find a programme for it).
 """
 
 import argparse
+import base64
 import json
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+from xml.sax.saxutils import escape, quoteattr
 
 CATEGORIES = [
     {"category_id": "1", "category_name": "E2E News", "parent_id": 0},
@@ -44,8 +51,14 @@ CHANNELS = [
     ("203", "E2E Sports Three", "2"),
 ]
 
+# The one channel --guide-title gives a programme to, and its guide key.
+GUIDE_STREAM_ID = "101"
+GUIDE_KEY = "e2e.news.one"
+# The programme runs this long either side of the request, so a TV clock an hour off still sees it on now.
+GUIDE_HALF_SPAN = 6 * 3600
 
-def live_streams(category_id):
+
+def live_streams(category_id, guide_title=None):
     out = []
     for num, (stream_id, name, cat) in enumerate(CHANNELS, start=1):
         if category_id and category_id != cat:
@@ -56,7 +69,7 @@ def live_streams(category_id):
             "stream_type": "live",
             "stream_id": int(stream_id),
             "stream_icon": "",
-            "epg_channel_id": "",
+            "epg_channel_id": GUIDE_KEY if guide_title and stream_id == GUIDE_STREAM_ID else "",
             "added": "1700000000",
             "category_id": cat,
             "tv_archive": 0,
@@ -95,17 +108,56 @@ def account(host, port, username, password, status="Active"):
     }
 
 
-def player_api(action, query, host, port, username, password, status="Active"):
+def guide_window():
+    now = int(time.time())
+    return now - GUIDE_HALF_SPAN, now + GUIDE_HALF_SPAN
+
+
+def short_epg(stream_id, guide_title):
+    if not guide_title or stream_id != GUIDE_STREAM_ID:
+        return {"epg_listings": []}
+    start, stop = guide_window()
+    b64 = lambda text: base64.b64encode(text.encode()).decode()
+    fmt = lambda t: time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(t))
+    return {"epg_listings": [{
+        "id": "1",
+        "epg_id": "1",
+        "title": b64(guide_title),
+        "lang": "en",
+        "start": fmt(start),
+        "end": fmt(stop),
+        "description": b64(""),
+        "channel_id": GUIDE_KEY,
+        "start_timestamp": str(start),
+        "stop_timestamp": str(stop),
+    }]}
+
+
+def xmltv(guide_title):
+    if not guide_title:
+        return EMPTY_XMLTV
+    start, stop = guide_window()
+    fmt = lambda t: time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(t))
+    name = next(name for stream_id, name, _ in CHANNELS if stream_id == GUIDE_STREAM_ID)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<tv generator-info-name="fake_xtream">\n'
+        f'<channel id={quoteattr(GUIDE_KEY)}><display-name>{escape(name)}</display-name></channel>\n'
+        f'<programme start="{fmt(start)}" stop="{fmt(stop)}" channel={quoteattr(GUIDE_KEY)}>'
+        f'<title>{escape(guide_title)}</title></programme>\n</tv>\n'
+    ).encode()
+
+
+def player_api(action, query, host, port, username, password, status="Active", guide_title=None):
     if not action:
         return account(host, port, username, password, status)
     if action == "get_live_categories":
         return CATEGORIES
     if action == "get_live_streams":
-        return live_streams(query.get("category_id", [""])[0])
+        return live_streams(query.get("category_id", [""])[0], guide_title)
     if action in ("get_vod_categories", "get_vod_streams", "get_series_categories", "get_series"):
         return []
     if action == "get_short_epg":
-        return {"epg_listings": []}
+        return short_epg(query.get("stream_id", [""])[0], guide_title)
     if action == "get_series_info":
         return {"episodes": {}}
     return []
@@ -122,6 +174,7 @@ class Handler(BaseHTTPRequestHandler):
     media = None
     stream_status = None
     account_status = "Active"
+    guide_title = None
 
     def log_message(self, fmt, *args):
         pass
@@ -154,13 +207,14 @@ class Handler(BaseHTTPRequestHandler):
             host, port = self.server.server_address[:2]
             payload = player_api(
                 action, query, self.headers.get("Host", host).split(":")[0], port, username, password, self.account_status,
+                self.guide_title,
             )
             self.send_body(200, json.dumps(payload).encode(), "application/json")
             return
 
         if path.endswith("/xmltv.php"):
             self.log_line(f"xmltv username={username} password={password}")
-            self.send_body(200, EMPTY_XMLTV, "application/xml")
+            self.send_body(200, xmltv(self.guide_title), "application/xml")
             return
 
         parts = path.strip("/").split("/")
@@ -186,12 +240,15 @@ def main():
     parser.add_argument("--stream-status", type=int, metavar="N", help="answer every stream URL with HTTP status N")
     parser.add_argument("--account-status", default="Active", metavar="WORD",
                         help="status player_api.php reports for the account (default Active), e.g. Expired")
+    parser.add_argument("--guide-title", metavar="TEXT",
+                        help="one programme on now for E2E News One in xmltv.php and get_short_epg")
     args = parser.parse_args()
 
     if args.stream_status is not None and not 100 <= args.stream_status <= 999:
         parser.error("--stream-status must be 100-999")
     Handler.stream_status = args.stream_status
     Handler.account_status = args.account_status
+    Handler.guide_title = args.guide_title or None
 
     if args.media:
         with open(args.media, "rb") as handle:
