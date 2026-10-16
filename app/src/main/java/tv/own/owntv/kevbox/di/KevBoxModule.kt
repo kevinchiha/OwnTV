@@ -47,6 +47,8 @@ import tv.own.owntv.player.LivePreviewEngine
 import tv.own.owntv.player.OwnTVPlayer
 
 private const val ERROR_QUEUE_FILE = "kevbox_live_errors.json"
+private const val DIARY_QUEUE_FILE = "kevbox_live_diary.json"
+private const val DIARY_OPEN_FILE = "kevbox_live_diary_open.json"
 
 /** KevBox Live's bindings, on top of upstream's modules. Every store is a private prefs file. */
 val kevboxModule = module {
@@ -86,6 +88,26 @@ val kevboxModule = module {
             appVersion = BuildConfig.VERSION_NAME,
             scope = get(),
             now = System::currentTimeMillis,
+        )
+    }
+    single {
+        // noBackupFilesDir, like the error queue: this TV's alone, never in a backup.
+        val dir = androidContext().noBackupFilesDir
+        tv.own.owntv.kevbox.usage.DiaryQueue(
+            file = java.io.File(dir, DIARY_QUEUE_FILE),
+            openFile = java.io.File(dir, DIARY_OPEN_FILE),
+        )
+    }
+    single {
+        tv.own.owntv.kevbox.usage.DiarySender(
+            queue = get(),
+            auth = get(),
+            api = get(),
+            deviceId = get(),
+            appVersion = BuildConfig.VERSION_NAME,
+            scope = get(),
+            now = System::currentTimeMillis,
+            zone = { java.time.ZoneId.systemDefault() },
         )
     }
     // The one proxy flag error entries and play notes report: Core's stored setting, which its
@@ -168,6 +190,31 @@ val kevboxModule = module {
             scope = get(),
             // Monotonic: a wall-clock jump never proves or cuts a 30-second play.
             now = android.os.SystemClock::elapsedRealtime,
+        )
+    }
+
+    // The watching diary (0.5): the last press, the stored guide's on-now entry, and the watcher.
+    single { tv.own.owntv.kevbox.usage.LastPress(now = System::currentTimeMillis) }
+    single { tv.own.owntv.kevbox.usage.GuideNow(get(), get(), get(), get()) }
+    single {
+        // Lazy, like the play watcher: the engines are read only once the shell has shown.
+        val koin = getKoin()
+        tv.own.owntv.kevbox.usage.DiaryWatcher(
+            cutter = tv.own.owntv.kevbox.usage.StretchCutter { java.util.UUID.randomUUID().toString() },
+            queue = get(),
+            sender = get(),
+            lastPress = get(),
+            guide = get(),
+            auth = get(),
+            scene = get(),
+            livePreview = lazy { koin.get<LivePreviewEngine>() },
+            player = lazy { koin.get<OwnTVPlayer>() },
+            proxyInUse = get(),
+            application = androidContext() as android.app.Application,
+            scope = get(),
+            // Stamps on the wall clock, lengths on the monotonic one (see DiaryWatcher).
+            now = System::currentTimeMillis,
+            elapsed = android.os.SystemClock::elapsedRealtime,
         )
     }
 

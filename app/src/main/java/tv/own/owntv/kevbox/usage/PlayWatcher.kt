@@ -7,6 +7,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -47,6 +48,19 @@ fun liveEngineLook(state: LivePreviewEngine.State, failed: Boolean): EngineLook 
  */
 fun playerLook(isPlaying: Boolean, buffering: Boolean, failed: Boolean): EngineLook =
     EngineLook(playing = isPlaying && !buffering, failed = failed)
+
+/** What both engines report at one moment. */
+data class EngineLooks(val liveEngine: EngineLook, val player: EngineLook)
+
+/** The engine flow PlayWatcher and DiaryWatcher both watch: one value per change of either engine. */
+fun engineLooksOf(preview: LivePreviewEngine, full: OwnTVPlayer): Flow<EngineLooks> = combine(
+    preview.state, preview.errorInfo, full.isPlaying, full.buffering, full.errorInfo,
+) { state, previewError, playing, buffering, playerError ->
+    EngineLooks(
+        liveEngineLook(state, failed = previewError != null),
+        playerLook(isPlaying = playing, buffering = buffering, failed = playerError != null),
+    )
+}
 
 /**
  * Pure: what Live TV shows now. The Live engine counts whenever it plays, since only Live TV puts a
@@ -180,14 +194,7 @@ class PlayWatcher internal constructor(
         scene.shown.first { it }
         val preview = livePreview.value
         val full = player.value
-        combine(
-            preview.state, preview.errorInfo, full.isPlaying, full.buffering, full.errorInfo,
-        ) { state, previewError, playing, buffering, playerError ->
-            Engines(
-                liveEngineLook(state, failed = previewError != null),
-                playerLook(isPlaying = playing, buffering = buffering, failed = playerError != null),
-            )
-        }.collectLatest { engines ->
+        engineLooksOf(preview, full).collectLatest { engines ->
             look(engines, full)
             // collectLatest cancels this loop on the next change, so one look runs at a time.
             while (run.running) {
@@ -197,7 +204,7 @@ class PlayWatcher internal constructor(
         }
     }
 
-    private fun look(engines: Engines, full: OwnTVPlayer) {
+    private fun look(engines: EngineLooks, full: OwnTVPlayer) {
         val look = playLookOf(scene.snapshot(), engines.liveEngine, engines.player, full.isLiveContent)
         val at = now()
         // A channel moving to the other engine started again there: a new run (behaviour 4).
@@ -222,8 +229,6 @@ class PlayWatcher internal constructor(
             Log.w(LOG_TAG, "play watcher stopped: ${e.javaClass.simpleName}")
         }
     }
-
-    private data class Engines(val liveEngine: EngineLook, val player: EngineLook)
 
     private companion object {
         const val LOG_TAG = "KevBoxUsage"

@@ -19,6 +19,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import tv.own.owntv.kevbox.usage.Stretch
+import tv.own.owntv.kevbox.usage.toEntry
 
 class SupabaseApiTest {
 
@@ -138,7 +140,62 @@ class SupabaseApiTest {
         assertEquals(true, sent.getBoolean("p_proxy"))
     }
 
+    @Test
+    fun `recordLiveStretches posts the contract body`() = runBlocking {
+        val server = Recording()
+        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon-key")
+        val stretch = Stretch(
+            id = "4b0c7e1a-0000-4000-8000-000000000001",
+            startedAtMs = java.time.ZonedDateTime.of(2026, 10, 15, 21, 0, 0, 0, BEIRUT).toInstant().toEpochMilli(),
+            endedAtMs = java.time.ZonedDateTime.of(2026, 10, 15, 21, 24, 0, 0, BEIRUT).toInstant().toEpochMilli(),
+            inBox = true,
+            lastPressAtMs = java.time.ZonedDateTime.of(2026, 10, 15, 21, 5, 30, 0, BEIRUT).toInstant().toEpochMilli(),
+            channel = "MTV Lebanon",
+            category = null,
+            programme = "News",
+            providerHost = null,
+            proxy = false,
+        )
+        val entries = JSONArray().put(stretch.toEntry(BEIRUT))
+
+        val response = api.recordLiveStretches("a1", "device-1", "5.1.0.16", "2026-10-15T21:30:00.000+03:00", entries)
+
+        assertEquals(ApiResponse.Http(204, ""), response)
+        val request = server.requests.single()
+        assertEquals("POST", request.method)
+        assertEquals("/rest/v1/rpc/record_live_stretches", request.url.encodedPath)
+        assertEquals("Bearer a1", request.header("Authorization"))
+        assertEquals("anon-key", request.header("apikey"))
+        val sent = JSONObject(server.bodies.single())
+        assertEquals(
+            setOf("p_device_id", "p_app_version", "p_tv_now", "p_entries"),
+            sent.keys().asSequence().toSet(),
+        )
+        assertEquals("device-1", sent.getString("p_device_id"))
+        assertEquals("5.1.0.16", sent.getString("p_app_version"))
+        assertEquals("2026-10-15T21:30:00.000+03:00", sent.getString("p_tv_now"))
+        val entry = sent.getJSONArray("p_entries").getJSONObject(0)
+        assertEquals(
+            setOf(
+                "id", "started_at", "ended_at", "in_box", "last_press_at",
+                "channel", "category", "programme", "provider_host", "proxy",
+            ),
+            entry.keys().asSequence().toSet(),
+        )
+        assertEquals("4b0c7e1a-0000-4000-8000-000000000001", entry.getString("id"))
+        assertEquals("2026-10-15T21:00:00.000+03:00", entry.getString("started_at"))
+        assertEquals("2026-10-15T21:24:00.000+03:00", entry.getString("ended_at"))
+        assertEquals("2026-10-15T21:05:30.000+03:00", entry.getString("last_press_at"))
+        assertEquals(true, entry.getBoolean("in_box"))
+        assertEquals("MTV Lebanon", entry.getString("channel"))
+        assertEquals(true, entry.isNull("category"))
+        assertEquals("News", entry.getString("programme"))
+        assertEquals(true, entry.isNull("provider_host"))
+        assertEquals(false, entry.getBoolean("proxy"))
+    }
+
     private companion object {
+        val BEIRUT: java.time.ZoneId = java.time.ZoneId.of("Asia/Beirut")
         const val BASE = "https://test.supabase.local"
     }
 }
