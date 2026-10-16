@@ -3,9 +3,13 @@ package tv.own.owntv.kevbox.usage
 
 import java.io.File
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -13,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -37,27 +42,37 @@ class DiaryWatcherTest {
     private val openFile: File get() = File(folder.root, "diary_open.json")
 
     // The wall clock and the monotonic one; tests move them apart to fake a clock correction.
-    private var wall = AT_20
-    private var steady = 5_000L
-    private var member: String? = USER
+    // Volatile: a started watcher reads them from its own threads.
+    @Volatile private var wall = AT_20
+    @Volatile private var steady = 5_000L
+    @Volatile private var member: String? = USER
     private var sends = 0
     private var guideEntry: XtEpgEntry? = null
     private val scene = PlaybackScene()
     // Lazy: the temporary folder exists only once the rule has run.
     private val queue by lazy { DiaryQueue(file, openFile) }
     private val lastPress = LastPress { wall }
+    private val looks = AtomicInteger()
+    private var ids = 0
 
-    private fun watcher() = DiaryWatcher(
-        cutter = StretchCutter { "stretch-1" },
+    private fun watcher(
+        engines: Flow<EngineLooks> = emptyFlow(),
+        guide: suspend (ChannelEntity) -> XtEpgEntry? = { guideEntry },
+    ) = DiaryWatcher(
+        cutter = StretchCutter { "stretch-${++ids}" },
         queue = queue,
         startSender = {},
         sendNow = { sends++ },
         lastPress = lastPress,
-        guide = { guideEntry },
+        guide = guide,
         userId = { member },
         scene = scene,
-        engines = { emptyFlow() },
-        playerLive = { false },
+        engines = { engines },
+        // Read once per look: the count tells a test that a started watcher has looked.
+        playerLive = {
+            looks.incrementAndGet()
+            false
+        },
         proxy = { true },
         registerCallbacks = {},
         scope = scope,
@@ -65,14 +80,115 @@ class DiaryWatcherTest {
         elapsed = { steady },
     )
 
+    /** Waits up to 3 s for [done]; the assertions after it tell whether it came. */
+    private fun waitFor(done: () -> Boolean) {
+        val until = System.currentTimeMillis() + 3_000
+        while (!done() && System.currentTimeMillis() < until) Thread.sleep(10)
+    }
+
     private fun advance(ms: Long) {
         wall += ms
         steady += ms
     }
 
-    private fun show(streamUrl: String = LOGIN_URL, inBox: Boolean = false) {
+    private fun show(streamUrl: String = LOGIN_URL, inBox: Boolean = false, catchup: Boolean = false) {
         val channel = ChannelEntity(id = 7, sourceId = 1, name = "One", streamUrl = streamUrl, number = 1)
-        scene.update(channel, "News", inBox = inBox, catchup = false)
+        scene.update(channel, "News", inBox = inBox, catchup = catchup)
+    }
+
+    @Test
+    fun `an engine failure closes the stretch at once`() = runBlocking {
+        show()
+        val w = watcher()
+        w.look(LIVE_ENGINE_PLAYS)
+        advance(5 * MIN)
+        w.look(LIVE_ENGINE_PLAYS.copy(liveEngine = EngineLook(playing = false, failed = true)))
+
+        // A stop would wait out the stall grace; a failure closes now, with no background (AC-2).
+        val s = queue.oldest(10, USER).single()
+        assertEquals(AT_20 + 5 * MIN, s.endedAtMs)
+    }
+
+    @Test
+    fun `catch-up starting closes the stretch at once`() = runBlocking {
+        show()
+        val w = watcher()
+        w.look(LIVE_ENGINE_PLAYS)
+        advance(5 * MIN)
+        show(catchup = true)
+        w.look(LIVE_ENGINE_PLAYS)
+
+        val s = queue.oldest(10, USER).single()
+        assertEquals(AT_20 + 5 * MIN, s.endedAtMs)
+        // Catch-up opens nothing: the background close adds no second stretch (AC-3).
+        advance(5 * MIN)
+        w.background()
+        assertEquals(1, queue.size())
+    }
+
+    @Test
+    fun `a look cancelled mid guide read never gives the new channel the old title`() = runBlocking {
+        var readFails = false
+        val w = watcher(guide = { channel ->
+            if (readFails) throw CancellationException("the next look started")
+            val title = if (channel.streamUrl == OTHER_URL) "Two" else "One"
+            XtEpgEntry(title, "", AT_20 - 10 * MIN, AT_20 + 120 * MIN)
+        })
+        show()
+        w.look(LIVE_ENGINE_PLAYS)
+        advance(MIN)
+
+        show(streamUrl = OTHER_URL)
+        readFails = true
+        try {
+            w.look(LIVE_ENGINE_PLAYS)
+            fail("the cancelled look carried on")
+        } catch (_: CancellationException) {
+        }
+        readFails = false
+        w.look(LIVE_ENGINE_PLAYS)
+        advance(MIN)
+        w.background()
+
+        assertEquals(listOf("One", "Two"), queue.oldest(10, USER).map { it.programme })
+    }
+
+    @Test
+    fun `coming back to the app looks again with the engines unchanged`() = runBlocking {
+        // Catch-up on screen: the first look opens nothing.
+        show(catchup = true)
+        val w = watcher(engines = MutableStateFlow(LIVE_ENGINE_PLAYS))
+        w.start()
+        waitFor { looks.get() >= 1 }
+        assertEquals(1, looks.get())
+
+        // Live again while away. The engines still say playing, so they send no change.
+        show()
+        advance(MIN)
+        val back = wall
+        w.onAppStarted()
+        waitFor { looks.get() >= 2 }
+        advance(5 * MIN)
+        w.background()
+
+        val s = queue.oldest(10, USER).single()
+        assertEquals(back, s.startedAtMs)
+        assertEquals(back + 5 * MIN, s.endedAtMs)
+    }
+
+    @Test
+    fun `a sign-out mid stretch keeps it for the member it opened under`() = runBlocking {
+        show()
+        val w = watcher()
+        w.look(LIVE_ENGINE_PLAYS)
+        advance(5 * MIN)
+        // Sign-out clears the member before the engines stop.
+        member = null
+        w.look(LIVE_ENGINE_PLAYS)
+        w.background()
+
+        val s = queue.oldest(10, USER).single()
+        assertEquals(AT_20 + 5 * MIN, s.endedAtMs)
     }
 
     @Test
@@ -194,6 +310,7 @@ class DiaryWatcherTest {
         const val AT_20 = 1_792_180_800_000L
         const val USER = "member-a"
         const val LOGIN_URL = "http://u:p@host/live/user/pass/1.ts"
+        const val OTHER_URL = "http://u:p@host/live/user/pass/2.ts"
         val LIVE_ENGINE_PLAYS = EngineLooks(
             liveEngine = EngineLook(playing = true, failed = false),
             player = EngineLook(playing = false, failed = false),

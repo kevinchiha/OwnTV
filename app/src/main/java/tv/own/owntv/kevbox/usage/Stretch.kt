@@ -4,10 +4,15 @@ package tv.own.owntv.kevbox.usage
 import java.time.ZoneId
 import org.json.JSONObject
 
-/** A stretch shorter than this is never queued (AC-6). */
+/** A stretch shorter than this is never queued (AC-3). */
 const val STRETCH_MIN_MS: Long = 10_000L
 
-/** One finished (or, while open, saved) stretch. Times are TV wall clock ms. Nothing here is a stream address. */
+/**
+ * One finished (or, while open, saved) stretch. Times are ms on one clock: StretchCutter returns
+ * them on its caller's clock (elapsed, in DiaryWatcher), and DiaryWatcher moves them to the TV wall
+ * clock before they are queued, so every queued or sent stretch is TV wall clock ms. Nothing here is
+ * a stream address.
+ */
 data class Stretch(
     val id: String, // random UUID made on the TV
     val startedAtMs: Long,

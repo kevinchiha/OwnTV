@@ -3,6 +3,8 @@ package tv.own.owntv.kevbox.usage
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -124,6 +126,38 @@ class DiaryQueueTest {
 
         assertEquals(0, next.size())
         assertEquals(false, openFile.exists())
+    }
+
+    @Test
+    fun `a saved open stretch stays on disk when the queue write fails`() {
+        // A queue file the rename can never replace: a directory with something in it.
+        val blocked = File(folder.root, "blocked.json").apply { mkdirs() }
+        File(blocked, "inside").writeText("x")
+        val opened = stretch(1, lengthMs = 24 * MINUTE)
+        DiaryQueue(blocked, openFile).saveOpen(opened, USER_A)
+
+        DiaryQueue(blocked, openFile).recoverOpen()
+
+        // Nothing reached the queue file, so the open save is kept for the next start (AC-6).
+        assertTrue(openFile.exists())
+        val next = queue()
+        next.recoverOpen()
+        assertEquals(listOf(opened), next.oldest(10, USER_A))
+    }
+
+    @Test
+    fun `a recovered open save never replaces the finished stretch of the same id`() {
+        val running = queue()
+        val opened = stretch(1, lengthMs = 0)
+        running.saveOpen(opened.copy(endedAtMs = opened.startedAtMs + 24 * MINUTE), USER_A)
+        // It finished at 30 minutes and was queued; the process died before the open save was cleared.
+        running.add(opened.copy(endedAtMs = opened.startedAtMs + 30 * MINUTE), USER_A)
+
+        val next = queue()
+        next.recoverOpen()
+
+        assertEquals(opened.startedAtMs + 30 * MINUTE, next.oldest(10, USER_A).single().endedAtMs)
+        assertFalse(openFile.exists())
     }
 
     @Test

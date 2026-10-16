@@ -38,11 +38,13 @@ class DiaryQueue(private val file: File, private val openFile: File) {
         load()
         append(Item(stretch, userId))
         save()
+        Unit
     }
 
     /** Saves the open stretch as of now, replacing the previous save. */
     fun saveOpen(stretch: Stretch, userId: String) = synchronized(lock) {
         writeAtomically(openFile, itemJson(Item(stretch, userId)).toString())
+        Unit
     }
 
     fun clearOpen() = synchronized(lock) {
@@ -52,15 +54,21 @@ class DiaryQueue(private val file: File, private val openFile: File) {
 
     /**
      * A stretch saved open by a process that was killed joins the queue, ending at its last save,
-     * and the open file is cleared. One under [STRETCH_MIN_MS] is dropped (AC-6).
+     * and the open file is cleared. One under [STRETCH_MIN_MS] is dropped (AC-6). A queued stretch
+     * with the same id finished after that save, so it stays and the save goes. The open file is
+     * cleared only once the queue file holds the stretch: a failed write keeps it for the next start.
      */
     fun recoverOpen() = synchronized(lock) {
         val saved = readOpen()
+        if (saved != null && longEnough(saved.stretch)) {
+            load()
+            if (items.none { it.stretch.id == saved.stretch.id }) {
+                append(saved)
+                if (!save()) return@synchronized
+            }
+        }
         openFile.delete()
-        if (saved == null || !longEnough(saved.stretch)) return@synchronized
-        load()
-        append(saved)
-        save()
+        Unit
     }
 
     /** Up to [max] of [userId]'s stretches, oldest first. They stay queued until [remove]. */
@@ -73,6 +81,7 @@ class DiaryQueue(private val file: File, private val openFile: File) {
         load()
         val gone = ids.toSet()
         if (items.removeAll { it.stretch.id in gone }) save()
+        Unit
     }
 
     /**
@@ -137,10 +146,11 @@ class DiaryQueue(private val file: File, private val openFile: File) {
         trimToMax()
     }
 
-    private fun save() {
+    /** Rewrites [file] from [items]; false when the write failed and the old copy stays. */
+    private fun save(): Boolean {
         val array = JSONArray()
         items.forEach { array.put(itemJson(it)) }
-        writeAtomically(file, JSONObject().put(ITEMS, array).toString())
+        return writeAtomically(file, JSONObject().put(ITEMS, array).toString())
     }
 
     private fun itemJson(item: Item): JSONObject = item.stretch.toStored().put(USER, item.userId)
@@ -157,15 +167,19 @@ class DiaryQueue(private val file: File, private val openFile: File) {
         null
     }
 
-    /** Writes a temp file beside [target], then renames it over. A failed write keeps the old copy. */
-    private fun writeAtomically(target: File, text: String) {
+    /**
+     * Writes a temp file beside [target], then renames it over. A failed write keeps the old copy
+     * and answers false.
+     */
+    private fun writeAtomically(target: File, text: String): Boolean {
         val temp = File(target.parentFile, target.name + TEMP_SUFFIX)
-        try {
+        return try {
             target.parentFile?.mkdirs()
             temp.writeText(text)
-            if (!temp.renameTo(target)) temp.delete()
+            temp.renameTo(target).also { renamed -> if (!renamed) temp.delete() }
         } catch (_: IOException) {
             temp.delete()
+            false
         }
     }
 

@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import tv.own.owntv.kevbox.errors.DeviceId
 import tv.own.owntv.kevbox.session.KevBoxAuth
+import tv.own.owntv.kevbox.supabase.ApiResponse
 import tv.own.owntv.kevbox.supabase.Fetch
 import tv.own.owntv.kevbox.supabase.SupabaseApi
 
@@ -90,6 +91,9 @@ class DiarySender(
             val entries = JSONArray().apply { batch.forEach { put(it.toEntry(zoneNow)) } }
             val tvNow = playedAtText(now(), zoneNow)
             val result = auth.signedInCall { token ->
+                // The token is read after the batch was picked: a sign-out and another member's
+                // sign-in in between would hand over theirs. Then nothing goes out (AC-8).
+                if (auth.userId.value != member) return@signedInCall ApiResponse.NoNetwork
                 api.recordLiveStretches(token, deviceId.get(), appVersion, tvNow, entries)
             }
             result is Fetch.Ok && result.value.code in HTTP_SUCCESS
