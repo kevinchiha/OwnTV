@@ -11,8 +11,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,9 +44,15 @@ private const val DIARY_TICK_MS: Long = 1_000L
  * end on the wall clock as of then ([now]) and its start that end minus its length; the server
  * shifts both by `tv_now`.
  *
- * Every cutter call, queue write and send runs one at a time under [worker], off the main thread.
- * The lifecycle callbacks only post to it. It ticks once a second only while a stretch is open, so
- * an idle TV wakes nothing. Nothing here logs a channel, a title or an address.
+ * Every cutter call and queue write runs one at a time under [worker], off the main thread. The
+ * guide and proxy reads run before a look takes the worker, and the send after a background close
+ * runs once the worker is released, on DiarySender's own scope and lock; DiaryQueue locks every
+ * method, so it never sees two writers at once. The lifecycle callbacks only post work. It ticks
+ * once a second only while a stretch is open, so an idle TV wakes nothing. Nothing here logs a
+ * channel, a title or an address.
+ *
+ * A stretch belongs to the member signed in when it opened (AC-8): a sign-out while it plays keeps
+ * it queued for that member, and a stretch that opened signed out is dropped.
  *
  * Koin uses the public constructor; tests use this one, with the collaborators as functions.
  */
@@ -101,10 +110,15 @@ class DiaryWatcher internal constructor(
     private val started = AtomicBoolean(false)
     private val worker = Mutex()
 
-    // Held under [worker]: the open stretch last saved, and when (elapsed) it opened or was saved.
+    // Held under [worker]: the open stretch last saved, the open one and the member it opened
+    // under, and when (elapsed) it opened or was saved.
     private var savedId: String? = null
     private var trackedId: String? = null
+    private var trackedMember: String? = null
     private var lastSaveAt = 0L
+
+    // Bumped when the app comes back, so the watch looks again with the engines as they are (AC-2).
+    private val returns = MutableStateFlow(0L)
 
     // Only the watch coroutine touches these: the guide answer for the channel on screen.
     private var guideKey: String? = null
@@ -136,9 +150,13 @@ class DiaryWatcher internal constructor(
         scope.launch(Dispatchers.Default) { guarded { watch() } }
     }
 
-    /** MainActivity started: the app start counts as a press (AC-5). */
+    /**
+     * MainActivity started: the app start counts as a press (AC-5), and the watch looks again at
+     * once, since engines that kept their state while away send no change to wake it (AC-2).
+     */
     internal fun onAppStarted() {
         lastPress.press()
+        returns.update { it + 1 }
     }
 
     /** MainActivity went to the background: post the close and the send to the worker. */
@@ -157,7 +175,7 @@ class DiaryWatcher internal constructor(
 
     private suspend fun watch() {
         scene.shown.first { it }
-        engines().collectLatest { looks ->
+        combine(engines(), returns) { looks, _ -> looks }.collectLatest { looks ->
             look(looks)
             // collectLatest cancels this loop on the next change, so one look runs at a time.
             while (worker.withLock { cutter.isOpen }) {
@@ -192,10 +210,16 @@ class DiaryWatcher internal constructor(
         }
     }
 
-    /** Call with [worker] held: queues what finished, clears or refreshes the open save (AC-6). */
+    /**
+     * Call with [worker] held: queues what finished under the member each opened under (AC-8), and
+     * clears or refreshes the open save (AC-6).
+     */
     private fun finish(done: List<Stretch>, clock: Clock) {
-        val member = userId()
-        if (member != null) done.forEach { queue.add(clock.wall(it), member) }
+        // Every finished stretch opened in an earlier call, so it is the tracked one.
+        done.forEach { stretch ->
+            val owner = trackedMember.takeIf { stretch.id == trackedId }
+            if (owner != null) queue.add(clock.wall(stretch), owner)
+        }
         val openId = cutter.openId
         if (savedId != null && savedId != openId) {
             queue.clearOpen()
@@ -203,31 +227,38 @@ class DiaryWatcher internal constructor(
         }
         if (openId != trackedId) {
             trackedId = openId
+            trackedMember = if (openId != null) userId() else null
             lastSaveAt = clock.steady
         }
+        val owner = trackedMember
         if (openId != null && clock.steady - lastSaveAt >= OPEN_SAVE_MS) {
             lastSaveAt = clock.steady
             val snapshot = cutter.open(clock.steady, clock.steadyOf(lastPress.at()))
-            if (snapshot != null && member != null) {
-                queue.saveOpen(clock.wall(snapshot), member)
+            if (snapshot != null && owner != null) {
+                queue.saveOpen(clock.wall(snapshot), owner)
                 savedId = snapshot.id
             }
         }
     }
 
-    /** The guide entry for [key]: asked when the channel changes, its programme ends, or every 60 s with none. */
+    /**
+     * The guide entry for [key]: asked when the channel changes, its programme ends, or every 60 s
+     * with none. The key and its answer are stored together once the read is over, so a look
+     * cancelled mid-read leaves the previous pair whole and the next look asks again (AC-1). A read
+     * that throws counts as no answer, retried after 60 s.
+     */
     private suspend fun programmeFor(key: String?, channel: ChannelEntity?): XtEpgEntry? {
         val at = elapsed()
         val entry = guideEntry
         val ask = key != guideKey ||
             (entry == null && at - guideAskedAt >= GUIDE_RETRY_MS) ||
             (entry != null && now() >= entry.stopMs)
-        if (ask) {
-            guideKey = key
-            guideAskedAt = at
-            guideEntry = channel?.let { guardedOrNull { guide(it) } }
-        }
-        return guideEntry
+        if (!ask) return entry
+        val answer = channel?.let { guardedOrNull { guide(it) } }
+        guideKey = key
+        guideAskedAt = at
+        guideEntry = answer
+        return answer
     }
 
     private suspend fun proxyOrFalse(): Boolean = guardedOrNull { proxy() } ?: false

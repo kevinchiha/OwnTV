@@ -40,6 +40,9 @@ class DiarySenderTest {
         val answers = ArrayDeque<Int>()
         var nextUser = USER_A
 
+        /** Runs on every stretch call, before it is answered. */
+        var onStretchCall: () -> Unit = {}
+
         fun calls() = bodies.size
 
         /** The stretch ids each call carried, in order. */
@@ -53,6 +56,7 @@ class DiarySenderTest {
             val (code, body) = when (request.url.encodedPath) {
                 STRETCHES_PATH -> {
                     bodies += JSONObject(Buffer().also { request.body!!.writeTo(it) }.readUtf8())
+                    onStretchCall()
                     when (val answer = answers.removeFirstOrNull() ?: 204) {
                         NO_NETWORK -> throw UnknownHostException("no network")
                         THROW -> throw IllegalStateException("broken")
@@ -134,6 +138,9 @@ class DiarySenderTest {
     private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, e -> crashes += e })
     private val queue by lazy { DiaryQueue(File(folder.root, "diary.json"), File(folder.root, "open.json")) }
 
+    // Runs inside the sender, after it picked the member and before it asks for a token.
+    private var beforeToken: () -> Unit = {}
+
     private fun sender(auth: KevBoxAuth) = DiarySender(
         queue = queue,
         auth = auth,
@@ -142,7 +149,10 @@ class DiarySenderTest {
         appVersion = "5.1.0.16",
         scope = scope,
         now = { clock },
-        zone = { BEIRUT },
+        zone = {
+            beforeToken()
+            BEIRUT
+        },
     )
 
     private fun signedIn(user: String = USER_A): KevBoxAuth {
@@ -229,6 +239,59 @@ class DiarySenderTest {
         assertEquals(1, server.calls())
         assertEquals(listOf("s-4"), server.sentIds(0))
         assertEquals(0, queue.size())
+    }
+
+    @Test
+    fun `a new member with nothing queued makes no call and the previous member's stretches go`() = runBlocking {
+        queueStretches(1..3, USER_A)
+        server.nextUser = USER_B
+        val sender = sender(signedIn(USER_B))
+
+        sender.sendOnce()
+
+        assertEquals(0, server.calls())
+        assertEquals(0, queue.size())
+    }
+
+    @Test
+    fun `a member switch during a send never sends one member's stretches under the other's token`() = runBlocking {
+        val auth = signedIn(USER_A)
+        val sender = sender(auth)
+        queueStretches(1..3, USER_A)
+        // A signs out and B signs in after the sender picked A's batch, before it reads a token.
+        server.nextUser = USER_B
+        beforeToken = {
+            beforeToken = {}
+            runBlocking {
+                auth.signOut()
+                auth.signIn("$USER_B@example.com", "secret")
+            }
+        }
+
+        sender.sendOnce()
+
+        assertEquals(USER_B, auth.userId.value)
+        assertEquals(0, server.calls())
+        // Still tagged A: the next send drops them under B (AC-8).
+        assertEquals(3, queue.oldest(10, USER_A).size)
+    }
+
+    @Test
+    fun `one trigger makes at most 10 calls`() = runBlocking {
+        val sender = sender(signedIn())
+        queueStretches(1..DIARY_BATCH_MAX, USER_A)
+        // Every call is answered 2xx and a fresh batch arrives meanwhile, so more always waits.
+        var next = DIARY_BATCH_MAX
+        server.onStretchCall = {
+            queueStretches(next + 1..next + DIARY_BATCH_MAX, USER_A)
+            next += DIARY_BATCH_MAX
+        }
+
+        sender.sendNow()
+        settle()
+
+        assertEquals(10, server.calls())
+        assertEquals(DIARY_BATCH_MAX, queue.size())
     }
 
     @Test
