@@ -193,6 +193,31 @@ val kevboxModule = module {
         )
     }
 
+    // The watching diary (0.5): the last press, the stored guide's on-now entry, and the watcher.
+    single { tv.own.owntv.kevbox.usage.LastPress(now = System::currentTimeMillis) }
+    single { tv.own.owntv.kevbox.usage.GuideNow(get(), get(), get(), get()) }
+    single {
+        // Lazy, like the play watcher: the engines are read only once the shell has shown.
+        val koin = getKoin()
+        tv.own.owntv.kevbox.usage.DiaryWatcher(
+            cutter = tv.own.owntv.kevbox.usage.StretchCutter { java.util.UUID.randomUUID().toString() },
+            queue = get(),
+            sender = get(),
+            lastPress = get(),
+            guide = get(),
+            auth = get(),
+            scene = get(),
+            livePreview = lazy { koin.get<LivePreviewEngine>() },
+            player = lazy { koin.get<OwnTVPlayer>() },
+            proxyInUse = get(),
+            application = androidContext() as android.app.Application,
+            scope = get(),
+            // Stamps on the wall clock, lengths on the monotonic one (see DiaryWatcher).
+            now = System::currentTimeMillis,
+            elapsed = android.os.SystemClock::elapsedRealtime,
+        )
+    }
+
     single { GuideFeeds(get(), get(), get(), get(), get(), scope = get()) }
     // One show finder for both Search's TV guide tab and the guide's own search.
     single { tv.own.owntv.kevbox.live.ProgrammeTitles(get()) }

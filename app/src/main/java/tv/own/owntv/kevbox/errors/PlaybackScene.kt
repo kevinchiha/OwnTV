@@ -30,6 +30,7 @@ class PlaybackScene {
             streamUrl = channel?.streamUrl,
             inBox = inBox,
             catchup = catchup,
+            channelEntity = channel,
         )
         _shown.value = true
     }

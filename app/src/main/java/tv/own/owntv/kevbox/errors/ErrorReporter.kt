@@ -10,16 +10,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.database.entity.SourceEntity
 import tv.own.owntv.player.PlayerFailureReason
 
-/** What was on screen when playback failed. [streamUrl] only ever leaves the TV as its host. */
+/**
+ * What was on screen when playback failed. [streamUrl] only ever leaves the TV as its host.
+ * [channelEntity] is the channel itself, which the watching diary looks up in the stored guide; it
+ * stays in memory and is never queued or sent.
+ */
 data class SceneSnapshot(
     val channel: String?,
     val category: String?,
     val streamUrl: String?,
     val inBox: Boolean,
     val catchup: Boolean,
+    val channelEntity: ChannelEntity? = null,
 )
 
 /**

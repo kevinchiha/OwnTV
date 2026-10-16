@@ -1157,6 +1157,8 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/DiaryQueue.kt	user
 1	log	app/src/main/java/tv/own/owntv/kevbox/usage/DiarySender.kt	KevBoxUsage
 1	log	app/src/main/java/tv/own/owntv/kevbox/usage/DiarySender.kt	diary send failed: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/usage/DiaryWatcher.kt	KevBoxUsage
+1	log	app/src/main/java/tv/own/owntv/kevbox/usage/DiaryWatcher.kt	diary watcher stopped: ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt	KevBoxUsage
 1	log	app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt	play note failed: ${e.javaClass.simpleName}
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/usage/PlayNotes.kt	yyyy-MM-dd'T'HH:mm:ss.SSSXXX
