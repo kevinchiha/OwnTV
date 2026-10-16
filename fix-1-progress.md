@@ -1,2 +1,0 @@
-fix-1: done (F-1..F-10). No Interfaces signature changed. Stretch KDoc reworded per F-7 (the Interfaces block quotes the old 'Times are TV wall clock ms'). F-1: a guide read that throws (not a cancel) still commits the key with no answer, so the 60 s retry applies instead of a read every second.
-fix-1 round 1: done. F-5 test now waits for the cutter's open stretch instead of the look counter, which rose before the cutter ran and let background() win the race. No Interfaces deviation.
