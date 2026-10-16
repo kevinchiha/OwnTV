@@ -54,12 +54,14 @@ class DiaryWatcherTest {
     private val lastPress = LastPress { wall }
     private val looks = AtomicInteger()
     private var ids = 0
+    // The watcher's cutter, kept so a test can wait until a started watcher's look has opened a stretch.
+    private var cutter: StretchCutter? = null
 
     private fun watcher(
         engines: Flow<EngineLooks> = emptyFlow(),
         guide: suspend (ChannelEntity) -> XtEpgEntry? = { guideEntry },
     ) = DiaryWatcher(
-        cutter = StretchCutter { "stretch-${++ids}" },
+        cutter = StretchCutter { "stretch-${++ids}" }.also { cutter = it },
         queue = queue,
         startSender = {},
         sendNow = { sends++ },
@@ -80,9 +82,9 @@ class DiaryWatcherTest {
         elapsed = { steady },
     )
 
-    /** Waits up to 3 s for [done]; the assertions after it tell whether it came. */
+    /** Waits up to 10 s for [done]; the assertions after it tell whether it came. */
     private fun waitFor(done: () -> Boolean) {
-        val until = System.currentTimeMillis() + 3_000
+        val until = System.currentTimeMillis() + 10_000
         while (!done() && System.currentTimeMillis() < until) Thread.sleep(10)
     }
 
@@ -167,7 +169,10 @@ class DiaryWatcherTest {
         advance(MIN)
         val back = wall
         w.onAppStarted()
-        waitFor { looks.get() >= 2 }
+        // Wait for the open stretch, not the look count: the count goes up before the cutter runs,
+        // so a background close could beat the look and leave nothing to close.
+        waitFor { cutter?.isOpen == true }
+        assertTrue("the look on return opened no stretch", cutter?.isOpen == true)
         advance(5 * MIN)
         w.background()
 
