@@ -447,7 +447,9 @@ fun OwnTVShell(
     }
     // Recently-watched channels for the right-hand history overlay — re-read each time it opens (and
     // after a zap, since tuning writes a new history row) so the newest channel is always on top.
-    val historyEntries by produceState(emptyList<tv.own.owntv.core.database.dao.ChannelWithWatchedAt>(), showHistoryList, previewChannel?.id) {
+    // KevBox: bumped after Hold OK takes a channel off the list, to read it again (Kevin, 2026-10-16).
+    var historyReload by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val historyEntries by produceState(emptyList<tv.own.owntv.core.database.dao.ChannelWithWatchedAt>(), showHistoryList, previewChannel?.id, historyReload) { // KevBox: historyReload
         if (!showHistoryList) { value = emptyList(); return@produceState }
         value = runCatching { liveVm.historyChannels() }.getOrDefault(emptyList())
     }
@@ -1563,7 +1565,8 @@ fun OwnTVShell(
             }
           }
             tv.own.owntv.features.shell.components.StageStatusCluster(
-                continuePill = continueTarget?.let { target ->
+                // KevBox: the "Last channel" pill is hidden (LiveOnly.SHOW_CONTINUE_PILL); the shortcut still works.
+                continuePill = continueTarget?.takeIf { tv.own.owntv.kevbox.live.LiveOnly.SHOW_CONTINUE_PILL }?.let { target ->
                     val live = target.kind == tv.own.owntv.features.home.ContinueKind.LIVE
                     tv.own.owntv.features.shell.components.ContinuePill(
                         icon = if (live) OwnTVIcon.LIVE_TV else OwnTVIcon.PLAY,
@@ -2000,6 +2003,7 @@ fun OwnTVShell(
                 // URL comes back null — "Watch from start", "Go back to…" and the external hand-off —
                 // all of which used to fail in complete silence.
                 val catchupUnavailable = stringResource(R.string.content_epg_catchup_unavailable)
+                val historyRemovedNote = stringResource(R.string.kevbox_history_removed) // KevBox: Hold OK in the history panel
                 LaunchedEffect(liveVm) {
                     liveVm.catchupUnavailable.collect { localSubToast.show(catchupUnavailable) }
                 }
@@ -2058,6 +2062,8 @@ fun OwnTVShell(
                         alignEnd = true,
                         onSelect = { liveVm.ensurePlaying(it); showHistoryList = false },
                         onDismiss = { showHistoryList = false },
+                        // KevBox: Hold OK takes the channel off Recently watched, at once, with a short note (Kevin, 2026-10-16).
+                        onLongSelect = { ch -> liveVm.removeFromHistory(ch.id) { historyReload++; localSubToast.show(historyRemovedNote) } },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

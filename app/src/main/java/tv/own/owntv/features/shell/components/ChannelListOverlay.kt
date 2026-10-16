@@ -48,6 +48,8 @@ import tv.own.owntv.features.home.relativeLastWatchedLabel
 import tv.own.owntv.features.live.LiveStageRow
 import tv.own.owntv.features.live.ProviderTags
 import tv.own.owntv.features.settings.SettingsViewModel
+import tv.own.owntv.kevbox.ui.swallowHeldOk // KevBox: Hold OK removes a history row
+import androidx.compose.runtime.withFrameNanos // KevBox: refocus after a removal
 import tv.own.owntv.ui.components.chNavPaging
 import tv.own.owntv.ui.components.jumpLazyListTo
 import tv.own.owntv.ui.stage.PlaylistMark
@@ -88,6 +90,9 @@ fun ChannelListOverlay(
     /** History only: channel id → when it was last watched, shown at the row's end. */
     watchedAt: Map<Long, Long>? = null,
     onOpenCategories: (() -> Unit)? = null,
+    // KevBox: Hold OK on a row (the history panel: take the channel off Recently watched, Kevin 2026-10-16).
+    // Null = Hold OK does nothing, as upstream.
+    onLongSelect: ((ChannelEntity) -> Unit)? = null,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val dismissDirection = if (alignEnd) HorizontalDirection.END else HorizontalDirection.START
@@ -115,6 +120,22 @@ fun ChannelListOverlay(
         runCatching { focusTarget.requestFocus() }
     }
     BackHandler { onDismiss() }
+    // KevBox: after Hold OK took a row out, the rest of that OK press is eaten (HeldOkSwallow.kt), and
+    // focus goes to the row that took its place once the list comes back without it.
+    val heldOk = tv.own.owntv.kevbox.ui.rememberHeldOkSwallow()
+    var refocusAt by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(channels) {
+        val at = refocusAt ?: return@LaunchedEffect
+        refocusAt = null
+        if (channels.isEmpty()) return@LaunchedEffect
+        targetIndex = at.coerceAtMost(channels.lastIndex)
+        withFrameNanos { }
+        if (!runCatching { focusTarget.requestFocus() }.getOrDefault(false)) {
+            runCatching { listState.scrollToItem(targetIndex) }
+            withFrameNanos { }
+            runCatching { focusTarget.requestFocus() }
+        }
+    }
 
     val accent = stageAccent.accent
     val shade = tv.own.owntv.ui.theme.stageTone(Color(2, 5, 6), Color(244, 247, 245))
@@ -135,6 +156,7 @@ fun ChannelListOverlay(
                 .fillMaxHeight()
                 .width(if (history) 760.mpx else 720.mpx)
                 .stageGlass(StageRadii.Sheet, overContent = true)
+                .then(if (onLongSelect != null) Modifier.swallowHeldOk(heldOk) else Modifier) // KevBox: see heldOk
                 .onPreviewKeyEvent { e ->
                     if (e.type == KeyEventType.KeyDown && e.key.horizontalDirection(layoutDirection) == dismissDirection) {
                         // Pushing outward from the Start panel opens categories when they are wired;
@@ -219,7 +241,8 @@ fun ChannelListOverlay(
                         mark = playlistMarks[ch.sourceId],
                         onFocus = { focusedIndex = index },
                         onClick = { onSelect(ch) },
-                        onLongClick = {},
+                        // KevBox: Hold OK (onLongSelect), see heldOk.
+                        onLongClick = { onLongSelect?.let { heldOk.arm(); refocusAt = index; it(ch) } },
                         trailing = watchedAt?.let { times ->
                             {
                                 Text(
@@ -241,6 +264,8 @@ fun ChannelListOverlay(
             StageKeyHints(
                 listOfNotNull(
                     stringResource(R.string.common_ok) to stringResource(R.string.content_key_watch),
+                    // KevBox: Hold OK, when it is wired (the history panel).
+                    onLongSelect?.let { stringResource(R.string.content_key_hold_ok) to stringResource(R.string.kevbox_key_remove) },
                     // Outward is ◀ on the left sheet, ▶ on the right one (Multiview's picker goes back to categories).
                     when {
                         onOpenCategories != null -> (if (alignEnd) "▶" else "◀") to stringResource(R.string.content_category_browser_title)

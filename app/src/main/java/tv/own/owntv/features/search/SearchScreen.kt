@@ -92,6 +92,7 @@ import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.format.localizedInteger
 import tv.own.owntv.ui.stage.PlaylistMark
 import tv.own.owntv.ui.stage.StageKeyHints
+import tv.own.owntv.ui.components.chNavPaging // KevBox: CH+ / CH− in the results
 import tv.own.owntv.ui.stage.StagePlaylistMark
 import tv.own.owntv.ui.stage.StageRow
 import tv.own.owntv.ui.stage.StageSearchField
@@ -267,6 +268,11 @@ fun SearchScreen(
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    // KevBox: the remote's paging keys in the results (chNavPaging on the list below), as the channel lists read them.
+    val searchSettingsVm: tv.own.owntv.features.settings.SettingsViewModel = koinViewModel()
+    val searchChNavEnabled by searchSettingsVm.chNavEnabled.collectAsStateWithLifecycle()
+    val searchChNavUpSkip by searchSettingsVm.chNavUpSkip.collectAsStateWithLifecycle()
+    val searchChNavDownSkip by searchSettingsVm.chNavDownSkip.collectAsStateWithLifecycle()
     // KevBox: the lists as they are now, not as they were when a focus wait began; results load after.
     val entriesNow by androidx.compose.runtime.rememberUpdatedState(entries)
     val channelEntriesNow by androidx.compose.runtime.rememberUpdatedState(channelEntries)
@@ -537,6 +543,18 @@ fun SearchScreen(
                     .width(listW)
                     .fillMaxHeight()
                     .onFocusChanged { listHasFocus = it.hasFocus }
+                    // KevBox: CH+ / CH− (or whatever the member bound to paging) move by the skip counts, or to an
+                    // end on a long press, as in the channel lists (Kevin, 2026-10-16). A step landing on a group
+                    // heading goes on to the result under it (searchPageTarget).
+                    .chNavPaging(
+                        enabled = searchChNavEnabled, upSkip = searchChNavUpSkip, downSkip = searchChNavDownSkip, // KevBox
+                        isFocused = { listHasFocus }, lastIndex = { entries.lastIndex }, // KevBox
+                        currentTargetIndex = { entries.indexOfFirst { it.key == focusedKey }.coerceAtLeast(0) }, // KevBox
+                        onJumpToIndex = { idx -> // KevBox
+                            tv.own.owntv.kevbox.live.searchPageTarget(entries.map { it.isResult() }, idx)
+                                ?.let { scope.launch { focusRow(entries[it].key) } }
+                        },
+                    ) // KevBox: see above
                     // ▲ out of the results lands on the open tab (KevBox: the search field when there are no tabs).
                     .focusProperties {
                         onExit = {
@@ -604,6 +622,8 @@ fun SearchScreen(
                                 title = p.title,
                                 line = AnnotatedString(
                                     ProviderTags.parse(ch.name).name + sep +
+                                        // KevBox: the day first when the show starts on a later day (Kevin, 2026-10-16).
+                                        showDayPrefix(p.startMs, sep) +
                                         stringResource(R.string.content_live_time_range_plain, formatTime(p.startMs), formatTime(p.stopMs)),
                                 ),
                                 tags = emptyList(), mark = marks[ch.sourceId],
@@ -682,6 +702,7 @@ fun SearchScreen(
                 if (active?.channel() != null) add("▶" to stringResource(R.string.content_key_schedule))
                 // KevBox: Hold OK opens the channel in Live TV's guide.
                 if (active?.channel() != null) add(stringResource(R.string.content_key_hold_ok) to stringResource(R.string.kevbox_key_guide))
+                if (searchChNavEnabled) add(stringResource(R.string.kevbox_key_ch) to stringResource(R.string.content_key_page)) // KevBox: CH± paging
             }
             if (showingResults) {
                 // KevBox: with the tab row up, ▲ from the list goes to the tabs first; from a tab, to the field.
@@ -745,15 +766,17 @@ private fun searchEntries(results: SearchResults, tab: SearchTab, capChannels: B
 }
 
 /**
- * KevBox: the TV guide tab's rows, "ON NOW · n" then "NEXT 24 HOURS · n", each heading only over a
- * group that has rows. On now keeps channel order; next 24 hours runs by start time (kevbox/live/ShowSearch.kt).
+ * KevBox: the TV guide tab's rows, "ON NOW · n", "NEXT 24 HOURS · n", then "LATER · n" (after the next 24
+ * hours, Kevin 2026-10-16), each heading only over a group that has rows. On now keeps channel order; the
+ * other two run by start time (kevbox/live/ShowSearch.kt).
  */
 @Composable
 private fun showEntries(shows: tv.own.owntv.kevbox.live.ShowMatches): List<Entry> {
     val onNow = stringResource(R.string.kevbox_shows_on_now)
     val later = stringResource(R.string.kevbox_shows_next_24_hours)
+    val beyond = stringResource(R.string.kevbox_shows_later)
     val sep = dotSeparator()
-    return remember(shows, onNow, later, sep) {
+    return remember(shows, onNow, later, beyond, sep) {
         val locale = java.util.Locale.getDefault()
         fun heading(label: String, n: Int, key: String) = Entry.Heading(label.uppercase(locale) + sep + n.toString(), key)
         buildList {
@@ -765,8 +788,23 @@ private fun showEntries(shows: tv.own.owntv.kevbox.live.ShowMatches): List<Entry
                 add(heading(later, shows.later.size, "h-later"))
                 shows.later.forEach { add(Entry.Programme(it)) }
             }
+            if (shows.beyond.isNotEmpty()) {
+                add(heading(beyond, shows.beyond.size, "h-beyond"))
+                shows.beyond.forEach { add(Entry.Programme(it)) }
+            }
         }.distinctBy { it.key } // one key per lazy row, whatever the guide holds
     }
+}
+
+/**
+ * KevBox: "Tomorrow · " or "Sat 18 Oct · " for a show starting after today, in the guide's own day names
+ * (guideDayLabel); nothing for one starting today (Kevin, 2026-10-16).
+ */
+@Composable
+private fun showDayPrefix(startMs: Long, sep: String): String {
+    val day = tv.own.owntv.features.epg.localMidnight(startMs)
+    if (day <= tv.own.owntv.features.epg.localMidnight(System.currentTimeMillis())) return String()
+    return tv.own.owntv.features.epg.guideDayLabel(day) + sep
 }
 
 /** "2005 · ★ 6.2 · Disney+ Movies": only the parts the title has. */

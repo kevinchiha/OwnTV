@@ -1076,7 +1076,8 @@ class EpgViewModel(
             resolver.epgIdFor(show.channel)?.let { show.copy(channel = show.channel.copy(epgChannelId = it)) } ?: show
         // KevBox: On now in the grid's own order (guideOrder); Next 24 hours stays by start.
         val onNow = found.onNow.map(::matched).sortedWith(compareBy(guideOrder) { it.channel })
-        val shows = tv.own.owntv.kevbox.live.ShowMatches(onNow, found.later.map(::matched))
+        // KevBox: Later (after the next 24 hours, Kevin 2026-10-16) by start too.
+        val shows = tv.own.owntv.kevbox.live.ShowMatches(onNow, found.later.map(::matched), found.beyond.map(::matched))
         return tv.own.owntv.kevbox.live.groupGuideChannels(named, shows, inCategory)
     }
 

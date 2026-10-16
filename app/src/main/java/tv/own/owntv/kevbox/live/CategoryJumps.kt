@@ -29,6 +29,21 @@ internal class CategoryJumps private constructor(val groups: List<JumpGroup>, pr
     /** The line row [row] belongs to, for the cursor to start on; 0 for a row outside the list. */
     fun groupOf(row: Int): Int = rowGroup.getOrElse(row) { 0 }
 
+    /** The rows where a stretch begins, top to bottom: where a row's line differs from the row above. */
+    private val stretchStarts: List<Int> = rowGroup.indices.filter { it == 0 || rowGroup[it] != rowGroup[it - 1] }
+
+    /**
+     * CH+ / CH− in the guide's category column (Kevin, 2026-10-16): the row a step lands on, in list
+     * order rather than the alphabetical order of [groups]. [delta] +1 is the start of the next stretch
+     * down the list; -1 the start of [from]'s own stretch, or the one above when [from] already is one.
+     * Both wrap at the ends, as ▼ does. [from] -1 is the search field above the rows. Null: no rows.
+     */
+    fun groupStep(from: Int, delta: Int): Int? {
+        if (stretchStarts.isEmpty()) return null
+        return if (delta > 0) stretchStarts.firstOrNull { it > from } ?: stretchStarts.first()
+        else stretchStarts.lastOrNull { it < from } ?: stretchStarts.last()
+    }
+
     companion object {
 
         /** "FR|" for "FR| FRANCE HD" or "FR | FRANCE HD": two to four capitals before a bar; else null. */

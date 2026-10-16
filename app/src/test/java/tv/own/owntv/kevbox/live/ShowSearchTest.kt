@@ -22,18 +22,39 @@ class ShowSearchTest {
     )
 
     @Test
-    fun onNowAndNext24HoursAreSplitAndTheRestDropped() {
+    fun onNowNext24HoursAndLaterAreSplitAndWhatIsOverDropped() {
         val spanningNow = show(1, "News", now - hour, now + hour)
         val inThreeHours = show(2, "News", now + 3 * hour, now + 4 * hour)
-        val tooFarOut = show(3, "News", now + 25 * hour, now + 26 * hour)
+        val afterADay = show(3, "News", now + 25 * hour, now + 26 * hour) // KevBox 2026-10-16: kept, under Later
         val alreadyOver = show(4, "News", now - 2 * hour, now - hour)
 
-        val split = splitShows(listOf(spanningNow, inThreeHours, tooFarOut, alreadyOver), now)
+        val split = splitShows(listOf(spanningNow, inThreeHours, afterADay, alreadyOver), now)
 
         assertEquals(listOf(spanningNow), split.onNow)
         assertEquals(listOf(inThreeHours), split.later)
-        assertEquals(2, split.size)
-        assertEquals(setOf(1L, 2L), split.channelIds)
+        assertEquals(listOf(afterADay), split.beyond)
+        assertEquals(3, split.size)
+        assertEquals(setOf(1L, 2L, 3L), split.channelIds)
+    }
+
+    @Test
+    fun aShowStartingExactly24HoursOnIsLaterNotNext24Hours() {
+        val atTheEdge = show(1, "News", now + SHOW_WINDOW_MS, now + SHOW_WINDOW_MS + hour)
+        val justBefore = show(2, "News", now + SHOW_WINDOW_MS - 1, now + SHOW_WINDOW_MS + hour)
+
+        val split = splitShows(listOf(atTheEdge, justBefore), now)
+
+        assertEquals(listOf(justBefore), split.later)
+        assertEquals(listOf(atTheEdge), split.beyond)
+    }
+
+    @Test
+    fun laterRunsByStartAndDropsARepeat() {
+        val inThreeDays = show(1, "Match", now + 72 * hour, now + 73 * hour)
+        val inTwoDays = show(2, "Match", now + 48 * hour, now + 49 * hour)
+        val sameAgain = show(2, "Match", now + 48 * hour, now + 49 * hour)
+
+        assertEquals(listOf(inTwoDays, inThreeDays), splitShows(listOf(inThreeDays, inTwoDays, sameAgain), now).beyond)
     }
 
     @Test
@@ -103,6 +124,7 @@ class ShowSearchTest {
     @Test
     fun emptyHasNoShows() {
         assertEquals(0, ShowMatches.EMPTY.size)
+        assertEquals(emptyList<ProgrammeSearchResult>(), ShowMatches.EMPTY.beyond)
         assertEquals(emptySet<Long>(), ShowMatches.EMPTY.channelIds)
     }
 }
