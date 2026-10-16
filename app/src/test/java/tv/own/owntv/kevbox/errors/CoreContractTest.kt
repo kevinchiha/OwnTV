@@ -8,10 +8,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import tv.own.owntv.core.customize.CustomizationStore
+import tv.own.owntv.core.customize.SectionCustomizations
+import tv.own.owntv.core.database.dao.SourceDao
+import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.database.entity.SourceEntity
 import tv.own.owntv.core.epg.EpgSource
+import tv.own.owntv.core.live.LiveEpgReader
+import tv.own.owntv.core.model.MediaType
+import tv.own.owntv.core.parser.XtEpgEntry
 import tv.own.owntv.core.parser.XtreamClient
+import tv.own.owntv.core.repository.ActiveProfileSources
+import tv.own.owntv.core.repository.activeProfileSources
 import tv.own.owntv.core.repository.SourceRepository
+import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.core.sync.SyncResult
 import tv.own.owntv.core.sync.SyncRunStats
 import tv.own.owntv.core.sync.work.CatalogSyncScheduler
@@ -58,6 +68,22 @@ class CoreContractTest {
         val playerLive: KProperty1<OwnTVPlayer, Boolean> = OwnTVPlayer::isLiveContent
         // isPlaying stays true through mpv's silent retries; buffering says no frame shows yet.
         val playerBuffering: KProperty1<OwnTVPlayer, StateFlow<Boolean>> = OwnTVPlayer::buffering
+
+        // 0.5 watching diary: GuideNow reads the stored guide's on-now entry as LiveViewModel.nowPlayingFor does,
+        // with the profile's Live customizations and the guide offset read as MiniGuideLoader reads them.
+        val nowProgrammes: suspend (LiveEpgReader, List<ChannelEntity>, SectionCustomizations, Int) -> Map<Long, XtEpgEntry> =
+            LiveEpgReader::nowProgrammesFor
+        val entryTitle: KProperty1<XtEpgEntry, String> = XtEpgEntry::title
+        val entryStop: KProperty1<XtEpgEntry, Long> = XtEpgEntry::stopMs
+        val observeCustom: (CustomizationStore, Long, MediaType) -> Flow<SectionCustomizations> = CustomizationStore::observe
+        val epgOffset: KProperty1<SettingsRepository, Flow<Int>> = SettingsRepository::epgOffsetMinutes
+        val activeSources: (SettingsRepository, SourceDao) -> Flow<ActiveProfileSources> = ::activeProfileSources
+        val activeProfile: KProperty1<ActiveProfileSources, Long> = ActiveProfileSources::profileId
+        val channelId: KProperty1<ChannelEntity, Long> = ChannelEntity::id
+        listOf(entryTitle, entryStop, epgOffset, activeProfile, channelId).forEach { assertNotNull(it) }
+        assertNotNull(nowProgrammes)
+        assertNotNull(observeCustom)
+        assertNotNull(activeSources)
 
         listOf(playerErrors, exoActive, previewErrors, reason, raw, result, finishedAt, failedMessage, lastError, playerFailure, previewFailure)
             .forEach { assertNotNull(it) }

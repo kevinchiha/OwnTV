@@ -1,0 +1,842 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 36 finding(s) across 35 selected item(s).",
+  "summary": {
+    "files_reviewed": 35,
+    "comments": 36,
+    "total_tokens": 2751148,
+    "input_tokens": 2685452,
+    "output_tokens": 65696,
+    "cache_read_tokens": 1886908,
+    "cache_write_tokens": 798324,
+    "elapsed": "2m45s"
+  },
+  "tool_calls": {
+    "total": 96,
+    "by_tool": {
+      "code_comment": 13,
+      "code_search": 42,
+      "file_find": 5,
+      "file_read": 31,
+      "file_read_diff": 5
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "src/app/api/cron/live-usage/route.ts",
+      "content": "The alert text hardcodes \"4 GB\", but the check above uses `SIZE_ALERT_BYTES`. If someone changes the constant, the message will show the wrong limit. Build the number from the constant instead.",
+      "suggestion_code": "        text: `🟠 KevBox: the database is ${size} GB, over the ${(SIZE_ALERT_BYTES / 1024 ** 3).toFixed(0)} GB mark (Supabase Pro includes 8 GB).`,",
+      "existing_code": "        text: `🟠 KevBox: the database is ${size} GB, over the 4 GB mark (Supabase Pro includes 8 GB).`,",
+      "start_line": 36,
+      "end_line": 36,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/api/cron/live-usage/route.ts",
+      "content": "`rollupLiveWatchDays` and the size check are in the same `try`. If the roll-up throws (say, a bad stretch row or a lock timeout), the size check is skipped too, and it stays skipped every hour until the roll-up is fixed. Telemetry-prune avoids this by putting the older job first. Consider running the two steps independently, with their own try/catch, so the daily size alert still goes out when the roll-up fails.",
+      "existing_code": "    const rolledUp = await rollupLiveWatchDays(pool);",
+      "start_line": 25,
+      "end_line": 25,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/api/kevbox-live/overview/route.ts",
+      "content": "`getFleetOverview` doesn't need Sheet1, but it waits for the Google Sheet fetch before it starts. That adds the sheet's latency to every Overview load. Start the fleet query at the same time as the sheet load.",
+      "suggestion_code": "    const [overview, customers] = await Promise.all([\n      getFleetOverview(pool, now),\n      loadUsageSheet(now).then((sheet) =\u003e listUsageCustomers(pool, { now, period: \"30d\", silenced: sheet.silenced })),\n    ]);",
+      "existing_code": "    const sheet = await loadUsageSheet(now);\n    const [overview, customers] = await Promise.all([\n      getFleetOverview(pool, now),",
+      "start_line": 24,
+      "end_line": 26,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/api/kevbox-live/customers/route.ts",
+      "content": "The period list is hardcoded here, again in `channels/route.ts`, and a third time in `PERIOD_OPTIONS` in `@/lib/live-usage-format`. The two routes also return different 400 messages for the same mistake (\"bad query\" in channels, a descriptive message here). Derive the list from `PERIOD_OPTIONS`, or from a shared validator, so a new period can't be accepted by the UI and rejected by a route.",
+      "suggestion_code": "const PERIODS: readonly string[] = PERIOD_OPTIONS.map((o) =\u003e o.value);",
+      "existing_code": "const PERIODS: readonly UsagePeriod[] = [\"7d\", \"30d\", \"13m\"];",
+      "start_line": 26,
+      "end_line": 26,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/kevbox-live/customers-tab.tsx",
+      "content": "A period goes into `requested` before its fetch returns, and nothing ever takes it out. When a fetch fails, the error stays cached for good. Switching the period away and back never tries again, so Drifting and Gone quiet (both read the 30d load) stay broken until a full page reload. There is also no cancel guard, so `setLoads` can still run after the component unmounts. Remove the period from `requested` when the fetch fails (or offer a retry), and ignore any answer that arrives after unmount.",
+      "suggestion_code": "      if (requested.current.has(p)) continue;\n      requested.current.add(p);\n      void getJson\u003c{ customers: UsageCustomerRow[] }\u003e(`/api/kevbox-live/customers?period=${p}`).then((res) =\u003e {\n        if (!mounted.current) return;\n        const next: Loaded\u003cUsageCustomerRow[]\u003e = res === null || \"error\" in res ? res : { data: res.data.customers ?? [] };\n        if (next === null || \"error\" in next) requested.current.delete(p); // allow a retry on the next switch\n        setLoads((prev) =\u003e ({ ...prev, [p]: next }));\n      });",
+      "existing_code": "      if (requested.current.has(p)) continue;\n      requested.current.add(p);\n      void getJson\u003c{ customers: UsageCustomerRow[] }\u003e(`/api/kevbox-live/customers?period=${p}`).then((res) =\u003e {\n        const next: Loaded\u003cUsageCustomerRow[]\u003e = res === null || \"error\" in res ? res : { data: res.data.customers ?? [] };\n        setLoads((prev) =\u003e ({ ...prev, [p]: next }));\n      });",
+      "start_line": 193,
+      "end_line": 198,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/kevbox-live/customers-tab.tsx",
+      "content": "The first time an Overview count button opens Customers, the Customers panel mounts and this scroll effect runs at once, while Drifting, Gone quiet and Everyone still show \"Loading…\". When the tables arrive they make the page taller, so the All TVs section moves down and the scroll ends up in the wrong place. Wait until the 30d and current-period loads have settled before scrolling, for example by adding the loading state to the dependencies and only scrolling once those loads are no longer null.",
+      "existing_code": "  useEffect(() =\u003e {\n    if (section === undefined) return;\n    const target = section === \"drifting\" ? driftingRef.current : allTvsRef.current;\n    target?.scrollIntoView?.({ behavior: \"smooth\", block: \"start\" });\n  }, [section]);",
+      "start_line": 202,
+      "end_line": 206,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/kevbox-live/customers-tab.tsx",
+      "content": "For a date string it cannot parse, `new Date(iso).getTime()` returns NaN. In `sortDrifting`, `ea !== eb` is then always true and `ea \u003c eb` always false, so the comparator gives inconsistent answers and the sort order is unpredictable. Treat NaN the same as \"no expiry\" (Infinity).",
+      "suggestion_code": "const expiryMs = (iso: string | null) =\u003e {\n  const ms = iso === null ? Number.NaN : new Date(iso).getTime();\n  return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms;\n};",
+      "existing_code": "const expiryMs = (iso: string | null) =\u003e (iso === null ? Number.POSITIVE_INFINITY : new Date(iso).getTime());",
+      "start_line": 66,
+      "end_line": 66,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/kevbox-live/channels-tab.tsx",
+      "content": "`getJson`, `Loaded\u003cT\u003e`, `Message` and the `Period` type are copied word for word into channels-tab, customers-tab and overview-tab, and live-errors-view has another copy. Move them to one shared module (for example `src/lib/live-usage-fetch.ts`).",
+      "existing_code": "async function getJson\u003cT\u003e(path: string): Promise\u003cLoaded\u003cT\u003e\u003e {",
+      "start_line": 27,
+      "end_line": 27,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/kevbox-live/overview-tab.tsx",
+      "content": "`CantWatchNow` calls `onCount` only when its load succeeds. If the load fails, this button shows \"Can't watch now: …\" forever, which looks like it is still loading. Pass the failure up as well (for example `onCount(null)` plus an error flag) and show \"—\" or an error instead.",
+      "existing_code": "    \u003cCountButton text={`Can't watch now: ${cantWatch ?? \"…\"}`} onClick={toCantWatch} /\u003e",
+      "start_line": 120,
+      "end_line": 120,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/kevbox-live/kevbox-live-page.tsx",
+      "content": "`KevboxLiveOverview`'s `onOpen` takes a `tab` argument whose type only allows \"customers\", and the caller ignores it (`_tab`). Remove it so the callback is just `onOpen(section)`.",
+      "existing_code": "      {panel(\"overview\", () =\u003e \u003cKevboxLiveOverview onOpen={(_tab, s) =\u003e openSection(s)} /\u003e)}",
+      "start_line": 89,
+      "end_line": 89,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/api/members/[userId]/live-diary/route.ts",
+      "content": "`page` has no upper bound. `listMemberDiary` puts `offset ${(page - 1) * PAGE_SIZE}` straight into the SQL string. A long digit string like `page=99999999999999999999` therefore produces `offset 5e+21`, and anything past bigint range does the same. Postgres rejects that, so the route returns a 500 when it should return a 400. Cap the length or value here, e.g. `/^[1-9]\\d{0,5}$/`, or check `Number.isSafeInteger` and keep the value within a sane maximum.",
+      "suggestion_code": "const PAGE = /^[1-9]\\d{0,5}$/;",
+      "existing_code": "      page: page == null ? 1 : Number(page),",
+      "start_line": 42,
+      "end_line": 42,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/api/members/[userId]/live-diary/route.ts",
+      "content": "`from` and `to` are each checked, but never against each other. With `from \u003e to` the route quietly returns an empty diary when it should reject the query. Add `if (from \u0026\u0026 to \u0026\u0026 from \u003e to) return badQuery();`.",
+      "suggestion_code": "    if ((from != null \u0026\u0026 !isDay(from)) || (to != null \u0026\u0026 !isDay(to))) return badQuery();\n    if (from != null \u0026\u0026 to != null \u0026\u0026 from \u003e to) return badQuery();",
+      "existing_code": "    if ((from != null \u0026\u0026 !isDay(from)) || (to != null \u0026\u0026 !isDay(to))) return badQuery();",
+      "start_line": 34,
+      "end_line": 34,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/server/admin/usage-sheet.ts",
+      "content": "A client number can have a Sheet1 row with a missing or invalid `trexExpiryDate`. When that happens the loop returns `null` straight away and never checks the customer's other client numbers, so a valid expiry on a later number is never shown. To find the first usable expiry, `continue` when the date is invalid instead of returning.",
+      "suggestion_code": "        if (expiry \u0026\u0026 !Number.isNaN(expiry.getTime())) return expiry.toISOString();",
+      "existing_code": "        return expiry \u0026\u0026 !Number.isNaN(expiry.getTime()) ? expiry.toISOString() : null;",
+      "start_line": 43,
+      "end_line": 43,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/api/members/[userId]/live-usage/route.ts",
+      "content": "`loadUsageSheet` reads Sheet1 when its cache is cold, and `getWatchMember` queries the database. Neither needs the other's result, but they run one after the other. Running them with `Promise.all` would make this endpoint faster.",
+      "suggestion_code": "    const [sheet, watchMember] = await Promise.all([loadUsageSheet(now), getWatchMember(db, member.userId)]);\n    const silenced = sheet.silenced(watchMember);",
+      "existing_code": "    const sheet = await loadUsageSheet(now);\n    const silenced = sheet.silenced(await getWatchMember(db, member.userId));",
+      "start_line": 22,
+      "end_line": 23,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/api/kevbox-live/overview/route.ts",
+      "content": "To get one number (the drifting count), Overview builds the full per-customer list with `listUsageCustomers`. That is about 7 queries, including scans of every `live_watch_stretch` row with no date filter (the diary start and last play queries), plus the Sheet1 fetch. The Customers tab then runs the same work again. Two cheaper options: add a core helper that computes only the inputs `isDrifting` needs, or cache the result for a short time. That keeps the Overview fast as the 13-month stretch table grows.",
+      "existing_code": "    const body: OverviewResponse = { overview, drifting: customers.filter((c) =\u003e c.drifting).length };",
+      "start_line": 29,
+      "end_line": 29,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "`onCount` only fires when the load succeeds. If `/api/live-errors/watch` fails, the Overview's `cantWatch` stays `null`, so its button keeps showing \"Can't watch now: …\" as if it were still loading, while the list below shows an error. The count and the list then disagree, which goes against AC-35. Report the failure too: for example, make it `onCount?: (n: number | null) =\u003e void` and call it with `null` on error so the Overview can show \"—\". Or pass the error state up some other way.",
+      "suggestion_code": "      if (next !== null) onCountRef.current?.(\"data\" in next ? next.data.length : null);",
+      "existing_code": "      if (next !== null \u0026\u0026 \"data\" in next) onCountRef.current?.(next.data.length);",
+      "start_line": 256,
+      "end_line": 256,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/admin/live-errors-view.tsx",
+      "content": "This repeats `customerDeepLinkHref(clientNumber, tab)` from `@/lib/customer-deeplink`, which this same change extended with a `CustomerTab` param and documents as the \"single source of truth\" for this URL. `WindowTab` also copies part of `CustomerTab`. Use the shared helper and type so the URL format and tab ids can't drift apart.",
+      "suggestion_code": "const customerHref = (clientNumber: string, tab: Extract\u003cCustomerTab, \"live\" | \"usage\"\u003e) =\u003e\n  customerDeepLinkHref(clientNumber, tab);",
+      "existing_code": "const customerHref = (clientNumber: string, tab: WindowTab) =\u003e\n  `/customers?client=${encodeURIComponent(clientNumber)}\u0026tab=${tab}`;",
+      "start_line": 68,
+      "end_line": 69,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "supabase/migrations/0017_live_usage.sql",
+      "content": "Only the shifted start is checked against the server clock. After the shift, `ended_at` can still be almost 24 hours ahead of `now()`. For example, a stretch that started now and claims to end 20h from now is stored, and the roll-up credits hours that haven't happened yet to today and tomorrow (Beirut). Those rows count as watched time until the next recount. Cap `v_ended` at `v_now` (plus the same 5-minute slack) after the shift, before the 24-hour cut. Mirror the change in `schema.sql` and add a test.",
+      "suggestion_code": "    if v_started \u003e v_now + interval '5 minutes' then continue; end if;\n    if v_ended \u003c v_started then continue; end if;\n    if v_ended \u003e v_now + interval '5 minutes' then v_ended := greatest(v_started, v_now); end if;\n    if v_ended - v_started \u003e interval '24 hours' then v_ended := v_started + interval '24 hours'; end if;",
+      "existing_code": "    if v_started \u003e v_now + interval '5 minutes' then continue; end if;\n    if v_ended \u003c v_started then continue; end if;\n    if v_ended - v_started \u003e interval '24 hours' then v_ended := v_started + interval '24 hours'; end if;",
+      "start_line": 198,
+      "end_line": 200,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0017_live_usage.sql",
+      "content": "The predicate wraps `started_at` in an expression, so the `live_watch_stretch_started` index can't be used, and every daily prune scans the whole 13-month table. An equivalent condition that can use the index (a Beirut day earlier than `v_cut` means `started_at` is before Beirut midnight of `v_cut`) is shown below. Mirror it in `schema.sql`.",
+      "suggestion_code": "  delete from public.live_watch_stretch where started_at \u003c (v_cut::timestamp at time zone 'Asia/Beirut');",
+      "existing_code": "  delete from public.live_watch_stretch where (started_at at time zone 'Asia/Beirut')::date \u003c v_cut;",
+      "start_line": 361,
+      "end_line": 361,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0017_live_usage.sql",
+      "content": "The join filters only by computed Beirut dates. For each touched day it reads every stored stretch of that user and TV, up to 13 months of them. That happens every hour for every active TV, so the cost grows with retention. Stretches are capped at 24h, so you can add conditions the `(user_id, started_at)` index can use, e.g. `and s.started_at \u003c b.day_end and s.started_at \u003e= b.day_start - interval '24 hours'`, and keep the date checks for exactness. Mirror the change in `schema.sql`.",
+      "existing_code": "        join public.live_watch_stretch s\n          on s.user_id = t.user_id and s.device_id = t.device_id\n         and (s.started_at at time zone 'Asia/Beirut')::date \u003c= t.day",
+      "start_line": 335,
+      "end_line": 337,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/api/members/[userId]/live-usage/route.ts",
+      "content": "`silenced` only switches off the drift warning, but if `getWatchMember` fails the whole Usage tab returns a 500. `loadUsageSheet` already falls back to \"nobody silenced\" when Sheet1 can't be read, and the sibling `live-errors` route catches errors from this same lookup and falls back to `silenced = false`. This route should do the same, so a hiccup in the silencing lookup doesn't take down all the usage data.",
+      "suggestion_code": "let silenced = false;\ntry {\n  silenced = sheet.silenced(await getWatchMember(db, member.userId));\n} catch (err) {\n  console.warn(\"silencing unavailable; usage shown unsilenced\", err instanceof Error ? err.name : typeof err);\n}",
+      "existing_code": "    const silenced = sheet.silenced(await getWatchMember(db, member.userId));",
+      "start_line": 23,
+      "end_line": 23,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "packages/core/src/liveUsage.ts",
+      "content": "`lastCountedPlay` is meant to be the latest counted play, but this query takes the counted end of the stretch that *started* last. Across several TVs, or with overlapping stretches, a stretch that started earlier can run past it, for example a 3h stretch on TV A next to a short later one on TV B. The result understates the last play, and `goneQuiet` reads the same value. Order by the counted end instead. The same problem is in `listUsageCustomers` in liveUsageFleet.ts.",
+      "suggestion_code": "      where s.user_id = $1${tvFilter(\"s.device_id\", \"$2\", deviceId)} and c.counted_end \u003e s.started_at\n      order by c.counted_end desc, s.id desc\n      limit 1`,",
+      "existing_code": "      where s.user_id = $1${tvFilter(\"s.device_id\", \"$2\", deviceId)} and c.counted_end \u003e s.started_at\n      order by s.started_at desc, s.id desc\n      limit 1`,",
+      "start_line": 349,
+      "end_line": 351,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "packages/core/src/liveUsageFleet.ts",
+      "content": "Same problem as in liveUsage.ts: `distinct on (user_id)` ordered by `started_at desc` picks the latest-started stretch, not the latest counted end. When a login has several TVs, this can understate the last play and push the gone-quiet days count too high.",
+      "suggestion_code": "      where ${notTestTv(\"s\")} and c.counted_end \u003e s.started_at\n      order by s.user_id, c.counted_end desc, s.id desc`,",
+      "existing_code": "      where ${notTestTv(\"s\")} and c.counted_end \u003e s.started_at\n      order by s.user_id, s.started_at desc, s.id desc`,",
+      "start_line": 214,
+      "end_line": 215,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "packages/core/src/liveWatch.ts",
+      "content": "This adds an import cycle: liveWatch → liveUsage → liveWatch (`versionAtLeast`), and liveUsageFleet imports both. It works today only because neither binding is used at module top level. If anyone later uses one at top level, it will fail with a TDZ error that depends on evaluation order. Move `TEST_TV_VERSION` and `USAGE_MIN_VERSION` (and possibly `versionAtLeast`) into a small module with no dependencies, such as `liveConstants.ts`, and import them from there in liveErrors, liveWatch and liveUsage.",
+      "existing_code": "import { TEST_TV_VERSION } from \"./liveUsage.js\";",
+      "start_line": 3,
+      "end_line": 3,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "packages/core/src/liveUsage.ts",
+      "content": "In the customer window, the drift numbers (hours, `diaryStart`, `anyCurrentApp`) include test TVs. `listUsageCustomers` leaves them out. A login with both a test TV and real TVs can therefore be flagged drifting on the Customers tab and not in its own Usage tab, or the other way round, and show different percentDown values. Drift is described as a customer rule, so compute it from the same set of TVs in both places, for example by excluding test TVs in the drift and summary queries here.",
+      "existing_code": "  const summary = await getMemberUsageSummary(db, userId, now);",
+      "start_line": 271,
+      "end_line": 271,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "packages/core/src/liveUsage.ts",
+      "content": "Every query in `getMemberUsage` runs one after another (about 8 round trips, including two `generate_series` hour expansions). The same pattern appears in `getFleetOverview` and in `getChannelUsage` (3 lists). The queries don't depend on each other, so run them with `Promise.all`. This is safe for a Pool, and a PoolClient just queues the queries.",
+      "existing_code": "    hourGrid30: await hourGrid(db, userId, p.last30, deviceId),\n    hourGrid7: await hourGrid(db, userId, p.last7, deviceId),",
+      "start_line": 363,
+      "end_line": 364,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "packages/core/src/liveUsage.ts",
+      "content": "This swaps parameter index 1 by position, so it silently breaks if the order of the `where` parameters ever changes. Build the channel-list query from its own `[userId, p.months13.from, ...deviceId]` parameter list instead.",
+      "existing_code": "    scopeParams.map((v, i) =\u003e (i === 1 ? p.months13.from : v)),",
+      "start_line": 421,
+      "end_line": 421,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "packages/core/src/liveUsageFleet.ts",
+      "content": "`dayMs`, `dayText`, `addDays`, `monthStart`, `inRange`, `iso`, `hoursOf`, `COUNTED_END`, `dayStart`, `DAY_MS`, the 13-month loop and the `percentDown` formula are all copied from liveUsage.ts. Export them once (from liveUsage.ts or a shared helper) so the Beirut-day rules can't drift apart between the two files.",
+      "existing_code": "// Day-string arithmetic runs on UTC midnights, where every day is 24 hours long.\nconst dayMs = (day: string) =\u003e Date.parse(`${day}T00:00:00Z`);",
+      "start_line": 39,
+      "end_line": 40,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/customer-usage-tab.tsx",
+      "content": "When a narrowed `?tv=` fetch fails, this early return replaces the whole tab, including the TV `Select`. The user can't switch back to \"All TVs\" or retry without closing the dialog. The narrowed fetch can fail even though `lastTvs` is already known. Only return early when `lastTvs === null`. Otherwise show the error in place of `\u003cBlocks\u003e` and keep the TV picker and the Diary on screen.",
+      "suggestion_code": "  if (loaded \u0026\u0026 \"error\" in loaded \u0026\u0026 lastTvs === null) return failure(loaded.error);",
+      "existing_code": "  if (loaded \u0026\u0026 \"error\" in loaded) return failure(loaded.error);",
+      "start_line": 343,
+      "end_line": 343,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/lib/live-usage-format.ts",
+      "content": "This builds the tab URL by hand, even though this change adds `customerDeepLinkHref(clientNumber, tab)` as the single source of truth for it. Call the helper so the tab name stays typed (`CustomerTab`) and the URL format lives in one place.",
+      "suggestion_code": "  return first ? customerDeepLinkHref(first, \"usage\") : null;",
+      "existing_code": "  return first ? `${customerDeepLinkHref(first)}\u0026tab=usage` : null;",
+      "start_line": 42,
+      "end_line": 42,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/customer-usage-tab.tsx",
+      "content": "This repeats the fetch → `!res.ok` → read `body.error` → status-text fallback logic in `fetchSummary` (customer-summary-boxes.tsx). Move it into one shared helper, for example in `src/lib`, so error messages stay the same everywhere.",
+      "existing_code": "async function getJson(url: string): Promise\u003c{ value: unknown } | { error: string }\u003e {",
+      "start_line": 49,
+      "end_line": 49,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/customer-usage-tab.tsx",
+      "content": "The ids are hardcoded (`diary-channel-label`, `diary-from`, `diary-to`, `usage-tv-label`). If two instances render at once, the ids collide and break `aria-labelledby` and `htmlFor`. Generate them with `useId()` instead.",
+      "existing_code": "          \u003cLabel id=\"diary-channel-label\"\u003eChannel\u003c/Label\u003e",
+      "start_line": 244,
+      "end_line": 244,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "supabase/migrations/0017_live_usage.sql",
+      "content": "There is no lower limit on the shifted start time. Shifting by `now() - tv_now` only fixes a stretch if the TV clock was the same when it recorded the stretch and when it sent the batch. Take a TV that boots with no clock, records stretches dated 1970 and queues them, then gets its time from NTP before sending. In that case `tv_now` is correct, the shift is about zero, and the stretches are stored with 1970 times. The roll-up then writes day rows for 1970, and they stay until the next prune, which counts them as \"pruned\". Any shifted start older than the retention window (or older than, say, `first_seen`) can't be valid data, so drop it here, for example: `if v_started \u003c v_now - interval '396 days' then continue; end if;`.",
+      "suggestion_code": "    if v_started \u003e v_now + interval '5 minutes' then continue; end if;\n    if v_started \u003c v_now - interval '396 days' then continue; end if;",
+      "existing_code": "    if v_started \u003e v_now + interval '5 minutes' then continue; end if;",
+      "start_line": 198,
+      "end_line": 198,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/customer-usage-tab.tsx",
+      "content": "Switching TV only resets the page. The diary's channel filter stays. If the channel picked for TV A was never watched on TV B, the diary comes back empty (\"No stretches in this range.\"). The Select then holds a value that isn't in B's `channels` list, so it's unclear why nothing shows. Reset `channel` to `ALL` here, or drop it when the new `diary.channels` doesn't include it.",
+      "suggestion_code": "  const pickTv = (next: string) =\u003e {\n    setTv(next);\n    setFilters((f) =\u003e ({ ...f, page: 1, channel: ALL }));\n  };",
+      "existing_code": "  const pickTv = (next: string) =\u003e {\n    setTv(next);\n    setFilters((f) =\u003e ({ ...f, page: 1 }));\n  };",
+      "start_line": 345,
+      "end_line": 348,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/components/customer-usage-tab.tsx",
+      "content": "`diary` is built only from the result keyed to the current URL. On every page, filter or TV change it goes back to `null` while the fetch runs. During that time the Newer/Older controls disappear and the channel Select drops back to `[]` or the one selected channel, so the layout jumps on every click. `useFetched` already returns `last`. Use it for `channels` and the pager while the next page loads, as the parent does with `lastTvs`.",
+      "existing_code": "  const loaded = pick\u003cDiaryPage\u003e(useFetched(diaryUrl(userId, tv, filters)).loaded, \"diary\");\n  const diary = loaded \u0026\u0026 \"value\" in loaded ? loaded.value : null;",
+      "start_line": 224,
+      "end_line": 225,
+      "category": "other",
+      "severity": "low"
+    },
+    {
+      "path": "packages/core/src/liveUsage.ts",
+      "content": "`page` has a lower bound but no upper bound against `pages`. A stale or hand-edited `?page=` (for example after you narrow the channel or date filter) returns `rows: []` along with `page` greater than `pages`, so the diary shows as empty and the pager is in an impossible state. Cap it with `Math.min(pages, ...)` before you work out the offset.",
+      "suggestion_code": "  const page = Math.min(pages, Math.max(1, Math.floor(opts.page) || 1));",
+      "existing_code": "  const page = Math.max(1, Math.floor(opts.page) || 1);",
+      "start_line": 401,
+      "end_line": 401,
+      "category": "bug",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Core live usage aggregation library",
+      "files": [
+        "packages/core/src/index.ts",
+        "packages/core/src/liveUsage.ts",
+        "packages/core/src/liveUsageFleet.ts",
+        "packages/core/src/liveWatch.ts",
+        "packages/core/src/liveErrors.ts"
+      ]
+    },
+    {
+      "label": "Live usage database schema and migrations",
+      "files": [
+        "packages/core/test/schema.sql",
+        "supabase/migrations/0015_live_error.sql",
+        "supabase/migrations/0017_live_usage.sql",
+        "scripts/prove-live-usage.sh"
+      ]
+    },
+    {
+      "label": "Live usage cron and telemetry pruning",
+      "files": [
+        "src/app/api/cron/live-usage/route.ts",
+        "src/app/api/cron/telemetry-prune/route.ts"
+      ]
+    },
+    {
+      "label": "Kevbox Live dashboard API routes",
+      "files": [
+        "src/app/api/kevbox-live/channels/route.ts",
+        "src/app/api/kevbox-live/customer-summary/route.ts",
+        "src/app/api/kevbox-live/customers/route.ts",
+        "src/app/api/kevbox-live/overview/route.ts",
+        "src/app/(dashboard)/kevbox-live/page.tsx"
+      ]
+    },
+    {
+      "label": "Kevbox Live dashboard UI tabs",
+      "files": [
+        "src/components/kevbox-live/channels-tab.tsx",
+        "src/components/kevbox-live/customers-tab.tsx",
+        "src/components/kevbox-live/kevbox-live-page.tsx",
+        "src/components/kevbox-live/overview-tab.tsx",
+        "src/components/header-content.tsx",
+        "src/lib/nav-items.ts"
+      ]
+    },
+    {
+      "label": "Member live usage and diary API",
+      "files": [
+        "src/app/api/members/[userId]/live-diary/route.ts",
+        "src/app/api/members/[userId]/live-usage/route.ts",
+        "src/server/admin/usage-sheet.ts"
+      ]
+    },
+    {
+      "label": "Customer detail usage tab and charts",
+      "files": [
+        "src/components/customer-detail-dialog.tsx",
+        "src/components/customer-summary-boxes.tsx",
+        "src/components/customer-usage-tab.tsx",
+        "src/components/usage-charts.tsx",
+        "src/lib/live-usage-format.ts",
+        "src/components/customer-table.tsx",
+        "src/lib/customer-deeplink.ts",
+        "src/lib/watch-customers.ts"
+      ]
+    },
+    {
+      "label": "Live errors view updates",
+      "files": [
+        "src/app/(dashboard)/live-errors/page.tsx",
+        "src/components/admin/live-errors-view.tsx"
+      ]
+    }
+  ],
+  "session_id": "a2ef38f8-f399-4c04-aa95-da21866ae388",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "a2ef38f8-f399-4c04-aa95-da21866ae388",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "ccceca6c26772eb6a35665f87c7d1d792e920ec1a3b2f775b43ee33116435647"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "main",
+      "requested_head": "phase/0.5-live-usage",
+      "resolved_base": "50c46d92b547c5bc88e0e318ec9ca7325874cb18",
+      "resolved_head": "bed5241a178cfbbfeb28a514dd8dbc15dfcbc4cd",
+      "exact_range": "50c46d92b547c5bc88e0e318ec9ca7325874cb18..bed5241a178cfbbfeb28a514dd8dbc15dfcbc4cd",
+      "source_artifact_sha256": "268d31965abfb8e68ff89c2c0c0abd80591162161c34e0a9293b3ae83989fe71"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "053907639d188625f9cd31664540248841aafca5f5d443817e2937be25c6200d",
+          "path": "src/app/api/members/[userId]/live-diary/route.ts",
+          "fingerprint": "4730949b5e45fc78737a8658ed0d54f4c4039ca2c63df95d9526399f9ac590e9"
+        },
+        {
+          "item_id": "06f58faa9cb42c7f55369ff32809a6c70ba901c3840db6d7ad9424b35d1f3358",
+          "path": "packages/core/src/liveUsage.ts",
+          "fingerprint": "e881b4082a10125b06f23bd3306bac118575bcca91bde6c4ca87a530e43a353e"
+        },
+        {
+          "item_id": "09fb463caea18b5ec34f139a1f3cc9eec400a910b44ac61d52d304061ba9bba5",
+          "path": "src/components/kevbox-live/channels-tab.tsx",
+          "fingerprint": "c55a00d379ff9d06583b0bed73daf78082a7f8f3572754a4bf7f1c4d7e9d54b8"
+        },
+        {
+          "item_id": "0a13868912bd1db4ab2575e83495dabb707c33328463f75038314e4653f2f30c",
+          "path": "src/app/api/members/[userId]/live-usage/route.ts",
+          "fingerprint": "62272ad74bcfb747d7c681a47cd200ce6c7426a79da182eeb5ff23a17a24e3ef"
+        },
+        {
+          "item_id": "11e9e2b1bb2d8115a1bae3abe8bf3c04d47d300446c02b7d9730b53b4848298f",
+          "path": "src/components/usage-charts.tsx",
+          "fingerprint": "44eb39a1c8fe8d9a5b68bcbbaf4e60cf68078a2aa8ab517ce0fdf3776e382a97"
+        },
+        {
+          "item_id": "1cae4c6066821bc2fc0c6825e946c50b6c22c954ba48fb42c72275930ea878c5",
+          "path": "src/lib/nav-items.ts",
+          "fingerprint": "27356065f454b15eb704a58ac7df55460e242a072691ec220f436334670be08f"
+        },
+        {
+          "item_id": "1f4b65467fc90c29dfb02ce701b519ea0f1ed6d2cbe2860ee44cb1d9cfbc3659",
+          "path": "src/components/customer-usage-tab.tsx",
+          "fingerprint": "08907633b602db36621e296f411a50a03ae54ff24b83e85df7a272523b3d20f5"
+        },
+        {
+          "item_id": "23c88552a1e18e3c059c75da3945bc55efe85d835dc70ff889ec214f1763ab61",
+          "path": "packages/core/test/schema.sql",
+          "fingerprint": "518a76b3bfbd75fc6efa5e6da851191bd0a72aa90e2436f331ffa3fa789108db"
+        },
+        {
+          "item_id": "2b32f2a6ec36f2f09cdfa69b6f88097393c6749d73f8431c01f34adeaf9745aa",
+          "path": "src/components/customer-summary-boxes.tsx",
+          "fingerprint": "09ee11d71f61d84c510c812286803bb6b6204ddf297e54cd8fe4b481afe7118e"
+        },
+        {
+          "item_id": "32e61024e2624bb790f000ec29cf331eed690e0f8ac0b630b4fe98a2435faf3a",
+          "path": "src/components/admin/live-errors-view.tsx",
+          "fingerprint": "bfbc7f98ff5e21773b3cc05a751de0af3b7e5ce531606dde2722e042ad696af2"
+        },
+        {
+          "item_id": "3c06e407136bf86e666da45f81d9f2b7c10fd4d4000292ca028ef625aad4447f",
+          "path": "src/components/kevbox-live/customers-tab.tsx",
+          "fingerprint": "3f6a73545cf53d6111adb52705fc6d79ff292de00097890260ebf53ecb42259d"
+        },
+        {
+          "item_id": "3f1df0dcf2445dc2a126b9d311ce9e71bc85770b9e14db49ae4be8e7a546a5c8",
+          "path": "src/app/(dashboard)/kevbox-live/page.tsx",
+          "fingerprint": "249ab1b42ded4addfa1ab3b04c52036f5460972452464801aee28f3185902509"
+        },
+        {
+          "item_id": "516b72567143c9f4fa3be4eb1b3a4bf4a5894d1922701504486e8cee7f025beb",
+          "path": "src/components/kevbox-live/kevbox-live-page.tsx",
+          "fingerprint": "2a263f41b731247d09e77bc4ec06435e2d5628360da70864546de47d87817111"
+        },
+        {
+          "item_id": "5bffc97beebe0b4e61d3f5fe941d6372847260064759e5f9182e61107be144ca",
+          "path": "src/lib/customer-deeplink.ts",
+          "fingerprint": "d77e24e1e0100958e8a1773f1ee90ff2ecbda4f650cad1a7fe4e66b07368dd85"
+        },
+        {
+          "item_id": "5d9f24cad3c3e6aef1d8c7e251eff3d152e97b9172f3611d0f18948d7f0359ed",
+          "path": "src/components/customer-detail-dialog.tsx",
+          "fingerprint": "3a3478eebb453f4535fe4f91627686ccd54bc19f4196c916ac6f4a579a3bb083"
+        },
+        {
+          "item_id": "608ac31f07da9d70f506538c5ecec2017b21ac36eaedb19c3fa593cbae8255a8",
+          "path": "src/lib/live-usage-format.ts",
+          "fingerprint": "1299bd51411dbe182a66184aa212e61e3d03b46fd238f51c950264a0ae22b6c4"
+        },
+        {
+          "item_id": "63c4f0b63ba24541b8f8118cefc14284eab13ad172f1c7e1ba574e31fdeadfeb",
+          "path": "src/app/(dashboard)/live-errors/page.tsx",
+          "fingerprint": "304d434234a2704a31729191bd4304b107828779ab8c288d4488fcb708ea2137"
+        },
+        {
+          "item_id": "643dd4d32598bed2fee0f8834c42235a4dfc55171f54f5350f9b5bdd5504a712",
+          "path": "src/app/api/kevbox-live/customer-summary/route.ts",
+          "fingerprint": "497b9c25e797220ec2f96ab343de4d664614e0dbd7fea5d100970f019f03fd0b"
+        },
+        {
+          "item_id": "740724db716fb3752e6497d15df5b57e92f7275d67c5ddd40c7fc7cae92ee3f7",
+          "path": "packages/core/src/liveErrors.ts",
+          "fingerprint": "184be60a597a315cb8972a6c38f0b9b17842ff63ca7c6c1dae99d5f48b7df074"
+        },
+        {
+          "item_id": "7653f71c4408ff76af9eebbd6ddfcff88ed53ae58f1314e79ca611a176706cf3",
+          "path": "src/app/api/cron/live-usage/route.ts",
+          "fingerprint": "eacbb0c041840a3fa475b46fc969a7d1649edd737967831c3e17f969fb3a3889"
+        },
+        {
+          "item_id": "8562d3fe9660ccb27662b2b6ffb9dc35cd1c1657254d637f084fc412a586fd33",
+          "path": "packages/core/src/liveUsageFleet.ts",
+          "fingerprint": "d6f56ee5c1f4379c79095ad944163d61e812e49e2a2b5118d3c9f5109fdeb9a3"
+        },
+        {
+          "item_id": "8e23418433cb8a944cab644f3b71e30ac7d1776c4e49f8f07248b42a2f31a262",
+          "path": "src/components/customer-table.tsx",
+          "fingerprint": "78aa1e682129f800a4025f83cc0a85967b6acd9a4d9bd65203ad87b7d24495b6"
+        },
+        {
+          "item_id": "8f7f981aa4f188dca7a3ab83d185a6bef57c847a42bd6c1e84f523efdd30bdd4",
+          "path": "src/components/header-content.tsx",
+          "fingerprint": "245d93308c99d2cf35870f512ffed73fac0ce63a1f726ec3668bd1fc370f076a"
+        },
+        {
+          "item_id": "90e3ed6d3b428c45b34f4237d9a39edc06f52df62c8c25c162c1a66227b95c68",
+          "path": "packages/core/src/liveWatch.ts",
+          "fingerprint": "35214f5ec2d936204fb907b71ebf9b8b821995a97bdee7e01035e69337a96f15"
+        },
+        {
+          "item_id": "92c7417d0f8510eaf571702c30d2270668ce44baa4a1989be304f9b05784fa16",
+          "path": "packages/core/src/index.ts",
+          "fingerprint": "3cb247e063532b0af6039c57f31a1f56ae763c9a186e7fa4b97fb71c5c182487"
+        },
+        {
+          "item_id": "9683868c7cf1566b326bfa3258890a198487194d51c0d73ffc3017a3e9800a95",
+          "path": "supabase/migrations/0017_live_usage.sql",
+          "fingerprint": "7fc0a0ad13ca6b5d009f5a761b548cdf1180047082d6ff404d0b9c7a6f0b2a56"
+        },
+        {
+          "item_id": "a5cf3a89af8a55c30d725188aa72f6577e7749e73d1d8da03a1beae0b1f9bb44",
+          "path": "scripts/prove-live-usage.sh",
+          "fingerprint": "737905ee7550b736f7128b5b0787e5160205e5c446fb7b0f1a13fea7df661899"
+        },
+        {
+          "item_id": "ab4e95c7de743ee92462178f01b0bb29c7084de525959d6f882ee6a7d780e3fe",
+          "path": "supabase/migrations/0015_live_error.sql",
+          "fingerprint": "3e55bce8631287c831291ba449211abaf481c3c05aa8d74af9a9d8beedf3a6cf"
+        },
+        {
+          "item_id": "acc79e05d988d03a90272223ef86dc8f0c5e779c1b276e36e9b2a882bdecef84",
+          "path": "src/components/kevbox-live/overview-tab.tsx",
+          "fingerprint": "606295433fa218f544bbce3d4943f5b91ac671a0447ad60fc732d4e15885eaeb"
+        },
+        {
+          "item_id": "b51ce0f7042b6b06ae4094b1b92ff49b4829575ae4f2e33f310457cf205b0573",
+          "path": "src/server/admin/usage-sheet.ts",
+          "fingerprint": "be847d778d5ae80a1632512294349f52c5c8a855b55ca8a32630a3fdbac5f7d4"
+        },
+        {
+          "item_id": "bd6ee2978bce5c4f0842bf4fb6b3a4afb06647fefbec93993db068ff22f08312",
+          "path": "src/app/api/cron/telemetry-prune/route.ts",
+          "fingerprint": "ffed35f437f35f98244d6c9d086a68bac84ff86a73f7ab2258489c555e5d3310"
+        },
+        {
+          "item_id": "d4541f8fe4961c373ab8115441bd5440f96e7aeb863e5001be4cac19da622462",
+          "path": "src/app/api/kevbox-live/overview/route.ts",
+          "fingerprint": "d3b74239e3290e667aa89dc4eabc5b8713f5d38a0af10d031cbbd99b1a3e1de1"
+        },
+        {
+          "item_id": "dffa6c09ec3d1536ee0f452a68088dce22e67954e923321bf9f2258b595ff2f4",
+          "path": "src/app/api/kevbox-live/customers/route.ts",
+          "fingerprint": "4378e907c27959ee6fb8c3ab61f2be6cc6098e776946580ba0d47df50cdf6016"
+        },
+        {
+          "item_id": "e4b0216f82f43700b757d499f129799c0cee3e9b49cedb0495698eb7f8f37a41",
+          "path": "src/app/api/kevbox-live/channels/route.ts",
+          "fingerprint": "ca882e8cc52f90738550d61791a5378b5c733d4343ba81f428133c547feff4af"
+        },
+        {
+          "item_id": "fcf7d690e6bbe215c8b05c5db183e3866dd8a6d9657d74ce23f213d99a1fdf2e",
+          "path": "src/lib/watch-customers.ts",
+          "fingerprint": "02fd007b2248cdefce4ba5fdd9e3150f4769fecc8f29f2cee10fdfb6eee5a4e4"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "053907639d188625f9cd31664540248841aafca5f5d443817e2937be25c6200d",
+          "path": "src/app/api/members/[userId]/live-diary/route.ts",
+          "fingerprint": "4730949b5e45fc78737a8658ed0d54f4c4039ca2c63df95d9526399f9ac590e9"
+        },
+        {
+          "item_id": "06f58faa9cb42c7f55369ff32809a6c70ba901c3840db6d7ad9424b35d1f3358",
+          "path": "packages/core/src/liveUsage.ts",
+          "fingerprint": "e881b4082a10125b06f23bd3306bac118575bcca91bde6c4ca87a530e43a353e"
+        },
+        {
+          "item_id": "09fb463caea18b5ec34f139a1f3cc9eec400a910b44ac61d52d304061ba9bba5",
+          "path": "src/components/kevbox-live/channels-tab.tsx",
+          "fingerprint": "c55a00d379ff9d06583b0bed73daf78082a7f8f3572754a4bf7f1c4d7e9d54b8"
+        },
+        {
+          "item_id": "0a13868912bd1db4ab2575e83495dabb707c33328463f75038314e4653f2f30c",
+          "path": "src/app/api/members/[userId]/live-usage/route.ts",
+          "fingerprint": "62272ad74bcfb747d7c681a47cd200ce6c7426a79da182eeb5ff23a17a24e3ef"
+        },
+        {
+          "item_id": "11e9e2b1bb2d8115a1bae3abe8bf3c04d47d300446c02b7d9730b53b4848298f",
+          "path": "src/components/usage-charts.tsx",
+          "fingerprint": "44eb39a1c8fe8d9a5b68bcbbaf4e60cf68078a2aa8ab517ce0fdf3776e382a97"
+        },
+        {
+          "item_id": "1cae4c6066821bc2fc0c6825e946c50b6c22c954ba48fb42c72275930ea878c5",
+          "path": "src/lib/nav-items.ts",
+          "fingerprint": "27356065f454b15eb704a58ac7df55460e242a072691ec220f436334670be08f"
+        },
+        {
+          "item_id": "1f4b65467fc90c29dfb02ce701b519ea0f1ed6d2cbe2860ee44cb1d9cfbc3659",
+          "path": "src/components/customer-usage-tab.tsx",
+          "fingerprint": "08907633b602db36621e296f411a50a03ae54ff24b83e85df7a272523b3d20f5"
+        },
+        {
+          "item_id": "23c88552a1e18e3c059c75da3945bc55efe85d835dc70ff889ec214f1763ab61",
+          "path": "packages/core/test/schema.sql",
+          "fingerprint": "518a76b3bfbd75fc6efa5e6da851191bd0a72aa90e2436f331ffa3fa789108db"
+        },
+        {
+          "item_id": "2b32f2a6ec36f2f09cdfa69b6f88097393c6749d73f8431c01f34adeaf9745aa",
+          "path": "src/components/customer-summary-boxes.tsx",
+          "fingerprint": "09ee11d71f61d84c510c812286803bb6b6204ddf297e54cd8fe4b481afe7118e"
+        },
+        {
+          "item_id": "32e61024e2624bb790f000ec29cf331eed690e0f8ac0b630b4fe98a2435faf3a",
+          "path": "src/components/admin/live-errors-view.tsx",
+          "fingerprint": "bfbc7f98ff5e21773b3cc05a751de0af3b7e5ce531606dde2722e042ad696af2"
+        },
+        {
+          "item_id": "3c06e407136bf86e666da45f81d9f2b7c10fd4d4000292ca028ef625aad4447f",
+          "path": "src/components/kevbox-live/customers-tab.tsx",
+          "fingerprint": "3f6a73545cf53d6111adb52705fc6d79ff292de00097890260ebf53ecb42259d"
+        },
+        {
+          "item_id": "3f1df0dcf2445dc2a126b9d311ce9e71bc85770b9e14db49ae4be8e7a546a5c8",
+          "path": "src/app/(dashboard)/kevbox-live/page.tsx",
+          "fingerprint": "249ab1b42ded4addfa1ab3b04c52036f5460972452464801aee28f3185902509"
+        },
+        {
+          "item_id": "516b72567143c9f4fa3be4eb1b3a4bf4a5894d1922701504486e8cee7f025beb",
+          "path": "src/components/kevbox-live/kevbox-live-page.tsx",
+          "fingerprint": "2a263f41b731247d09e77bc4ec06435e2d5628360da70864546de47d87817111"
+        },
+        {
+          "item_id": "5bffc97beebe0b4e61d3f5fe941d6372847260064759e5f9182e61107be144ca",
+          "path": "src/lib/customer-deeplink.ts",
+          "fingerprint": "d77e24e1e0100958e8a1773f1ee90ff2ecbda4f650cad1a7fe4e66b07368dd85"
+        },
+        {
+          "item_id": "5d9f24cad3c3e6aef1d8c7e251eff3d152e97b9172f3611d0f18948d7f0359ed",
+          "path": "src/components/customer-detail-dialog.tsx",
+          "fingerprint": "3a3478eebb453f4535fe4f91627686ccd54bc19f4196c916ac6f4a579a3bb083"
+        },
+        {
+          "item_id": "608ac31f07da9d70f506538c5ecec2017b21ac36eaedb19c3fa593cbae8255a8",
+          "path": "src/lib/live-usage-format.ts",
+          "fingerprint": "1299bd51411dbe182a66184aa212e61e3d03b46fd238f51c950264a0ae22b6c4"
+        },
+        {
+          "item_id": "63c4f0b63ba24541b8f8118cefc14284eab13ad172f1c7e1ba574e31fdeadfeb",
+          "path": "src/app/(dashboard)/live-errors/page.tsx",
+          "fingerprint": "304d434234a2704a31729191bd4304b107828779ab8c288d4488fcb708ea2137"
+        },
+        {
+          "item_id": "643dd4d32598bed2fee0f8834c42235a4dfc55171f54f5350f9b5bdd5504a712",
+          "path": "src/app/api/kevbox-live/customer-summary/route.ts",
+          "fingerprint": "497b9c25e797220ec2f96ab343de4d664614e0dbd7fea5d100970f019f03fd0b"
+        },
+        {
+          "item_id": "740724db716fb3752e6497d15df5b57e92f7275d67c5ddd40c7fc7cae92ee3f7",
+          "path": "packages/core/src/liveErrors.ts",
+          "fingerprint": "184be60a597a315cb8972a6c38f0b9b17842ff63ca7c6c1dae99d5f48b7df074"
+        },
+        {
+          "item_id": "7653f71c4408ff76af9eebbd6ddfcff88ed53ae58f1314e79ca611a176706cf3",
+          "path": "src/app/api/cron/live-usage/route.ts",
+          "fingerprint": "eacbb0c041840a3fa475b46fc969a7d1649edd737967831c3e17f969fb3a3889"
+        },
+        {
+          "item_id": "8562d3fe9660ccb27662b2b6ffb9dc35cd1c1657254d637f084fc412a586fd33",
+          "path": "packages/core/src/liveUsageFleet.ts",
+          "fingerprint": "d6f56ee5c1f4379c79095ad944163d61e812e49e2a2b5118d3c9f5109fdeb9a3"
+        },
+        {
+          "item_id": "8e23418433cb8a944cab644f3b71e30ac7d1776c4e49f8f07248b42a2f31a262",
+          "path": "src/components/customer-table.tsx",
+          "fingerprint": "78aa1e682129f800a4025f83cc0a85967b6acd9a4d9bd65203ad87b7d24495b6"
+        },
+        {
+          "item_id": "8f7f981aa4f188dca7a3ab83d185a6bef57c847a42bd6c1e84f523efdd30bdd4",
+          "path": "src/components/header-content.tsx",
+          "fingerprint": "245d93308c99d2cf35870f512ffed73fac0ce63a1f726ec3668bd1fc370f076a"
+        },
+        {
+          "item_id": "90e3ed6d3b428c45b34f4237d9a39edc06f52df62c8c25c162c1a66227b95c68",
+          "path": "packages/core/src/liveWatch.ts",
+          "fingerprint": "35214f5ec2d936204fb907b71ebf9b8b821995a97bdee7e01035e69337a96f15"
+        },
+        {
+          "item_id": "92c7417d0f8510eaf571702c30d2270668ce44baa4a1989be304f9b05784fa16",
+          "path": "packages/core/src/index.ts",
+          "fingerprint": "3cb247e063532b0af6039c57f31a1f56ae763c9a186e7fa4b97fb71c5c182487"
+        },
+        {
+          "item_id": "9683868c7cf1566b326bfa3258890a198487194d51c0d73ffc3017a3e9800a95",
+          "path": "supabase/migrations/0017_live_usage.sql",
+          "fingerprint": "7fc0a0ad13ca6b5d009f5a761b548cdf1180047082d6ff404d0b9c7a6f0b2a56"
+        },
+        {
+          "item_id": "a5cf3a89af8a55c30d725188aa72f6577e7749e73d1d8da03a1beae0b1f9bb44",
+          "path": "scripts/prove-live-usage.sh",
+          "fingerprint": "737905ee7550b736f7128b5b0787e5160205e5c446fb7b0f1a13fea7df661899"
+        },
+        {
+          "item_id": "ab4e95c7de743ee92462178f01b0bb29c7084de525959d6f882ee6a7d780e3fe",
+          "path": "supabase/migrations/0015_live_error.sql",
+          "fingerprint": "3e55bce8631287c831291ba449211abaf481c3c05aa8d74af9a9d8beedf3a6cf"
+        },
+        {
+          "item_id": "acc79e05d988d03a90272223ef86dc8f0c5e779c1b276e36e9b2a882bdecef84",
+          "path": "src/components/kevbox-live/overview-tab.tsx",
+          "fingerprint": "606295433fa218f544bbce3d4943f5b91ac671a0447ad60fc732d4e15885eaeb"
+        },
+        {
+          "item_id": "b51ce0f7042b6b06ae4094b1b92ff49b4829575ae4f2e33f310457cf205b0573",
+          "path": "src/server/admin/usage-sheet.ts",
+          "fingerprint": "be847d778d5ae80a1632512294349f52c5c8a855b55ca8a32630a3fdbac5f7d4"
+        },
+        {
+          "item_id": "bd6ee2978bce5c4f0842bf4fb6b3a4afb06647fefbec93993db068ff22f08312",
+          "path": "src/app/api/cron/telemetry-prune/route.ts",
+          "fingerprint": "ffed35f437f35f98244d6c9d086a68bac84ff86a73f7ab2258489c555e5d3310"
+        },
+        {
+          "item_id": "d4541f8fe4961c373ab8115441bd5440f96e7aeb863e5001be4cac19da622462",
+          "path": "src/app/api/kevbox-live/overview/route.ts",
+          "fingerprint": "d3b74239e3290e667aa89dc4eabc5b8713f5d38a0af10d031cbbd99b1a3e1de1"
+        },
+        {
+          "item_id": "dffa6c09ec3d1536ee0f452a68088dce22e67954e923321bf9f2258b595ff2f4",
+          "path": "src/app/api/kevbox-live/customers/route.ts",
+          "fingerprint": "4378e907c27959ee6fb8c3ab61f2be6cc6098e776946580ba0d47df50cdf6016"
+        },
+        {
+          "item_id": "e4b0216f82f43700b757d499f129799c0cee3e9b49cedb0495698eb7f8f37a41",
+          "path": "src/app/api/kevbox-live/channels/route.ts",
+          "fingerprint": "ca882e8cc52f90738550d61791a5378b5c733d4343ba81f428133c547feff4af"
+        },
+        {
+          "item_id": "fcf7d690e6bbe215c8b05c5db183e3866dd8a6d9657d74ce23f213d99a1fdf2e",
+          "path": "src/lib/watch-customers.ts",
+          "fingerprint": "02fd007b2248cdefce4ba5fdd9e3150f4769fecc8f29f2cee10fdfb6eee5a4e4"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 164720
+  }
+}

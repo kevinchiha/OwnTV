@@ -1,0 +1,333 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 8 finding(s) across 15 selected item(s).",
+  "summary": {
+    "files_reviewed": 15,
+    "comments": 8,
+    "total_tokens": 1037096,
+    "input_tokens": 1008315,
+    "output_tokens": 28781,
+    "cache_read_tokens": 748281,
+    "cache_write_tokens": 259934,
+    "elapsed": "2m35s"
+  },
+  "tool_calls": {
+    "total": 43,
+    "by_tool": {
+      "code_comment": 6,
+      "code_search": 22,
+      "file_read": 13,
+      "file_read_diff": 2
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+      "content": "This does a Koin `get\u003cLastPress\u003e()` lookup on every key-down, and with auto-repeat that means many times a second while a D-pad key is held. This is the hottest input path in the activity. Every other dependency in this class is resolved once with a `by inject()` property, so do the same here. Separately: key events that go to a Compose `Dialog` or popup arrive in that window's own `dispatchKeyEvent`, not the Activity's. Presses made while a dialog is open won't update the last-press time, which could end a stretch early under AC-5. Please check this is acceptable, or also hook the dialog windows.",
+      "suggestion_code": "    private val lastPress: tv.own.owntv.kevbox.usage.LastPress by inject()\n\n    @android.annotation.SuppressLint(\"RestrictedApi\")\n    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {\n        if (event.action == android.view.KeyEvent.ACTION_DOWN) lastPress.press()\n        return super.dispatchKeyEvent(event)\n    }",
+      "existing_code": "        if (event.action == android.view.KeyEvent.ACTION_DOWN) get\u003ctv.own.owntv.kevbox.usage.LastPress\u003e().press()",
+      "start_line": 169,
+      "end_line": 169,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiarySender.kt",
+      "content": "The batch is chosen using `auth.userId.value`, but `signedInCall` reads the token separately through `store.load()` in `freshSession`, or after a refresh. If the member changes between these two reads (sign-out, then a different member signs in while the send is running), member A's stretches go out under member B's token. That is the cross-member leak AC-8 is meant to prevent. Before calling the API, check that the session being used still belongs to `member`. For example, re-check `auth.userId.value == member` inside the `signedInCall` lambda and skip the call if it differs. Better still, let `signedInCall` pass the session's userId to the lambda so the check reads the same session the token came from.",
+      "suggestion_code": "            val result = auth.signedInCall { token -\u003e\n                if (auth.userId.value != member) ApiResponse.NoNetwork\n                else api.recordLiveStretches(token, deviceId.get(), appVersion, tvNow, entries)\n            }",
+      "existing_code": "        val member = auth.userId.value ?: return false\n        queue.dropNotRecordedBy(member)\n        val batch = queue.oldest(DIARY_BATCH_MAX, member)",
+      "start_line": 84,
+      "end_line": 86,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryQueue.kt",
+      "content": "The open file is deleted before the recovered stretch is saved to the queue file. If the process is killed between the delete and `save()`, or the write fails (`writeAtomically` swallows IOException and failed renames), the stretch is lost for good. Save first and delete afterwards. `append` already replaces an item with the same id, so running recovery twice cannot add a duplicate.",
+      "suggestion_code": "        val saved = readOpen()\n        if (saved != null \u0026\u0026 longEnough(saved.stretch)) {\n            load()\n            append(saved)\n            save()\n        }\n        openFile.delete()",
+      "existing_code": "        val saved = readOpen()\n        openFile.delete()\n        if (saved == null || !longEnough(saved.stretch)) return@synchronized\n        load()\n        append(saved)\n        save()",
+      "start_line": 58,
+      "end_line": 63,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryWatcher.kt",
+      "content": "`guideKey` is set to the new channel before the `guide(it)` suspend call. `look()` runs inside `collectLatest`, and a channel change usually sends several engine emissions in quick succession. If one of them cancels this look during the DB read, `guideKey` already names the new channel while `guideEntry` still holds the old channel's programme. On the next look `key == guideKey`, so the guide is not asked again. The old entry is still airing, so `titleOf` accepts it and the new channel's stretch is stamped with the previous channel's title until that programme ends. Only commit the key and the entry together after the read succeeds.",
+      "suggestion_code": "        if (ask) {\n            val fresh = channel?.let { guardedOrNull { guide(it) } }\n            guideKey = key\n            guideAskedAt = at\n            guideEntry = fresh\n        }",
+      "existing_code": "        if (ask) {\n            guideKey = key\n            guideAskedAt = at\n            guideEntry = channel?.let { guardedOrNull { guide(it) } }\n        }",
+      "start_line": 225,
+      "end_line": 229,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryWatcher.kt",
+      "content": "The scene and engine state are read, and the guide and proxy calls are awaited, before `worker` is taken. If `onAppStopped()` → `background()` gets the lock in that gap, this look then runs `onLook` with stale `playing=true` and opens a new stretch just after the background close. The 1 s tick loop keeps it alive for as long as the engines report playing. Nothing gates the diary on MainActivity being in the foreground, so any play state that continues or lingers after `onStop` is logged as watching time. Keep a foreground flag (set in onAppStarted, cleared inside `background()` under the lock) and have `look()` treat a backgrounded app as not playing.",
+      "existing_code": "        val proxyNow = plays \u0026\u0026 proxyOrFalse()\n        worker.withLock {",
+      "start_line": 186,
+      "end_line": 187,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryQueue.kt",
+      "content": "`recoverOpen()` goes through `append`, and `append` replaces any queued item that has the same id. In `DiaryWatcher.finish`, the finished stretch is `add`ed first and `clearOpen()` runs afterwards, so there is a short gap between the two calls. If the process is killed in that gap, the open file still holds an earlier 60-second snapshot of the same stretch, with the same id but an earlier `endedAtMs`. On the next start, `recoverOpen` swaps the complete finished stretch for that stale, shorter copy, so watch time is silently lost. A recovered open stretch should only be added when no item with its id is queued yet, because the queued copy is always the newer one.",
+      "suggestion_code": "    fun recoverOpen() = synchronized(lock) {\n        val saved = readOpen()\n        if (saved != null \u0026\u0026 longEnough(saved.stretch)) {\n            load()\n            if (items.none { it.stretch.id == saved.stretch.id }) {\n                append(saved)\n                save()\n            }\n        }\n        openFile.delete()\n    }",
+      "existing_code": "    private fun append(item: Item) {\n        items.removeAll { it.stretch.id == item.stretch.id }\n        items += item\n        trimToMax()\n    }",
+      "start_line": 104,
+      "end_line": 108,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+      "content": "`Activity.dispatchKeyEvent` only sees keys sent to the activity's own window. `OwnTVPopup` wraps `androidx.compose.ui.window.Dialog`, which opens its own window, and that window's `Dialog` receives the keys directly. The popups in `LiveScreen` (lines 1269 and 1423), the ones in `GuideStage` and `MultiviewTileMenu` can all be open while live video plays. Remote presses inside them never call `LastPress.press()`. A viewer who is actively browsing a guide or channel popup can then look idle to the diary, and their stretches are stamped with a stale last-press time (AC-5). Record presses from the popup windows too. One way is to add an `onPreviewKeyEvent` or key-down hook in `OwnTVPopup`'s content that calls `LastPress.press()`. Another is a `Window.Callback` wrapper that both windows use.",
+      "existing_code": "override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {",
+      "start_line": 168,
+      "end_line": 168,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryWatcher.kt",
+      "content": "After `background()` closes the stretch, the tick loop in `watch()` exits because `cutter.isOpen` is false. Nothing looks again until the engine flow emits a new value, and `onAppStarted()` only records a press. In some cases the engines report the same values across stop/start: the Live engine stays `PLAYING`, or `isPlaying`/`buffering` end up where they were. When that happens, `collectLatest` gets no new emission and no stretch opens after the user comes back. That watching goes unrecorded until something about the engine changes, such as a zap or a rebuffer. Fix: have `onAppStarted` run a fresh look, for example by sending a signal into a flow combined with `engines()`, or by keeping the latest `EngineLooks` and calling `look()` on the worker.",
+      "existing_code": "    internal fun onAppStarted() {\n        lastPress.press()\n    }",
+      "start_line": 140,
+      "end_line": 142,
+      "category": "bug",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Viewing diary capture: watcher, guide lookup, stretch cutting",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryWatcher.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/usage/GuideNow.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/usage/LastPress.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/usage/StretchCutter.kt"
+      ]
+    },
+    {
+      "label": "Diary upload pipeline: queue, sender, Supabase API",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryQueue.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/usage/DiarySender.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt"
+      ]
+    },
+    {
+      "label": "App wiring, DI, and error reporting for diary",
+      "files": [
+        "app/src/main/java/tv/own/owntv/MainActivity.kt",
+        "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorReporter.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/errors/PlaybackScene.kt"
+      ]
+    },
+    {
+      "label": "E2E fake Xtream server updates",
+      "files": [
+        "tools/kevbox/e2e/fake_xtream.py"
+      ]
+    }
+  ],
+  "session_id": "e9dc0808-f8b2-4d2d-a07b-99f944e6d345",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "e9dc0808-f8b2-4d2d-a07b-99f944e6d345",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "phase/0.5-live-usage",
+      "resolved_base": "dfcf6c5a25dc3f4b3a239590df527305703904a1",
+      "resolved_head": "94bde08b81041a4f48d143af6117b5fa66cd12ce",
+      "exact_range": "dfcf6c5a25dc3f4b3a239590df527305703904a1..94bde08b81041a4f48d143af6117b5fa66cd12ce",
+      "source_artifact_sha256": "ca75e59dbe23006934350ed5b111c8ac3e9b204294bb5fe2c1814839d96e79a4"
+    },
+    "execution": {
+      "ocr_version": "v1.13.0",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "d5e28d02ed5cdf85b533907db24b47f1be02847db764a4ded208dbaf54380ae1",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "7238f380f04a6cb328ee19bf8d3cf1b629659c08fcadf7f8ea013b8224f92aa5"
+        },
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "7ae12ebe4e1302b0df6f70ca084e49cd3a3b1f08c164ad2727f0d1e6ac027fcb"
+        },
+        {
+          "item_id": "195159e5c9a2a963b02904b128ecb3d82c1c7b7d7cfef731c94e2c5f84ce211c",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/LastPress.kt",
+          "fingerprint": "1df06a2e2984978d98b378da609d3872c357c6c20db38b73dcdd03589fca43d9"
+        },
+        {
+          "item_id": "2621cf423d46477414a9c39c796dce0a5df940ff4810b55cf411477221cd118b",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryWatcher.kt",
+          "fingerprint": "2a03da0e92c768c59d228c0368154cccb6e601d6bd4a926897380391f29e498b"
+        },
+        {
+          "item_id": "2d9139e672bf1ad294d41648c8ccd38694d69239dccfa16a825dd0b95d3c8983",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/StretchCutter.kt",
+          "fingerprint": "a8b64e14616c8695085caa6e9ff38c0a3d307514db9bb69f8745f9e2e4642114"
+        },
+        {
+          "item_id": "486ceb9871cde2f5b2521c067be5f9568fec675dc540cfc564090ac25b82cece",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt",
+          "fingerprint": "c130347b39aaa2c55fd8a61fd64283769521005764b3c8ec5aa3a37708b02292"
+        },
+        {
+          "item_id": "7ce53a48991fc1d5076985784b11fdbe7834f6562e79967d5be9085ba47df6de",
+          "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+          "fingerprint": "4b23378ae8a4ad32ef819672770908cda51b79238f17dab60091ee1a6a56b666"
+        },
+        {
+          "item_id": "a08e83c0323946a298e13ed436b1de3dff4032ca947a5317679a0d3062cc3ef2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt",
+          "fingerprint": "a1ff06c8957ef87e43a0d448e784865e00fdb74f20334a88bc502df3e9cbcf8d"
+        },
+        {
+          "item_id": "ad1ba597eef670b7ce25b847d6b9abadcc22c9185f6e905075a9d6512ab95d2f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/PlaybackScene.kt",
+          "fingerprint": "80e68d4de6134af9d91888cf49b5185f05449003b270206ab22430b5d3e16793"
+        },
+        {
+          "item_id": "ae454c90d0574ad1d2e00270e4205eca3caa9d3208ba018ad4bd6d3a1d766398",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/GuideNow.kt",
+          "fingerprint": "e30b08cd2523df874e1ad2642007b1763d7336092a591df5c0236c5f2d5a57a9"
+        },
+        {
+          "item_id": "ae6a62e6ac97db50cf5fdf5e4559821c90af4ab382201fadb864efa387d58854",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryQueue.kt",
+          "fingerprint": "4339b61f13dbdaa64b82d0506371f5136eb961df7213b6d5ebd8b3660cc1670e"
+        },
+        {
+          "item_id": "b696f9ede026097389a6b645f837384b5c7d1237f15edf6f14ef09e999c160ae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiarySender.kt",
+          "fingerprint": "83c8636b1744150e98090ec070327994b65a069a2851e9ed24f2bbda16ae90cb"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "d0550189e66cdaec01e8d03bef6317f1859a9c48a7cd17d9158502437ba561c8"
+        },
+        {
+          "item_id": "eb47bc9bf958dc35d0c2dab4c1d3fddfff0d048748d52da5cc4251c622a3e1a8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorReporter.kt",
+          "fingerprint": "fef6f5879a95cfb796fd867ef53d96493bcfa48a6929b7ce5de2e7bcaa2c3247"
+        },
+        {
+          "item_id": "f3dfa3fb3e268ebbe17cce7d5561d128b18ce577573a875540da89c5d6759b8b",
+          "path": "tools/kevbox/e2e/fake_xtream.py",
+          "fingerprint": "7c597e8f4ec09d35b5eda501c96a0ca3b786ac672cfce21f0b48ea7e13970976"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "7238f380f04a6cb328ee19bf8d3cf1b629659c08fcadf7f8ea013b8224f92aa5"
+        },
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "7ae12ebe4e1302b0df6f70ca084e49cd3a3b1f08c164ad2727f0d1e6ac027fcb"
+        },
+        {
+          "item_id": "195159e5c9a2a963b02904b128ecb3d82c1c7b7d7cfef731c94e2c5f84ce211c",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/LastPress.kt",
+          "fingerprint": "1df06a2e2984978d98b378da609d3872c357c6c20db38b73dcdd03589fca43d9"
+        },
+        {
+          "item_id": "2621cf423d46477414a9c39c796dce0a5df940ff4810b55cf411477221cd118b",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryWatcher.kt",
+          "fingerprint": "2a03da0e92c768c59d228c0368154cccb6e601d6bd4a926897380391f29e498b"
+        },
+        {
+          "item_id": "2d9139e672bf1ad294d41648c8ccd38694d69239dccfa16a825dd0b95d3c8983",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/StretchCutter.kt",
+          "fingerprint": "a8b64e14616c8695085caa6e9ff38c0a3d307514db9bb69f8745f9e2e4642114"
+        },
+        {
+          "item_id": "486ceb9871cde2f5b2521c067be5f9568fec675dc540cfc564090ac25b82cece",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt",
+          "fingerprint": "c130347b39aaa2c55fd8a61fd64283769521005764b3c8ec5aa3a37708b02292"
+        },
+        {
+          "item_id": "7ce53a48991fc1d5076985784b11fdbe7834f6562e79967d5be9085ba47df6de",
+          "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+          "fingerprint": "4b23378ae8a4ad32ef819672770908cda51b79238f17dab60091ee1a6a56b666"
+        },
+        {
+          "item_id": "a08e83c0323946a298e13ed436b1de3dff4032ca947a5317679a0d3062cc3ef2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/PlayWatcher.kt",
+          "fingerprint": "a1ff06c8957ef87e43a0d448e784865e00fdb74f20334a88bc502df3e9cbcf8d"
+        },
+        {
+          "item_id": "ad1ba597eef670b7ce25b847d6b9abadcc22c9185f6e905075a9d6512ab95d2f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/PlaybackScene.kt",
+          "fingerprint": "80e68d4de6134af9d91888cf49b5185f05449003b270206ab22430b5d3e16793"
+        },
+        {
+          "item_id": "ae454c90d0574ad1d2e00270e4205eca3caa9d3208ba018ad4bd6d3a1d766398",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/GuideNow.kt",
+          "fingerprint": "e30b08cd2523df874e1ad2642007b1763d7336092a591df5c0236c5f2d5a57a9"
+        },
+        {
+          "item_id": "ae6a62e6ac97db50cf5fdf5e4559821c90af4ab382201fadb864efa387d58854",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiaryQueue.kt",
+          "fingerprint": "4339b61f13dbdaa64b82d0506371f5136eb961df7213b6d5ebd8b3660cc1670e"
+        },
+        {
+          "item_id": "b696f9ede026097389a6b645f837384b5c7d1237f15edf6f14ef09e999c160ae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/usage/DiarySender.kt",
+          "fingerprint": "83c8636b1744150e98090ec070327994b65a069a2851e9ed24f2bbda16ae90cb"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "d0550189e66cdaec01e8d03bef6317f1859a9c48a7cd17d9158502437ba561c8"
+        },
+        {
+          "item_id": "eb47bc9bf958dc35d0c2dab4c1d3fddfff0d048748d52da5cc4251c622a3e1a8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/errors/ErrorReporter.kt",
+          "fingerprint": "fef6f5879a95cfb796fd867ef53d96493bcfa48a6929b7ce5de2e7bcaa2c3247"
+        },
+        {
+          "item_id": "f3dfa3fb3e268ebbe17cce7d5561d128b18ce577573a875540da89c5d6759b8b",
+          "path": "tools/kevbox/e2e/fake_xtream.py",
+          "fingerprint": "7c597e8f4ec09d35b5eda501c96a0ca3b786ac672cfce21f0b48ea7e13970976"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 155428
+  }
+}

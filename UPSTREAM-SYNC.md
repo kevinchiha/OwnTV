@@ -104,8 +104,8 @@ keep one file per row, with its full path.
 | --- | --- |
 | `app/build.gradle.kts` | `grep -n 'tv.kevbox.live' app/build.gradle.kts && grep -n 'id("io.sentry.android.gradle") version "6.23.0"' app/build.gradle.kts && grep -n 'io.sentry:sentry-android-ndk:8.60.0' app/build.gradle.kts && grep -n 'kevbox.sentryDsnDebug' app/build.gradle.kts && grep -n 'ignoredBuildTypes.set(setOf("debug"))' app/build.gradle.kts` (the KevBox package name; Sentry plugin, SDK, `SENTRY_DSN` and the `sentry { }` block, 0.3) |
 | `app/src/main/AndroidManifest.xml` | `grep -n 'io.sentry.auto-init' app/src/main/AndroidManifest.xml && grep -n 'SentryTestReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:permission="android.permission.DUMP"' app/src/main/AndroidManifest.xml` (Sentry starts by hand after CrashRecorder; the shell-only Sentry test receiver, 0.3) |
-| `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'kevbox.ui.QuietAccessibility.install(this)' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -c 'KevBoxAutoSetup(' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'LaunchedEffect(profile) { gateSession.authenticateProfile(profile) }' app/src/main/java/tv/own/owntv/MainActivity.kt` (the count must be 2) |
-| `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.UpdateProfileAttacher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'network.DnsDefault>().applyOnce()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'refresh.PlaylistRefreshSetting>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.start(this, BuildConfig.SENTRY_DSN)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.LiveCheckin>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'errors.ErrorWatchers>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.PlayWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` (0.3: Sentry starts on the line after `CrashRecorder.install(this)`; the usage check-in; the error watchers, which start the reporter; Sentry's user and breadcrumbs, bound on the line before the watchers start so the reporter's first entries become breadcrumbs too. 0.4: the play watcher, on the line before the error watchers start, so the reporter's first failure already reaches the play notes) |
+| `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'kevbox.ui.QuietAccessibility.install(this)' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -c 'KevBoxAutoSetup(' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'LaunchedEffect(profile) { gateSession.authenticateProfile(profile) }' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'get<tv.own.owntv.kevbox.usage.LastPress>().press()' app/src/main/java/tv/own/owntv/MainActivity.kt` (the count must be 2. 0.5: `dispatchKeyEvent`, added after `onStart`, stamps every key down as the watching diary's last press; `onUserInteraction` is not used because Android calls it on Home too) |
+| `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.UpdateProfileAttacher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'network.DnsDefault>().applyOnce()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'refresh.PlaylistRefreshSetting>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.start(this, BuildConfig.SENTRY_DSN)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.LiveCheckin>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'errors.ErrorWatchers>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.PlayWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.DiaryWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` (0.3: Sentry starts on the line after `CrashRecorder.install(this)`; the usage check-in; the error watchers, which start the reporter; Sentry's user and breadcrumbs, bound on the line before the watchers start so the reporter's first entries become breadcrumbs too. 0.4: the play watcher, on the line before the error watchers start, so the reporter's first failure already reaches the play notes. 0.5: the watching diary, on the line after the play watcher starts) |
 | `app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` | `grep -n 'LiveOnly.browseSections' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.ACCENT_HEX)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.FOCUS_HIGHLIGHT_HEX)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.LiveVideoLayer(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVideoSite(liveVideoStage' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerChromeReady) PlayerHud(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.isBackToGrid(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.holdBackOpensBox(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'guidePlayChannel(boxed, emptyList())' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'epgVm.state.value.channels.none' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'exitPlayerWith(false)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVm.keepInBox(playingChannel)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.ui.KeptHidden' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerMode != PlayerMode.NONE) previewChannelState.value else null' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'RemoteShortcutAction.OPEN_PROFILE_SWITCHER -> Unit' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveGuideExpanded && (!railHasFocus' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'menuInUse = railFocused' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'selectedSection == MainSection.LIVE_TV -> 0.dp' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'val multiviewEnabled = false' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'val recordWatchingEnabled = false' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'takeIf { tv.own.owntv.kevbox.live.LiveShortcuts.continueChannel(it) != null }' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'R.string.kevbox_settings_startup_channel_unavailable' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'when (tv.own.owntv.kevbox.live.LiveShortcuts.resolve(action))' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (false && isFull && playerChromeReady' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'koinInject<tv.own.owntv.kevbox.errors.PlaybackScene>()' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevboxScene.update(channel, category, inBox' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'backLongFired -> Unit' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` (the last two: the error reporter's scene hook after `liveVideoStage`, 0.3) |
 | `app/src/main/java/tv/own/owntv/ui/stage/StageDraw.kt` | `grep -c 'this.bakedBackground(listOf(' app/src/main/java/tv/own/owntv/ui/stage/StageDraw.kt` (the count must be 2) |
@@ -453,6 +453,55 @@ upstream merge or a Core bump changes how the proxy is switched on, keep both re
 `ProxyInUse`, and keep the latest repeat's flag on a merge (`ErrorQueueTest`, "a merged entry
 reports the proxy flag of its latest repeat" and "a latest repeat with no proxy reading keeps the
 known flag").
+
+## Watching diary (0.5)
+
+The TV keeps a diary of live viewing. It cuts live play into stretches (one channel, one surface,
+one guide programme), queues the finished ones on the TV and sends them to kevbox.dev
+(`record_live_stretches`) every 15 minutes and when the app goes to the background. kevbox.dev
+rolls them up into hours per day. The code is fork-only, under `kevbox/usage/`: `DiaryWatcher.kt`
+watches, `StretchCutter.kt` decides where a stretch starts and ends, `GuideNow.kt` reads the
+programme, `LastPress.kt` holds the last remote press, and `DiaryQueue.kt` and `DiarySender.kt`
+store and send. Two upstream files carry one hook each, both with a row in the table above:
+
+- `OwnTVApp.kt` starts the diary watcher on the line after the play watcher starts.
+- `MainActivity.kt` overrides `dispatchKeyEvent`, right after `onStart`: every key down that
+  reaches the main window stamps `LastPress`, then the event goes on to `super` unchanged. Every
+  `MainActivity*` launcher alias in `MainActivityColours.kt` subclasses `MainActivity`, so they
+  all get it. It is not `onUserInteraction`, because Android calls that on Home too, and every
+  stretch closed by Home would then carry the Home moment as its last press. The hook has one
+  known limit: a pop-up that opens its own window (`OwnTVPopup`, a Compose `Dialog`) gets its key
+  presses directly, so they never reach `MainActivity`. The next press in the main window counts.
+  If upstream adds its own `dispatchKeyEvent` to `MainActivity`, keep one override with the
+  `LastPress` line first, still returning `super`'s answer. The `@SuppressLint("RestrictedApi")`
+  above it is needed because androidx's `ComponentActivity` marks its override library-only.
+
+The background hook needs no upstream line. `DiaryWatcher` registers its own
+`Application.ActivityLifecycleCallbacks`: `onActivityStarted` for a `MainActivity` counts the app
+start as a press, and `onActivityStopped` for a `MainActivity` that is not changing configuration
+closes the open stretch and sends the queue. It listens to `MainActivity` only. If upstream ever
+plays live TV in a second activity, the diary would not see that activity leave the screen.
+
+Core is read, never patched. The diary reads the same engine states and error feeds as 0.4's play
+watcher (through `engineLooksOf` in `PlayWatcher.kt`), and the stored guide the way
+`LiveViewModel.nowPlayingFor` reads it: `LiveEpgReader.nowProgrammesFor` for the channel on screen
+(the `ChannelEntity` that `PlaybackScene` now keeps), with the active profile's Live
+customizations (`activeProfileSources(...).profileId`, then `CustomizationStore.observe(profile,
+MediaType.LIVE)`) and the guide offset (`SettingsRepository.epgOffsetMinutes`). From the answer it
+takes `XtEpgEntry.title` and `XtEpgEntry.stopMs`. It never calls `nowNext`, which can ask the
+provider. No Core class is subclassed, wrapped or copied.
+
+After every Core bump, run `CoreContractTest` as the 0.3 section above says. 0.5 added typed pins
+for `LiveEpgReader::nowProgrammesFor`, `XtEpgEntry::title`, `XtEpgEntry::stopMs`,
+`CustomizationStore::observe`, `SettingsRepository::epgOffsetMinutes`, `::activeProfileSources`,
+`ActiveProfileSources::profileId` and `ChannelEntity::id`, so the test stops compiling when Core
+renames one or changes its type. A failure there means stretches would go out with a blank
+programme, or the diary would stop: fix `GuideNow` before releasing. The test cannot see a change in
+how Core matches guide entries to channels. Core skips a channel with no guide key, for one. If
+Core's release notes touch the guide or `nowProgrammesFor`, run the fake panel with
+`--guide-title`, watch that channel full screen for a minute on the emulator, press Home, and check
+the `live_watch_stretch` row's `programme`
+(`docs/superpowers/2026-10-16-0.5-live-usage-e2e.md` shows how).
 
 ## Regenerating the rebrand
 
