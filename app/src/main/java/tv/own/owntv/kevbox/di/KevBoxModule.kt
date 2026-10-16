@@ -47,6 +47,8 @@ import tv.own.owntv.player.LivePreviewEngine
 import tv.own.owntv.player.OwnTVPlayer
 
 private const val ERROR_QUEUE_FILE = "kevbox_live_errors.json"
+private const val DIARY_QUEUE_FILE = "kevbox_live_diary.json"
+private const val DIARY_OPEN_FILE = "kevbox_live_diary_open.json"
 
 /** KevBox Live's bindings, on top of upstream's modules. Every store is a private prefs file. */
 val kevboxModule = module {
@@ -86,6 +88,26 @@ val kevboxModule = module {
             appVersion = BuildConfig.VERSION_NAME,
             scope = get(),
             now = System::currentTimeMillis,
+        )
+    }
+    single {
+        // noBackupFilesDir, like the error queue: this TV's alone, never in a backup.
+        val dir = androidContext().noBackupFilesDir
+        tv.own.owntv.kevbox.usage.DiaryQueue(
+            file = java.io.File(dir, DIARY_QUEUE_FILE),
+            openFile = java.io.File(dir, DIARY_OPEN_FILE),
+        )
+    }
+    single {
+        tv.own.owntv.kevbox.usage.DiarySender(
+            queue = get(),
+            auth = get(),
+            api = get(),
+            deviceId = get(),
+            appVersion = BuildConfig.VERSION_NAME,
+            scope = get(),
+            now = System::currentTimeMillis,
+            zone = { java.time.ZoneId.systemDefault() },
         )
     }
     // The one proxy flag error entries and play notes report: Core's stored setting, which its

@@ -122,6 +122,25 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         return post(LIVE_PLAY_PATH, emptyMap(), body, accessToken)
     }
 
+    /**
+     * One batch of finished stretches (record_live_stretches), with the TV's clock at send time so
+     * the server can tell how far off that clock is. The entries are never logged.
+     */
+    suspend fun recordLiveStretches(
+        accessToken: String,
+        deviceId: String,
+        appVersion: String,
+        tvNow: String,
+        entries: JSONArray,
+    ): ApiResponse {
+        val body = JSONObject()
+            .put(P_DEVICE_ID, deviceId)
+            .put(P_APP_VERSION, appVersion)
+            .put(P_TV_NOW, tvNow)
+            .put(P_ENTRIES, entries)
+        return post(LIVE_STRETCHES_PATH, emptyMap(), body, accessToken)
+    }
+
     private suspend fun post(
         path: String,
         query: Map<String, String>,
@@ -178,6 +197,8 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val LIVE_ERRORS_PATH = "rest/v1/rpc/record_live_errors"
         const val LIVE_CHECKIN_PATH = "rest/v1/rpc/record_live_checkin"
         const val LIVE_PLAY_PATH = "rest/v1/rpc/record_live_play"
+        const val LIVE_STRETCHES_PATH = "rest/v1/rpc/record_live_stretches"
+        const val P_TV_NOW = "p_tv_now"
         const val P_PLAYED_AT = "p_played_at"
         const val P_PROXY = "p_proxy"
         const val P_DEVICE_ID = "p_device_id"
