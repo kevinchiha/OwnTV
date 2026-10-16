@@ -47,7 +47,7 @@
     <string name="kevbox_jump_other">Other</string>
     <!-- Search finds channels and TV programs only (no movies or series in KevBox Live). -->
     <string name="kevbox_search_field_hint">Channels and TV programs</string>
-    <string name="kevbox_search_card_body">Channels from your playlist, and TV programs on now or in the next 24 hours by their title. OK plays a result here; hold OK to open it in the guide.</string>
+    <string name="kevbox_search_card_body">Channels from your playlist, and TV programs by their title, from on now to the end of the downloaded guide. OK plays a result here; hold OK to open it in the guide.</string>
     <string name="kevbox_search_nothing_found_body">Search looks in channel names and in the program titles of the downloaded guide. Hidden categories are not searched.</string>
     <!-- Search, the second tab under the field (the first is Channels): programs from the guide whose title matches, with their count after it. -->
     <string name="kevbox_search_tab_guide">TV guide</string>
@@ -57,6 +57,8 @@
     <string name="kevbox_shows_on_now">On now</string>
     <!-- Search's TV guide tab, and the Live TV guide grid while its search has text: heading over the matching programs (or their channels) that start in the next 24 hours, shown in capitals with the count. -->
     <string name="kevbox_shows_next_24_hours">Next 24 hours</string>
+    <!-- Search's TV guide tab, and the Live TV guide grid while its search has text: heading over the matching programs (or their channels) that start after the next 24 hours, to the end of the downloaded guide, shown in capitals with the count. -->
+    <string name="kevbox_shows_later">Later</string>
     <!-- 0.2 AC-4: the "Watching & recording" group and its headings, with recording gone. -->
     <string name="kevbox_settings_group_watching">Watching</string>
     <string name="kevbox_settings_vp_cat_controls_catchup">Controls &amp; catch-up</string>

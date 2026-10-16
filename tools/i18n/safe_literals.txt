@@ -200,6 +200,7 @@
 1	technical	app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt	,
 1	technical	app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt	all-channels
 1	technical	app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt	c${row.channel.id}
+1	technical	app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt	h-beyond
 1	technical	app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt	h-later
 1	technical	app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt	h-live
 1	technical	app/src/main/java/tv/own/owntv/features/search/SearchScreen.kt	h-movies

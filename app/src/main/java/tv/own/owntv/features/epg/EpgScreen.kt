@@ -1269,6 +1269,7 @@ private fun GuideGroupHeading(heading: tv.own.owntv.kevbox.live.GuideHeading, fi
             tv.own.owntv.kevbox.live.GuideHeading.Kind.NAMES -> R.string.search_channels
             tv.own.owntv.kevbox.live.GuideHeading.Kind.ON_NOW -> R.string.kevbox_shows_on_now
             tv.own.owntv.kevbox.live.GuideHeading.Kind.LATER -> R.string.kevbox_shows_next_24_hours
+            tv.own.owntv.kevbox.live.GuideHeading.Kind.BEYOND -> R.string.kevbox_shows_later // KevBox: after the next 24 hours (2026-10-16)
         },
     )
     val sep = tv.own.owntv.features.settings.dotSeparator()

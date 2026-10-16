@@ -82,19 +82,37 @@ class GuideShowGroupsTest {
         val names = (1L..3L).map { channel(it) }
         val onNow = (4L..5L).map { channel(it) }
         val later = (6L..9L).map { channel(it) }
+        val beyond = (10L..11L).map { channel(it) } // KevBox 2026-10-16: the Later group
         val shows = ShowMatches(
             onNow = onNow.map { show(it, now - hour) },
             later = later.mapIndexed { i, ch -> show(ch, now + (i + 1) * hour) },
+            beyond = beyond.mapIndexed { i, ch -> show(ch, now + (30 + i) * hour) },
         )
 
         val groups = groupGuideChannels(names, shows, everywhere)
 
-        assertEquals(9, groups.channels.size)
+        assertEquals(11, groups.channels.size)
         for (h in groups.headings) {
-            val expected = when (h.kind) { Kind.NAMES -> names; Kind.ON_NOW -> onNow; Kind.LATER -> later }
+            val expected = when (h.kind) { Kind.NAMES -> names; Kind.ON_NOW -> onNow; Kind.LATER -> later; Kind.BEYOND -> beyond }
             assertEquals(expected.map { it.id }, groups.channels.subList(h.firstIndex, h.firstIndex + h.count).map { it.id })
         }
-        assertEquals(listOf(0, 3, 5), groups.headings.map { it.firstIndex })
+        assertEquals(listOf(0, 3, 5, 9), groups.headings.map { it.firstIndex })
+    }
+
+    @Test
+    fun aChannelWithAShowInTheNext24HoursIsNotRepeatedUnderLater() {
+        val both = channel(1)
+        val beyondOnly = channel(2)
+        val shows = ShowMatches(
+            onNow = emptyList(),
+            later = listOf(show(both, now + hour)),
+            beyond = listOf(show(beyondOnly, now + 30 * hour), show(both, now + 40 * hour)),
+        )
+
+        val groups = groupGuideChannels(emptyList(), shows, everywhere)
+
+        assertEquals(listOf(1L, 2L), groups.channels.map { it.id })
+        assertEquals(listOf(GuideHeading(Kind.LATER, 0, 1), GuideHeading(Kind.BEYOND, 1, 1)), groups.headings)
     }
 
     @Test

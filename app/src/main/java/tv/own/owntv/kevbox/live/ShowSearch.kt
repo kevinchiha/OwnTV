@@ -19,6 +19,8 @@ import tv.own.owntv.core.settings.SettingsRepository
  * Core's SearchReader already finds programmes, but only 12 hours ahead and 20 at most, and both
  * limits are private constants in the prebuilt core. This is the same lookup with our own window
  * (on now plus the next 24 hours) and no cap on what it returns, so both searches list every match.
+ * Since 2026-10-16 (Kevin) it also returns everything after those 24 hours, to the end of the stored
+ * guide, as a third group, "Later".
  */
 
 /** How far past now a show may start and still be found. */
@@ -30,15 +32,19 @@ const val SHOW_WINDOW_MS = 24 * 60 * 60_000L
  */
 const val SHOW_QUERY_MIN = 2
 
-/** The shows found for a query: on now, in channel order, and starting later, by start time. */
+/**
+ * The shows found for a query: on now, in channel order; starting in the next [SHOW_WINDOW_MS] ([later]),
+ * by start time; and starting after that ([beyond], shown as "Later"), by start time.
+ */
 data class ShowMatches(
     val onNow: List<ProgrammeSearchResult>,
     val later: List<ProgrammeSearchResult>,
+    val beyond: List<ProgrammeSearchResult> = emptyList(),
 ) {
-    val size: Int get() = onNow.size + later.size
+    val size: Int get() = onNow.size + later.size + beyond.size
 
     /** Every channel carrying at least one of the shows. */
-    val channelIds: Set<Long> get() = (onNow + later).mapTo(HashSet()) { it.channel.id }
+    val channelIds: Set<Long> get() = (onNow + later + beyond).mapTo(HashSet()) { it.channel.id }
 
     companion object {
         val EMPTY = ShowMatches(emptyList(), emptyList())
@@ -46,10 +52,10 @@ data class ShowMatches(
 }
 
 /**
- * Splits [found] into what is on at [nowMs] and what starts in the next [SHOW_WINDOW_MS]. A show that
- * is over, or starts later than that, is dropped. On now keeps the order it came in (channel order);
- * later is sorted by start, so the soonest show comes first. The same show on the same channel at the
- * same time is listed once: a channel can read two guides that both carry it.
+ * Splits [found] into what is on at [nowMs], what starts in the next [SHOW_WINDOW_MS], and what starts
+ * after that. A show that is over is dropped. On now keeps the order it came in (channel order); the
+ * other two are sorted by start, so the soonest show comes first. The same show on the same channel at
+ * the same time is listed once: a channel can read two guides that both carry it.
  */
 fun splitShows(found: List<ProgrammeSearchResult>, nowMs: Long): ShowMatches {
     val unique = found.distinctBy { Triple(it.channel.id, it.programme.startMs, it.programme.title) }
@@ -57,7 +63,10 @@ fun splitShows(found: List<ProgrammeSearchResult>, nowMs: Long): ShowMatches {
     val later = unique
         .filter { it.programme.startMs > nowMs && it.programme.startMs < nowMs + SHOW_WINDOW_MS }
         .sortedBy { it.programme.startMs }
-    return ShowMatches(onNow, later)
+    val beyond = unique
+        .filter { it.programme.startMs >= nowMs + SHOW_WINDOW_MS }
+        .sortedBy { it.programme.startMs }
+    return ShowMatches(onNow, later, beyond)
 }
 
 /**
@@ -125,8 +134,8 @@ class ShowSearch(
 ) {
 
     /**
-     * Shows whose title contains [query] (any case, with or without accents), on now or starting within [SHOW_WINDOW_MS] of
-     * [nowMs], on a channel from [liveSourceIds] that is neither hidden in [cust] nor in one of
+     * Shows whose title contains [query] (any case, with or without accents), on now or starting at any
+     * time after [nowMs] that the stored guide covers, on a channel from [liveSourceIds] that is neither hidden in [cust] nor in one of
      * [hiddenCategoryIds]. Channels keep their Customize names.
      *
      * [onePerFeed]: a show on a guide id two channels read is listed on the first channel only. Right
@@ -144,7 +153,12 @@ class ShowSearch(
         if (text.length < SHOW_QUERY_MIN || liveSourceIds.isEmpty()) return ShowMatches.EMPTY
         // The stored times are before any guide shift, so the window is widened on both sides to keep
         // a shifted channel's rows; the exact window is applied after the shift, on the user's clock.
-        val rows = titles.search(text, nowMs - SHIFT_SLACK_MS, nowMs + SHOW_WINDOW_MS + SHIFT_SLACK_MS, ROWS)
+        val near = titles.search(text, nowMs - SHIFT_SLACK_MS, nowMs + SHOW_WINDOW_MS + SHIFT_SLACK_MS, ROWS)
+        // The rest of the stored guide (Later) in a read of its own, with its own cap, so a busy week can
+        // never push out what is on now or in the next 24 hours. Both reads take the slack band around the
+        // 24-hour mark; the same row found twice is kept once.
+        val far = titles.search(text, nowMs + SHOW_WINDOW_MS - SHIFT_SLACK_MS, Long.MAX_VALUE, ROWS)
+        val rows = (near + far).distinctBy { it.id }
         if (rows.isEmpty()) return ShowMatches.EMPTY
         // Keyed as epgKeyOf keys a channel, trimmed and lower-cased; byEpgKeys compares LOWER(TRIM(...)) too.
         val byKey = rows.groupBy { it.epgChannelId.trim().lowercase() }

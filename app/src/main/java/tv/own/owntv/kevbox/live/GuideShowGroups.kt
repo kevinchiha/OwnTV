@@ -5,8 +5,9 @@ import tv.own.owntv.core.database.entity.ChannelEntity
 
 /*
  * The guide's own search (the "Search guide channels" field in Live TV) finds a channel by its name or
- * by a show it carries (Kevin, 2026-10-14). The grid then lists three groups: the name matches, the
- * channels with a matching show on now, and those with one starting in the next 24 hours.
+ * by a show it carries (Kevin, 2026-10-14). The grid then lists the name matches, the channels with a
+ * matching show on now, those with one starting in the next 24 hours, and (2026-10-16) those with one
+ * only after that, under "Later".
  */
 
 /**
@@ -15,7 +16,8 @@ import tv.own.owntv.core.database.entity.ChannelEntity
  * so row numbers keep counting channels only.
  */
 data class GuideHeading(val kind: Kind, val firstIndex: Int, val count: Int) {
-    enum class Kind { NAMES, ON_NOW, LATER }
+    /** [LATER] is the next 24 hours; [BEYOND] is after them, headed "Later". */
+    enum class Kind { NAMES, ON_NOW, LATER, BEYOND }
 }
 
 /** The grid's channels in group order, and a heading for each group that has any. */
@@ -23,8 +25,8 @@ data class GuideGroups(val channels: List<ChannelEntity>, val headings: List<Gui
 
 /**
  * Puts the guide search's channels in their groups: [nameMatches] in the order given, then the channels
- * with a show on now in [shows]' order (channel order), then those with a show later, by their earliest
- * matching start ([ShowMatches.later] is sorted by start). A channel shows once, in the first group it
+ * with a show on now in [shows]' order (channel order), then those with a show in the next 24 hours, then
+ * those with one after that, each by their earliest matching start (both lists are sorted by start). A channel shows once, in the first group it
  * qualifies for, and one [inCategory] rejects shows nowhere. A group left with no channel has no heading.
  */
 fun groupGuideChannels(
@@ -47,5 +49,6 @@ fun groupGuideChannels(
     group(GuideHeading.Kind.NAMES, nameMatches)
     group(GuideHeading.Kind.ON_NOW, shows.onNow.map { it.channel })
     group(GuideHeading.Kind.LATER, shows.later.map { it.channel })
+    group(GuideHeading.Kind.BEYOND, shows.beyond.map { it.channel })
     return GuideGroups(channels, headings)
 }
