@@ -94,7 +94,7 @@ import tv.own.owntv.ui.theme.stageAccent
 import tv.own.owntv.ui.theme.stageText
 
 /*
- * The TV Guide in the Stage design (P4-01 … P4-05): the preview and the focused programme on top, the
+ * The TV Guide in the Stage design: the preview and the focused programme on top, the
  * ruler, the channel labels, and every menu the guide opens. EpgScreen owns the state and the focus
  * plumbing; these only draw.
  */
@@ -169,7 +169,7 @@ internal fun programmeEyebrow(p: EpgProgrammeEntity, channelName: String, now: L
     return listOfNotNull(lead, range, length, channelName).joinToString(" · ")
 }
 
-/** The details line (G1): "Animation · Family · 2023 · FSK 0 · 95 min" — only what the feed provides. */
+/** The details line: "Animation · Family · 2023 · FSK 0 · 95 min" — only what the feed provides. */
 @Composable
 internal fun programmeDetailsLine(p: EpgProgrammeEntity): String? {
     val d = p.details
@@ -261,7 +261,7 @@ internal fun GuideRuler(
 }
 
 /**
- * A channel's label column (P4-01): the playlist's 7 px dot, the number (38 wide, 17/700 dim), the
+ * A channel's label column: the playlist's 7 px dot, the number (38 wide, 17/700 dim), the
  * logo on a 58×40 plate, the name 17/700. The row the focus is in has its number and name in accent.
  */
 @Composable
@@ -276,7 +276,7 @@ internal fun GuideChannelLabel(channel: ChannelEntity, name: String, dot: Color?
         Text(
             channel.number?.toString().orEmpty(),
             style = stageText(17, 700).copy(fontFeatureSettings = Tabular), color = if (selected) a.accent else StageColors.Dim,
-            // Always whole (owner): the column fits the longest number in the list; only the name is cut.
+            // Always whole: the column fits the longest number in the list; only the name is cut.
             maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(numberWidth),
         )
         LivePlate(channel.displayLogoUrl, 58.mpx, 40.mpx, radius = 10.mpx)
@@ -297,7 +297,7 @@ internal fun Modifier.guideNowLine(accent: Color): Modifier = drawBehind {
 // Menus
 // ---------------------------------------------------------------------------------------------
 
-/** Every guide menu: the Stage menu over the scrim, at the mockup's place ([x] of 1920, [top]), scrolling at large zooms. */
+/** Every guide menu: the Stage menu over the scrim, at its place ([x] of 1920, [top]), scrolling at large zooms. */
 @Composable
 internal fun GuideMenuHost(x: Float, top: Dp, width: Dp, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     BackHandler { onDismiss() }
@@ -403,7 +403,7 @@ internal fun guideProgrammeActions(
 }
 
 /**
- * ☰ Programme options (P4-02), 560 wide at the right: "Wish" + "20:05 – 21:40 · 259 Sky Cinema Family";
+ * ☰ Programme options, 560 wide at the right: "Wish" + "20:05 – 21:40 · 259 Sky Cinema Family";
  * NEW Remind me (5 min before) · WATCH Watch channel, Watch from start ("after 20:05" until it starts),
  * Play catch-up in… (Ask) · RECORD Record, Record every showing, Record from catch-up · CHANNEL
  * favourite, Pick EPG manually, EPG time offset (Global). Also Live TV's ▶ Schedule → OK menu.
@@ -524,7 +524,7 @@ internal fun GuideRecordMenu(title: String, actions: GuideProgrammeActions, onDi
     }
 }
 
-/** Order ▾ (P4-04): "Order channels by · Opens this way next time" and the five orders, ✓ on the current one. */
+/** Order ▾: "Order channels by · Opens this way next time" and the five orders, ✓ on the current one. */
 @Composable
 internal fun GuideOrderMenu(
     current: SettingsRepository.GuideSort,
@@ -546,7 +546,7 @@ internal fun GuideOrderMenu(
                 modifier = if (sort == current || (sort == SettingsRepository.GuideSort.PROVIDER && current == SettingsRepository.GuideSort.LIVE_TV)) Modifier.focusRequester(focus) else Modifier,
             )
         }
-        // SHOW, as the Series page's order menu has it: a filter, not an order (owner, 2026-09-30).
+        // SHOW, as the Series page's order menu has it: a filter, not an order.
         StageGroupLabel(stringResource(R.string.content_menu_group_show).uppercase(androidx.compose.ui.text.intl.Locale.current.platformLocale))
         StageMenuItem(
             text = stringResource(R.string.content_epg_show_empty), icon = OwnTVIcon.EYE_OFF,
@@ -582,7 +582,7 @@ internal fun GuideChannelMenu(
     val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
     GuideMenuHost(x = 1150f, top = 64.mpx, width = 560.mpx, onDismiss = onDismiss) {
         StageMenuHeader(
-            title = listOfNotNull(channel.number?.toString(), tv.own.owntv.features.live.ProviderTags.parse(channel.name).name).joinToString(" · "),
+            title = listOfNotNull(channel.number?.toString(), tv.own.owntv.core.live.ProviderTags.parse(channel.name).name).joinToString(" · "),
             subtitle = stringResource(R.string.content_epg_no_programme),
         )
         StageGroupLabel(stringResource(R.string.content_menu_group_watch).uppercase(locale))
@@ -598,7 +598,7 @@ internal fun GuideChannelMenu(
     }
 }
 
-/** Provider, A–Z, Catch-up first, Favourites first. Channel number went (owner): it is the provider's order. */
+/** Provider, A–Z, Catch-up first, Favourites first. No Channel number: it is the provider's order. */
 private val GuideSortOrder = listOf(
     SettingsRepository.GuideSort.PROVIDER to OwnTVIcon.SORT,
     SettingsRepository.GuideSort.ALPHA to OwnTVIcon.SORT,
@@ -668,7 +668,7 @@ internal fun GuideCatchupChooser(onInternal: () -> Unit, onExternal: () -> Unit,
 }
 
 /**
- * The Auto-match review (P4-05): a glass popup 1080 wide — "Auto-match EPG · 41 channels matched",
+ * The Auto-match review: a glass popup 1080 wide — "Auto-match EPG · 41 channels matched",
  * "Review 3 matches", the explanation, one row per unsure match (plate, channel, →, feed name and its
  * score, Accept, Skip; the row holding focus is FX), then Skip all · Accept all · Done. Guide logos
  * stay a switch at the left of the footer.
@@ -838,7 +838,7 @@ internal fun reminderEyebrow(reminder: tv.own.owntv.core.database.entity.Reminde
 )
 
 /**
- * The reminder prompt (G2, Programme reminders = Ask to switch): the programme about to start, with
+ * The reminder prompt (Programme reminders = Ask to switch): the programme about to start, with
  * Watch channel and Dismiss. It opens over whatever is on screen, the player included.
  */
 @Composable

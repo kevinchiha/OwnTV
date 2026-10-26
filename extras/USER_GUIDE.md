@@ -7,7 +7,8 @@ required reading — skim the headings and stop where something looks useful.
 
 > **The basics:** **D-pad** moves · **OK** selects · **Back** goes up a level.
 > The menu on the left is the **rail**. **Long-press OK** (or the remote's **Menu** key) on almost
-> anything opens its menu — that is where favourites, rename, hide, record and catch-up live.
+> anything opens its menu — that is where favourites, rename, hide, record and catch-up live. Home's
+> cards have no menu: they play or open, and the menu is on the same title in Live TV, Movies or Series.
 
 ---
 
@@ -112,7 +113,7 @@ and shows its page beside the list; **Right** enters that page; **Back** returns
 
 | Key | Where | What it does |
 |---|---|---|
-| **Long-press OK** / **Menu** key | any channel, film or show | The options menu — favourite, rename, hide, record, catch-up, move, download |
+| **Long-press OK** / **Menu** key | any channel, film or show (not on Home) | The options menu — favourite, rename, hide, record, catch-up, move, download |
 | **Left** | Live TV, Movies, Series lists | Opens the categories (a sheet, or the column in **Separate** layouts) |
 | **Right** | Live TV channel list | Steps into the schedule beside the preview — what's next and later; OK = Remind me / Record / Watch |
 | **Hold Up / Down** | Live TV, Movies, Series lists | Runs through the list to its ends |
@@ -144,6 +145,8 @@ and media keys to 26 actions — **Previous channel** among them. D-pad, Back, O
 First choose **Remote** (below) or **Type it here**, then fill the form — every field is a row; OK
 types into it, and **▶** on the side panel starts the import: **Xtream** (server + user +
 password), **M3U** (URL or a local file), or **Stalker/Ministra** (portal URL + MAC).
+An M3U link of the form `…/get.php?username=…&password=…` is really an Xtream account: when the
+provider's server confirms it, it is added as **Xtream**, with movies and series in their own tabs.
 Under **User-Agent** there is an optional **Referer** — leave it empty unless your provider asks
 for one; it is then sent with every stream of that playlist.
 
@@ -222,6 +225,13 @@ The channel menu is grouped **Watch · Channel · Guide data · Organise** and a
 **Catch-up**, **Record**, **Move**, **Add to Multiview**, **Remove from this category** (inside a
 custom category) and **Play in external player**.
 
+### ↕️ Move
+**Where:** **Move** in a channel's, film's or show's menu, **hold OK** on a category → **Move**, or
+⋯ More → Favourites → hold OK → **Move**
+The Move window opens with that item picked up. **▲ ▼** carry it a row, **CH+ / CH−** a page, and a
+**long press** of them to the first or last place. **OK** puts it down or picks up another, so several
+can move in one go. **Save** keeps the new order; **Cancel** or **Back** leaves it as it was.
+
 ### 🏷️ What the row tells you
 Number, logo, name, the programme on now with its time left and a progress bar, the provider's tags
 (quality, country), a catch-up mark, a heart for favourites and the playlist's mark.
@@ -248,7 +258,9 @@ The spinner stays up with a live countdown and OwnTV retries by itself. Don't pr
 wait.
 
 ### 🔒 Protected (DRM) channels
-Widevine and ClearKey channels play with nothing to set up — your TV does the unlocking. They always
+Widevine and ClearKey channels play with nothing to set up — your TV does the unlocking. That
+includes ClearKey channels whose playlist writes the key itself (`license_key=kid:key`); a playlist
+added before this update needs one refresh to pick the key up. They always
 use ExoPlayer, so the engine toggle is hidden for them. Some cheaper boxes only allow standard
 definition; that is the device's decision, not OwnTV's.
 
@@ -268,10 +280,12 @@ then the grid, opened at now with the now-line about a third of the way across.
 - **Order:** Provider, A–Z, Catch-up first or Favourites first. **Category** uses Live TV's own list.
   Its **Show** group: **Channels without guide**, and **Video preview** — off, the top shows the
   channel's logo instead of playing it (also off whenever Live TV's preview is off).
+- **The preview stays put while you browse:** moving through the rows does not change it. The first
+  **OK** on a row brings that channel into the preview; **OK** again on it watches it full screen.
 
 ### 🔔 Programme reminders
 **Where:** hold OK on an upcoming programme → **Remind me** · Settings → Sources & guide →
-**Programme reminders** / **Reminder time**
+**Program reminders** / **Reminder time**
 When it is due (5 minutes before by default) OwnTV **asks to switch** — over any screen, the player
 included — or **switches** by itself, or only **notifies**.
 
@@ -289,7 +303,8 @@ playlist offers.
 **Where:** Guide → **Auto-match EPG**, or long-press a channel → **Match EPG**
 Auto-match does the bulk — only for the playlist(s) the guide is showing, so it takes seconds; the manual picker lists the most similar guide channels first. Tick
 **Logos** in the review window and every matched channel also takes the logo of the guide channel it
-is matched to.
+is matched to. Auto-match keeps going if you leave the Guide: a message says how it went when it
+finishes, and the review window is waiting when you come back.
 
 ### 📅 Guide days to keep
 **Where:** Settings → Sources & guide → **Guide days to keep**
@@ -326,7 +341,7 @@ day/hour/minute picker. **This works even on channels with no guide at all.**
 Off by default. While you watch a channel full screen, OwnTV saves it on this TV and plays it
 from that copy, so it still looks live — and you can **pause**, rewind and go forward on channels
 whose provider keeps no archive. Pause, the rewind/forward buttons, the bar, Left/Right and **Go live** work as on a catch-up channel. A dark stretch on the bar is a moment the connection
-dropped; playback jumps over it.
+dropped; playback jumps over it. If your internet drops, saving waits and carries on when it is back; the channel picks up by itself.
 
 - **Rewind length:** 15 (default), 30, 45 or 60 minutes. At least **1 GB** of the TV's storage always
   stays free; the oldest part goes first.
@@ -337,7 +352,8 @@ dropped; playback jumps over it.
     **Settings → Live TV → Resume a saved channel** turns the question into **Always resume** or
     **Never resume**.
   - Watch another channel for **2 minutes** and the copy you left is deleted at once — you have moved on.
-  - After 5 minutes it is deleted anyway, and every copy is deleted when OwnTV starts.
+  - After 5 minutes it is deleted anyway, and every copy is deleted when OwnTV starts. The 5 minutes
+    are real time, standby included: wake the TV later and the channel opens live.
 - Catch-up channels still rewind into the provider's archive. Protected (DRM) and encrypted channels
   play as before, without a copy.
 
@@ -390,6 +406,53 @@ is inside Info — it stops anything playing and takes a few minutes.
 
 ---
 
+## 🏆 Sports
+
+Live scores, fixtures and match details come from ESPN. OwnTV then looks in **your own TV guide** for
+the channels that show a match — nothing is streamed from ESPN.
+
+### 🏁 First time
+**Where:** rail → **Sports**
+Nothing is followed at first. Open **Settings → App → Sports → Sports and leagues**, choose a sport on the
+left and switch on its leagues on the right. The more you choose, the longer loading takes.
+**Sport buttons → All sports** fetches every league instead.
+
+### 🗂️ The Sports page
+Two rows of buttons filter the page: sports (and ★ My teams) on top, that sport's leagues below.
+**OK** switches a button on or off, so you can pick Bundesliga and Premier League together; none
+chosen shows everything. The choice stays until you close the app. **⟳** at the end of the top row
+rebuilds the sports data now; the bottom status pill says **Rebuilding sports…** while it runs.
+Rows: **Live now** (red LIVE mark), **Sport on your channels now** (from your guide) and
+**Starting soon**. **OK** on a match opens its page.
+
+### 📋 A match page
+The box at the top shows the score, the time, the round and the venue with its city and country.
+Tabs show the timeline, statistics, line-ups, the table, each side's form and **Broadcasts**.
+**Find channels** searches your guide for that match — from **30 minutes before kick-off until 30
+minutes after the end**; earlier, the page says when it opens. The found channels appear on the
+right, best first, with a preview. **OK** plays one full screen; **Back** returns to the match page.
+**Filter channels** narrows the list by language, country, picture and playlist. **Strict filtering**
+on hides the others; off lists them below. **Remember** keeps the filter for every match.
+
+### 📺 Broadcasts
+**In your guide** lists the channels Find channels found, one per row under their country, in order;
+**▲ ▼** scroll a long list. **From ESPN** is ESPN's own list, which covers the United States only.
+A channel's country comes from its name: "UK| …" and "UK: …" both count.
+
+### ↕️ Your own order
+**Where:** Settings → App → Sports → Sports and leagues → **hold OK** on a sport, or on a league you
+switched on. In the Move window, **▲ ▼** choose a row, **OK** picks it up and puts it down, and
+**Save** keeps the new order. The Sports page and the Home row follow it.
+
+### ⚙️ Settings → App → Sports
+**Auto rebuild** every 1, 2, 4 or 8 hours, on every app start, or by hand. **Live refresh** updates
+live scores every 30–120 seconds while something sports is on screen. **Refresh sports data now**
+shows when it last updated. Also here: My teams, goal alerts, playlist and channel filters.
+
+### 🏠 Sports on Home
+**Settings → Layout → Home screen** can show a **Sports** row: live and upcoming matches of your leagues and teams,
+in your order. **OK** opens the match page.
+
 ## 🎬 Movies & Series
 
 ### 🖼️ Grid or list
@@ -406,7 +469,8 @@ runtime, plot and progress; hold OK on one for its own menu.
 
 ### ▶️ Resume
 Partly-watched titles offer **Resume**. **Settings → Watching & recording → Resume playback** chooses **Ask**, **Auto** or **Never**.
-A series **opens on your last-watched episode**.
+A series **opens on your last-watched episode**; a show you have not started plays from Season 1
+Episode 1, with **Specials** after the last season.
 
 ### ⏭️ Auto-play next episode
 **Where:** Settings → Watching & recording → **Auto-play next episode**
@@ -430,8 +494,8 @@ the next one, then offers **Open in YouTube**.
 
 ### 📥 Download or play elsewhere
 **Where:** long-press a title
-**Download** queues it immediately; **Play in external player** opens VLC, MX Player and so on, just
-this once.
+**Download** queues it immediately; **Play in external player** opens VLC, MX Player and so on.
+With several players installed, pick one and choose **Always** to skip the question from then on.
 
 ### 🔧 Which engine plays films
 **Where:** Settings → Player → **Movies & Series player**
@@ -453,7 +517,7 @@ The built-in service is shared by everyone using OwnTV, so it has minute/hour/da
 the top of the page.
 
 ### 🔑 Use your own key instead — recommended
-**Where:** Settings → Content & metadata → Metadata (TMDB) → **Get advanced TMDB info via remote**
+**Where:** Settings → Content & metadata → Metadata (TMDB) → **Get advanced TMDB info**
 A free personal TMDB key removes the shared limit. It's 32 characters, so send it from your phone by
 QR + PIN rather than typing it. A self-hosted Cloudflare Worker also works (one is in the repo).
 
@@ -508,13 +572,14 @@ switch channel rows between **Cards** and **On now** (an inline mini-guide).
 
 ### 🔎 Search
 **Where:** the rail → Search
-Searches Live, Movies and Series together, with tabs **All / Live TV / Movies / Series** and their
-counts — every match, up to 500 of each kind. Words match from their start, and a dash or other mark
+Searches Live, Movies and Series together. Four filter buttons — **Live TV / TV Shows / Movies /
+Series**, each with its count — narrow the results: **OK** turns one on, **OK** again turns it off,
+several can be on, and none on shows everything. Every match is listed, up to 500 of each kind. Words match from their start, and a dash or other mark
 counts as a gap: "Spider-M" finds every Spider-Man. A channel shows Live TV's preview beside the
 results; a film or show shows its poster panel.
 **OK takes you to the item** — the channel in its own category, the film in its grid, the series page
 — where play, download and every option live; **Back** returns to Search with your query kept.
-**On TV** lists programmes from the stored guide whose title matches, on now or within the next 12
+**TV Shows** lists programmes from the stored guide whose title matches, on now or within the next 12
 hours, with the channel and time; **OK** goes to that channel. With
 the box empty: **Jump to**, your recent searches, and Continue watching.
 
@@ -534,6 +599,17 @@ and the folder the tab saves to sits under **Download folder**. Rows are grouped
 **On this TV**, each with picture, details, its file path and "64% · 12.4 MB/s · 3 min left" — or
 Queued, Paused, Failed, Ready to watch. **Pause / Resume / Retry / External / Delete** appear on the
 focused row. Downloads keep running when you leave the app.
+A download starts on one connection and adds more, up to eight, while each one makes it faster —
+never more than your playlist allows. A failed one says why: **Account busy** (another stream is using
+your connection), **Server refused the link**, **Connection lost**, **Not enough space**, **Too large
+for this drive** (a FAT32 USB stick holds no file over 4 GB — format it as exFAT), and more, with the
+server's code. A finished download or recording whose file is gone (stick formatted, swapped or
+unplugged) says **File missing** and offers only Delete.
+> **One-stream playlists:** when you press Play while a download from that playlist runs, the download
+> pauses and OwnTV asks **Pause download and watch** or **Keep downloading** (which closes the player),
+> with **Don't ask again**. Change the answer with **Watching while downloading** next to Download
+> folder. A download started while you watch waits and starts when you stop. The Live TV preview stays
+> off while a download holds the only stream.
 > **USB stick removed?** New downloads and recordings go to OwnTV's own folder until it is back — the
 > screen says so — and then to your chosen folder again. A download cut off mid-way is marked failed;
 > reconnect and retry. **New folder** in the folder picker lets you name and create one.
@@ -549,6 +625,8 @@ Each profile has its own favourites, history, resume points and layout. Add a **
 ### 🙂 Change your avatar
 **Where:** ⋯ More → OK on your avatar · or hold OK on the avatar at the bottom of the rail
 Pick a drawn avatar, or **Your own picture** — a file on this TV or a photo sent from your phone.
+A new profile can have its picture straight away: **Your own picture** is also in the window that
+creates a profile, and in Settings → **Profile** when you edit one.
 
 ### 🚀 Where a profile opens
 **Where:** Settings → App → **App startup**
@@ -611,6 +689,9 @@ you pick yourself is **remembered** for that channel, film or series (subtitles 
 subtitles → **Audio sync** for everything
 Nudge until lips match, then **Remember this delay** to keep it for that item. Works on both players,
 including sound sent as-is to a soundbar.
+**Delay for this output** (Settings → Sound & subtitles) adds a delay of its own for the output the
+sound is going to right now — HDMI, a soundbar on HDMI ARC, Bluetooth, the TV speakers or headphones.
+Each output keeps its own; set it while listening on that output.
 
 ### 🔊 Surround sound
 **Where:** Settings → Sound & subtitles → **Surround sound**
@@ -627,7 +708,8 @@ receiver on ExoPlayer; off, or while Night mode or leveling is on, OwnTV decodes
 ### 📺 Picture quality and tunneled playback
 **Where:** Settings → Picture
 **Maximum video quality** caps the picture when a stream offers several sizes; the player's
-**Quality** button picks one for what is playing now. **Tunneled playback** (experimental, off) only
+**Quality** button picks one for what is playing now. **Software decoding above 1080p** (off) lets
+4K play when hardware decoding is off or fails — only for a TV with a fast processor; most stutter. **Tunneled playback** (experimental, off) only
 appears on a TV that supports it, and switches itself off for good if a channel fails with it.
 
 ---
@@ -664,11 +746,11 @@ the rail, sheets, menus and popups; **Glass opacity** sets how much background s
 Live TV preview sits beside the rows; **Reset** goes back to Stage colours with glass on.
 
 ### ✨ Ambient Glow
-**Where:** Settings → Appearance → **Ambient Glow** — only shown with Theme **Dark** and Glass off
+**Where:** Settings → Appearance → **Ambient glow** — only shown with Theme **Dark** and Glass off
 A soft glow around the edges of the screen, with an optional slow pulse.
 
 ### 🔤 Font & size
-**Where:** Settings → Appearance → **Fonts & text size** · **Popup size** · **UI zoom**
+**Where:** Settings → Appearance → **Font customization** · **Popup size** · **UI zoom**
 One font family for the whole app and popups (Plus Jakarta Sans by default), main text 60–140% and
 popup text separately. **Popup size** and **UI zoom** step with ◀ ▶ right on their rows.
 > Below **85% zoom** OwnTV warns first — very small sizes draw many more items and can exhaust a
@@ -705,7 +787,8 @@ sheet and the **Details height** — lower it for another row of posters, **0%**
 **Where:** long-press a category → **Customize**, or Settings → Content & metadata → **Customize categories & items**
 Hide, rename, reorder, and **unhide**. Highlights:
 - **Bulk rename** — add or strip a prefix/suffix across a whole category, with **Auto cleanup** for
-  country, quality and codec tags, a review step, and **Restore original names** as the undo.
+  country, quality and codec tags, a review step, and **Restore original names** as the undo. For the
+  **category names themselves**: **⋯ → Bulk rename** or **⋯ → ✨ Auto cleanup** on the categories page.
 - **Custom combined categories** — **＋ New category**, then **Move to category…** from any item.
   **Remove from this category** (long-press a channel inside it, or here) takes it out of that category
   only. Hiding a channel's own provider category no longer hides it from your custom categories.
@@ -751,9 +834,10 @@ all settings** lists every setting whose name contains what you type, with its p
 | **Live latency** | Live TV | How close to the live edge to play. Lower = less delay, more stutter risk |
 | **Pre-buffer live streams** | Live TV | Collect a few seconds first on a flaky provider |
 | **Give up on a channel after** | Live TV | 30 s default — bounds how long a dead channel can spin (+ per playlist) |
+| **Catch-up time zone** | Sources & guide | **Automatic** (default) uses the Xtream panel's own zone; Device or a fixed offset otherwise |
 | **Catch-up time zone per playlist** | Sources & guide | One provider's archive on a different clock (quarter-hour zones such as +05:30 included) |
 | **Hardware decoder** | Picture | On for smooth 4K; off only to diagnose |
-| **HDR (mpv only)** | Picture | Use HDR output when the video and TV support it. ExoPlayer always passes HDR through |
+| **Prefer SDR** | Picture | When a stream offers both SDR and HDR, play the SDR one. Off by default |
 | **Auto frame rate** | Picture | Match the TV's refresh rate to the content. Off by default |
 | **Pause during the display switch** · **Match resolution** | Picture | Films only: hold the film while the TV re-syncs (off–5 s); also switch to the film's resolution, never above the TV's own |
 | **Seek step / Live rewind step** | Watching & recording | How far the skip buttons jump |
@@ -762,9 +846,10 @@ all settings** lists every setting whose name contains what you type, with its p
 | **Default volume** | Sound & subtitles | 0–150%, where everything starts |
 | **Reset saved player choices / zoom / volume** | Player, Picture, Sound & subtitles | Forget everything the player remembered per item |
 | **Reset saved live TV player choices** | Player | Every channel follows the Live TV player setting again |
-| **Forget learned stream fixes** | Player | For a provider that has fixed its streams. Catch-up lessons also expire after 14 days |
+| **FFmpeg audio for ExoPlayer** | Sound & subtitles | Decode sound the TV has no decoder for (DTS, TrueHD on some TVs). Off by default; applies after a restart |
+| **Delay for this output** | Sound & subtitles | A delay for HDMI, ARC, Bluetooth, speakers or headphones, each kept on its own |
 | **Custom DNS** | App → DNS | System, Google, Cloudflare, Quad9, or DNS-over-HTTPS |
-| **External player** | Player | Separate switches for Live TV, Movies and Series |
+| **External player** | Player | Separate switches for Live TV, Movies and Series; VLC and MX Player start where you left off |
 | **Resume a saved channel** | Live TV | Ask, always or never resume a channel saved by Pause and rewind |
 | **Programme reminders** · **Reminder time** | Sources & guide | Ask to switch, switch, or notify; how early |
 | **Measured stream stats** | App | Live fps, bitrate and dropped frames in Stream info |
@@ -825,7 +910,8 @@ http://your-provider/movie/user/pass/555.mkv
 ```
 
 The text **before** the marker becomes the show name; the text **after** it becomes the episode
-title. Markers: `S01E05` (also `s1e5`, `S01 E05`, `S01.E05`, `S01-E05`) and `1x05`.
+title. Markers: `S01E05` (also `s1e5`, `S01 E05`, `S01.E05`, `S01-E05`, `S2019E05`),
+`Season 1 Episode 5` (also `Season 1 - Ep. 5`) and `1x05`. Season `0` (`S00E01`) is **Specials**.
 
 > **Keep the show name identical across its episodes** — that is what groups them into one show.
 > A line with no marker is still added, as a plain sequential episode.
@@ -843,6 +929,7 @@ title. Markers: `S01E05` (also `s1e5`, `S01 E05`, `S01.E05`, `S01-E05`) and `1x0
 | Sound but a black picture | OwnTV switches engines by itself; if neither can, it says so |
 | Stalker portal refuses the login | Re-check the MAC, and the TV's **date & time** |
 | Guide is blank | **Settings → Sources & guide → EPG Sources** — add a feed and sync it, then run **Auto-match EPG** |
+| A series says "Could not load the episodes" | The provider refused the episode list; the code in brackets (e.g. HTTP 407) says why. Stop any other stream on the account and open the series again |
 | Audio out of sync | Player → Audio → **A/V sync**, then **Remember this delay** |
 | Update says there isn't enough space | In-app updates need room for the whole APK — free some and retry |
 

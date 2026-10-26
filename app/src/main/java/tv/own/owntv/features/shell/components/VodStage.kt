@@ -74,7 +74,7 @@ import tv.own.owntv.core.settings.SettingsRepository.SortMode
 import tv.own.owntv.features.epg.GuideMenuHost
 import tv.own.owntv.features.live.LiveCategoryEntry
 import tv.own.owntv.features.live.LiveRailItem
-import tv.own.owntv.features.live.ProviderTags
+import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.features.live.displayLabel
 import tv.own.owntv.ui.components.MenuAction
 import tv.own.owntv.ui.components.OwnTVIcon
@@ -100,7 +100,7 @@ import tv.own.owntv.ui.theme.stageAccent
 import tv.own.owntv.ui.theme.stageText
 
 /*
- * Movies & Series in the Stage design (P5-01 … P5-12): the header, the Cinematic backdrop and hero,
+ * Movies & Series in the Stage design: the header, the Cinematic backdrop and hero,
  * the Separate details card, the list row, the sort and options menus, and the category list's
  * entries. MoviesScreen and SeriesScreen own the state and the focus plumbing; these only draw.
  */
@@ -121,7 +121,7 @@ internal data class VodTitleInfo(
     val cast: List<CastMember>,
 )
 
-/** A rating as the mockup writes it: one decimal, in the user's number format ("8.4", "8,4"). */
+/** A rating as the design writes it: one decimal, in the user's number format ("8.4", "8,4"). */
 internal fun vodRating(rating: Double): String = String.format(Locale.getDefault(), "%.1f", rating)
 
 /** "1 h 42 min", or "48 min" under an hour. */
@@ -220,7 +220,7 @@ internal fun VodCinematicBackdrop(url: String?, series: Boolean, modifier: Modif
 }
 
 /**
- * The Cinematic hero (P5-01 / P5-10): title art 170 high (the name in 92/800 when there is none or it
+ * The Cinematic hero: title art 170 high (the name in 92/800 when there is none or it
  * fails to load), the meta line, a two-line synopsis and six cast photos. Display only — focus never
  * leaves the poster row.
  */
@@ -342,7 +342,7 @@ internal fun VodCast(cast: List<CastMember>, count: Int, modifier: Modifier = Mo
 }
 
 /**
- * The Separate layout's details card (P5-05, the "Poster panel"): glass, radius 30, padding 20 — the
+ * The Separate layout's details card (the "Poster panel"): glass, radius 30, padding 20 — the
  * art 290 high with the title art or name over a bottom shade, the title 32/800, the short meta line,
  * the genres in accent, a five-line synopsis, five cast photos at 92%, and the key hints at the bottom.
  */
@@ -412,7 +412,7 @@ internal fun vodLine(year: Int?, rating: Double?, runtimeSecs: Int?): AnnotatedS
 }
 
 /**
- * `.vrow` (List view, P5-06 / P5-09): 118 high, radius 20, padding 16, gap 20 — the poster 66×99 radius
+ * `.vrow` (List view): 118 high, radius 20, padding 16, gap 20 — the poster 66×99 radius
  * 10, the title 21/700, the line 16 muted, the resume progress (260 wide) when started, the playlist mark.
  */
 @Composable
@@ -458,7 +458,7 @@ internal fun VodPosterArt(url: String?, placeholder: OwnTVIcon) {
     }
 }
 
-/** The four sort orders, in the mockup's order, with the line each shows when it is not the current one. */
+/** The four sort orders, in order, with the line each shows when it is not the current one. */
 private val VodSorts = listOf(
     Triple(SortMode.PLAYLIST, R.string.content_sort_provider_order, R.string.content_sort_provider_order_hint),
     Triple(SortMode.ALPHA, R.string.settings_sort_alpha, null),
@@ -483,7 +483,7 @@ internal fun VodSortTool(mode: SortMode, modifier: Modifier = Modifier, onClick:
     )
 }
 
-/** Sort (P5-02): "Sort movies · Applies to every category in this section", 560 wide; ✓ on the current order. */
+/** Sort: "Sort movies · Applies to every category in this section", 560 wide; ✓ on the current order. */
 @Composable
 internal fun VodSortMenu(series: Boolean, current: SortMode, x: Float, top: Dp, onPick: (SortMode) -> Unit, onDismiss: () -> Unit) {
     val focus = remember { FocusRequester() }
@@ -505,14 +505,14 @@ internal fun VodSortMenu(series: Boolean, current: SortMode, x: Float, top: Dp, 
     }
 }
 
-/** Group ids of a title's options menu, in the mockup's order: WATCH, LIBRARY, ORGANISE, DETAILS. */
+/** Group ids of a title's options menu, in order: WATCH, LIBRARY, ORGANISE, DETAILS. */
 internal const val VodGroupWatch = 0
 internal const val VodGroupLibrary = 1
 internal const val VodGroupOrganise = 2
 internal const val VodGroupDetails = 3
 
 /**
- * ☰ Title options (P5-03 / P5-12), 540 wide at the right: the poster 52×78, the title and "2026 ·
+ * ☰ Title options, 540 wide at the right: the poster 52×78, the title and "2026 ·
  * Disney+ Kids Movies", then the actions under their group labels, in the order the user set in
  * Settings › Long-press menus. Keys in [disabled] are drawn at 45% and do nothing ("Remove from history"
  * for a title never watched); [values] are the dim right-hand values. Focus starts on the favourite.
@@ -528,7 +528,7 @@ internal fun VodOptionsMenu(
     disabled: Set<String>,
     onDismiss: () -> Unit,
     values: Map<String, String> = emptyMap(),
-    /** P6-04 (an episode): 250 down, a 112×63 still, focus starting on Download. */
+    /** For an episode: 250 down, a 112×63 still, focus starting on Download. */
     top: Dp = 60.mpx,
     artWidth: Dp = 52.mpx,
     artHeight: Dp = 78.mpx,
@@ -566,7 +566,7 @@ internal fun VodOptionsMenu(
 }
 
 /**
- * The Movies / Series category list as the Stage sheet and column draw it (P5-04, P5-05): Favourites,
+ * The Movies / Series category list as the Stage sheet and column draw it: Favourites,
  * History and All movies / series with their icons, then the provider categories parsed into name and
  * tags, each with its count and playlist mark. Returns the entries and the "PROVIDERS" heading.
  */
@@ -583,7 +583,8 @@ internal fun vodCategoryEntries(
         val parsed = if (item.key is LiveKey.Folder || item.key is LiveKey.Custom) ProviderTags.parse(label) else null
         LiveCategoryEntry(
             item = item,
-            label = parsed?.name ?: label,
+            // No country heading here, so a group keeps its "UK|".
+            label = parsed?.let { ProviderTags.groupLabel(it, headingCountry = null) } ?: label,
             name = parsed,
             icon = when (item.key) {
                 LiveKey.Favorites -> OwnTVIcon.FAVORITE

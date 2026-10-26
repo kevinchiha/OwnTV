@@ -124,13 +124,15 @@ object FrameRateController {
             // The pending reset is cancelled only once a mode is actually going to be requested. Cancelling
             // up front killed the restore-to-default even when nothing matched this item's frame rate — so
             // leaving a 24p film for something the panel has no mode for kept the display at 24Hz.
-            val choice = pickMode(activity, fps, videoSize?.takeIf { matchResolution }) ?: return
-            val target = choice.mode
+            val choice = pickMode(activity, fps, videoSize?.takeIf { matchResolution })
+            // No match keeps nothing from the last item: a 50p channel after a 30p one on a 60/30 Hz
+            // panel would otherwise stay at 30 Hz and lose every other frame.
+            if (choice != null) cancelPendingReset()
+            val targetId = nextModeId(choice?.mode?.modeId, activity.window.attributes.preferredDisplayModeId) ?: return
             cancelPendingReset()
-            if (target.modeId == activity.window.attributes.preferredDisplayModeId) return
             val waitMs = MODE_CHANGE_COOLDOWN_MS - (android.os.SystemClock.uptimeMillis() - lastChangeAtMs)
             if (lastChangeAtMs != 0L && waitMs > 0) {
-                Log.i(TAG, "AFR: ${fps}fps -> mode ${target.modeId} deferred ${waitMs}ms (cooldown)")
+                Log.i(TAG, "AFR: ${fps}fps -> mode $targetId deferred ${waitMs}ms (cooldown)")
                 // Re-resolve on the way out rather than capturing `target`: by then the fps may have moved
                 // again, and the newest reading is the one worth acting on.
                 val task = Runnable { pendingApply = null; apply(activity, fps, videoSize, matchResolution) }
@@ -138,17 +140,32 @@ object FrameRateController {
                 handler.postDelayed(task, waitMs)
                 return
             }
-            activity.window.attributes = activity.window.attributes.apply { preferredDisplayModeId = target.modeId }
+            activity.window.attributes = activity.window.attributes.apply { preferredDisplayModeId = targetId }
             lastChangeAtMs = android.os.SystemClock.uptimeMillis()
-            Log.i(TAG, "AFR: video ${fps}fps -> display mode ${target.modeId} (${target.physicalWidth}x${target.physicalHeight} ${target.refreshRate}Hz, seamless=${choice.seamless})")
-            onModeSwitched?.invoke(choice.seamless)
+            if (choice == null) {
+                Log.i(TAG, "AFR: video ${fps}fps matches no mode -> display default")
+            } else {
+                val target = choice.mode
+                Log.i(TAG, "AFR: video ${fps}fps -> display mode ${target.modeId} (${target.physicalWidth}x${target.physicalHeight} ${target.refreshRate}Hz, seamless=${choice.seamless})")
+            }
+            onModeSwitched?.invoke(choice?.seamless ?: false)
         }.onFailure { Log.w(TAG, "AFR apply failed: ${it.message}") }
+    }
+
+    /**
+     * The mode id to request next, or null to leave the window alone. [chosenId] is the matching mode
+     * (null when none matches), [requestedId] what the window asks for now (0 = system default).
+     * Pure, so it is unit-tested.
+     */
+    internal fun nextModeId(chosenId: Int?, requestedId: Int): Int? {
+        val target = chosenId ?: 0
+        return target.takeIf { it != requestedId }
     }
 
     /**
      * Told each time a mode change is actually pushed to the window, with whether the panel can make it
      * without re-syncing HDMI. The full-screen film surface listens, to hold the film through the black
-     * gap (N7); nothing else does, so live TV is never paused by it.
+     * gap; nothing else does, so live TV is never paused by it.
      */
     var onModeSwitched: ((seamless: Boolean) -> Unit)? = null
 
@@ -165,7 +182,7 @@ object FrameRateController {
     /**
      * The best display mode for [fps], or null when nothing matches — the `Display` side of [chooseMode].
      *
-     * Shared by [apply] and [betterRefreshRateFor] so the "Auto frame rate would help here" prompt (F13)
+     * Shared by [apply] and [betterRefreshRateFor] so the "Auto frame rate would help here" prompt
      * can never promise a switch [apply] would not make.
      */
     private fun pickMode(activity: Activity, fps: Float, videoSize: Pair<Int, Int>? = null): Choice? {
@@ -216,7 +233,7 @@ object FrameRateController {
      *
      * The resolution is the **base** one — where the display was before this playback moved it — so a
      * 4K output is never switched down to 1080p just to hit a rate. The one exception is [video], passed
-     * only when the user turned on resolution matching for a film (N7): the smallest mode that holds the
+     * only when the user turned on resolution matching for a film: the smallest mode that holds the
      * whole picture, never above the base, is tried first, and the base resolution is the fallback when
      * it has no matching rate. A seamless-only system never gets a resolution change: none is seamless.
      */
@@ -232,12 +249,15 @@ object FrameRateController {
     ): Chosen? {
         fun isSeamless(mode: ModeSpec) = mode.width == current.width && mode.height == current.height &&
             seamlessRates.any { abs(it - mode.hz) <= TOLERANCE_HZ }
+        // Staying on the current mode needs no switch at all, but Android lists only the OTHER rates as
+        // alternatives — so under seamless-only a 30p channel after a 30p one "matched nothing".
+        fun allowed(mode: ModeSpec) = isSeamless(mode) || (seamlessOnly && mode.id == current.id)
         fun bestAt(width: Int, height: Int): ModeSpec? = modes
             .filter { it.width == width && it.height == height }
-            .filter { !seamlessOnly || isSeamless(it) }
+            .filter { !seamlessOnly || allowed(it) }
             .mapNotNull { mode -> multipleOf(mode.hz, fps)?.let { mode to it } }
             .minByOrNull { (mode, mult) ->
-                (if (isSeamless(mode)) 0f else 1_000_000f) + mult * 1000f + abs(mode.hz - mult * fps)
+                (if (allowed(mode)) 0f else 1_000_000f) + mult * 1000f + abs(mode.hz - mult * fps)
             }
             ?.first
         val fitted = video?.takeIf { !seamlessOnly && it.first > 0 && it.second > 0 }?.let { (w, h) ->
@@ -342,7 +362,7 @@ object FrameRateController {
     /**
      * The refresh rate a matching display mode would give for [fps], or null when switching would not
      * help — because the display is already on a clean multiple, or because no mode at the current
-     * resolution is one. Used to decide whether suggesting Auto frame rate is honest (F13): on a panel
+     * resolution is one. Used to decide whether suggesting Auto frame rate is honest: on a panel
      * with only a 60 Hz mode, 25 fps judder cannot be fixed by AFR and the app must not pretend it can.
      */
     fun betterRefreshRateFor(activity: Activity, fps: Float): Float? {
@@ -380,7 +400,7 @@ object FrameRateController {
  * player reports it, and releases the display mode on dispose. Mount it from the full-screen video
  * surfaces only — a mini/preview window must not reconfigure the whole display.
  *
- * [film] is a FILM on the full-screen surface — the only case the two N7 extras apply to. On live TV a
+ * [film] is a FILM on the full-screen surface — the only case the two resolution extras apply to. On live TV a
  * resolution switch would black the screen on every zap between an SD and an HD channel, and a pause
  * would put the viewer behind the broadcast for nothing. [videoSize] feeds resolution matching;
  * [holdSecs] > 0 holds the film paused through a switch the panel cannot make seamlessly.

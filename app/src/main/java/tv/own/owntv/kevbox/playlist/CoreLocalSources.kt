@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
+import tv.own.owntv.core.database.OwnTVDatabase
 import tv.own.owntv.core.database.dao.ProfileDao
 import tv.own.owntv.core.database.dao.SourceDao
 import tv.own.owntv.core.database.entity.ProfileSourceCrossRef
@@ -44,6 +47,7 @@ class CoreLocalSources(
     private val catalogSyncScheduler: CatalogSyncScheduler,
     private val launcherIntegrationRepository: LauncherIntegrationRepository,
     private val guideFeeds: GuideFeeds,
+    private val db: OwnTVDatabase,
 ) : LocalSources {
 
     override suspend fun fields(sourceId: Long): SourceFields? {
@@ -105,7 +109,14 @@ class CoreLocalSources(
 
     override suspend fun unlinkEverywhere(sourceId: Long) {
         val linked = sourceDao.profileIdsForSource(sourceId)
-        linked.forEach { sourceDao.unlink(profileId = it, sourceId = sourceId) }
+        // Core 1.0.69 dropped SourceDao.unlink (upstream no longer unlinks a source from a profile), so the
+        // links go with one delete here. The refresh tells Room's observers, observeLinkedSourceIds among them.
+        db.useWriterConnection { connection ->
+            connection.immediateTransaction {
+                usePrepared("DELETE FROM profile_source WHERE sourceId = ?") { it.bindLong(1, sourceId); it.step() }
+            }
+        }
+        db.invalidationTracker.refreshAsync()
         refreshLauncher(linked)
         sourceDao.getById(sourceId)?.let { guideFeeds.removeFor(it) }
     }

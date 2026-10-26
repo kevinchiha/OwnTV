@@ -24,7 +24,7 @@ private const val BG_TAG = "BgImage"
 /**
  * The user's picture as Glass & background draws it: with Blur above 0, the matching level of the
  * blurred copy stretched over the area (one texture, the same cost as the sharp picture; until the copy
- * exists the sharp picture shows), then Darken as the page colour over it (Sharp's 15% = the old fixed
+ * exists the sharp picture shows), then Darken as the page colour over it (Sharp's 15% = the former fixed
  * 16% scrim). Used behind the whole app and, scaled, in the Settings preview.
  */
 @Composable

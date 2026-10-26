@@ -1,6 +1,6 @@
 package tv.own.owntv.features.home
 
-/** What a Keep watching card shows in its 16:9 frame (G12). */
+/** What a Keep watching card shows in its 16:9 frame. */
 sealed interface HomeStill {
     /** A picture filling the frame, cropped to 16:9 (a poster is cropped too). */
     data class Picture(val url: String) : HomeStill

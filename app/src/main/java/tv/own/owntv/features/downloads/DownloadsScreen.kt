@@ -62,6 +62,7 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import tv.own.owntv.R
+import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.core.database.entity.DownloadEntity
 import tv.own.owntv.core.database.entity.RecordingEntity
 import tv.own.owntv.core.download.DownloadActivityTracker
@@ -103,7 +104,7 @@ private enum class DownloadsTab(val labelRes: Int) {
 }
 
 /**
- * Downloads (Stage P7-01): title + storage crumb, the Movies · Series · Recordings tabs and the
+ * Downloads: title + storage crumb, the Movies · Series · Recordings tabs and the
  * Download folder tool, the list grouped DOWNLOADING / ON THIS TV, and the Recordings card on the right.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -131,6 +132,7 @@ fun DownloadsScreen(
     val downloadRoot by vm.downloadRoot.collectAsStateWithLifecycle()
     val recordings by recVm.rows.collectAsStateWithLifecycle()
     val recExternal by recVm.externalPlayerOn.collectAsStateWithLifecycle()
+    val recMissing by recVm.missingFiles.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -157,7 +159,7 @@ fun DownloadsScreen(
 
     /** Focus the row for [id], scrolling near it first when it is not composed (the index counts no group labels, so it lands close). */
     suspend fun focusRow(id: Long) {
-        if (runCatching { focusOf(id).requestFocus() }.isSuccess) return
+        if (runCatching { focusOf(id).requestFocus() }.getOrDefault(false)) return
         runCatching { listState.scrollToItem(listIds.indexOf(id).coerceAtLeast(0)) }
         withFrameNanos { }
         runCatching { focusOf(id).requestFocus() }
@@ -166,8 +168,8 @@ fun DownloadsScreen(
     // The rail's ▶ lands on the first row, or on the tabs when this tab is empty.
     val entry: () -> Boolean = {
         val first = listIds.firstOrNull()
-        if (first != null) runCatching { focusOf(first).requestFocus() }.isSuccess || runCatching { tabFocus.requestFocus() }.isSuccess
-        else runCatching { tabFocus.requestFocus() }.isSuccess
+        if (first != null) runCatching { focusOf(first).requestFocus() }.getOrDefault(false) || runCatching { tabFocus.requestFocus() }.getOrDefault(false)
+        else runCatching { tabFocus.requestFocus() }.getOrDefault(false)
     }
     DisposableEffect(onEntryHook, listIds.firstOrNull()) {
         onEntryHook?.invoke(entry)
@@ -224,9 +226,11 @@ fun DownloadsScreen(
     }
 
     var showFolderPicker by remember { mutableStateOf(false) }
+    val watchChoice by vm.downloadWatchChoice.collectAsStateWithLifecycle()
+    val missing by vm.missingFiles.collectAsStateWithLifecycle()
 
     BoxWithConstraints(modifier.fillMaxSize().onFocusChanged { if (it.hasFocus) onChildFocused() }) {
-        // Horizontal geometry is a fraction of the mockup's 1920 width, so every zoom reflows.
+        // Horizontal geometry is a fraction of the 1920 design width, so every zoom reflows.
         val screenW = maxWidth
         fun fx(px: Int) = screenW * (px / 1920f)
 
@@ -278,6 +282,14 @@ fun DownloadsScreen(
                 )
             }
             Spacer(Modifier.weight(1f))
+            // What playing does to a download on a one-stream playlist; OK steps through the three answers.
+            StageTool(
+                text = stringResource(R.string.content_download_watch_setting) + stringResource(R.string.content_epg_bits_separator) +
+                    stringResource(watchChoiceLabel(watchChoice)),
+                icon = OwnTVIcon.PLAY,
+                onClick = { vm.setDownloadWatchChoice(nextWatchChoice(watchChoice)) },
+                modifier = Modifier.padding(bottom = 4.mpx),
+            )
             StageTool(
                 text = stringResource(R.string.settings_download_folder), icon = OwnTVIcon.FOLDER,
                 onClick = { showFolderPicker = true },
@@ -285,7 +297,7 @@ fun DownloadsScreen(
             )
         }
 
-        // Where this tab's files go (owner): the folder in use plus core's fixed subfolder, right under
+        // Where this tab's files go: the folder in use plus core's fixed subfolder, right under
         // the Download folder tool that changes it, in the free band above the Recordings card.
         storage?.let { info ->
             val sub = when (tab) {
@@ -340,13 +352,14 @@ fun DownloadsScreen(
                                 onCancel = { r -> acted(r.id); recVm.cancel(r) },
                                 onRetry = { r -> recVm.retry(r) },
                                 onDelete = { r -> acted(r.id); recVm.delete(r) },
+                                missing = recMissing,
                             )
                         } else {
                             downloadGroup(R.string.content_downloads_group_downloading, downloading, first = true) { d ->
-                                DownloadItem(d, details[d.id], active?.takeIf { it.id == d.id }, downloading, vm, onFullscreen, externalPlayerOn, focusOf(d.id), acted, rowFocused, wentExternal)
+                                DownloadItem(d, details[d.id], active?.takeIf { it.id == d.id }, downloading, vm, onFullscreen, externalPlayerOn, focusOf(d.id), acted, rowFocused, wentExternal, gone = d.filePath in missing)
                             }
                             downloadGroup(R.string.content_downloads_group_on_tv, onTv, first = downloading.isEmpty()) { d ->
-                                DownloadItem(d, details[d.id], null, downloading, vm, onFullscreen, externalPlayerOn, focusOf(d.id), acted, rowFocused, wentExternal)
+                                DownloadItem(d, details[d.id], null, downloading, vm, onFullscreen, externalPlayerOn, focusOf(d.id), acted, rowFocused, wentExternal, gone = d.filePath in missing)
                             }
                         }
                     }
@@ -375,6 +388,15 @@ fun DownloadsScreen(
         else if (pickerWasOpen) { pickerWasOpen = false; withFrameNanos { }; runCatching { folderFocus.requestFocus() } }
     }
 }
+
+private fun watchChoiceLabel(c: SettingsRepository.DownloadWatchChoice): Int = when (c) {
+    SettingsRepository.DownloadWatchChoice.ASK -> R.string.content_download_watch_ask
+    SettingsRepository.DownloadWatchChoice.PAUSE -> R.string.content_download_watch_pause
+    SettingsRepository.DownloadWatchChoice.KEEP -> R.string.content_download_watch_keep
+}
+
+private fun nextWatchChoice(c: SettingsRepository.DownloadWatchChoice): SettingsRepository.DownloadWatchChoice =
+    SettingsRepository.DownloadWatchChoice.entries.let { it[(c.ordinal + 1) % it.size] }
 
 private val WarnColor = Color(0xFFFFB74D)
 private val FailColor = Color(0xFFEF4444)
@@ -414,9 +436,11 @@ private fun DownloadItem(
     acted: (Long) -> Unit,
     onFocused: (Long) -> Unit,
     wentExternal: () -> Unit,
+    /** Its file (finished or partial) is no longer on the drive. Finished: only Delete; stopped: Resume/Retry start over. */
+    gone: Boolean = false,
 ) {
     val delete = StageAction(stringResource(R.string.common_delete), OwnTVIcon.TRASH) { acted(d.id); vm.delete(d) }
-    val actions = when (d.status) {
+    val actions = if (gone && d.status == DownloadStatus.COMPLETED) listOf(delete) else when (d.status) {
         DownloadStatus.COMPLETED -> listOf(StageAction(stringResource(R.string.content_downloads_external), OwnTVIcon.EXTERNAL) { wentExternal(); vm.playExternal(d) }, delete)
         DownloadStatus.FAILED -> listOf(StageAction(stringResource(R.string.common_retry), OwnTVIcon.REFRESH) { vm.retry(d) }, delete)
         DownloadStatus.PAUSED -> listOf(StageAction(stringResource(R.string.common_resume), OwnTVIcon.PLAY) { vm.resume(d) }, delete)
@@ -430,7 +454,7 @@ private fun DownloadItem(
         focus = focus,
         actions = actions,
         // OK plays a finished download; on any other row it steps to the row's first action.
-        onClick = if (d.status == DownloadStatus.COMPLETED) ({ vm.play(d); if (!externalPlayerOn) onFullscreen() else wentExternal() }) else null,
+        onClick = if (d.status == DownloadStatus.COMPLETED && !gone) ({ vm.play(d); if (!externalPlayerOn) onFullscreen() else wentExternal() }) else null,
         art = {
             if (!info?.artUrl.isNullOrBlank() || !d.posterUrl.isNullOrBlank()) {
                 AsyncImage(model = info?.artUrl ?: d.posterUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -441,7 +465,7 @@ private fun DownloadItem(
             }
         },
     ) {
-        DownloadStatusText(d, live, queue)
+        if (gone) StatusLine(stringResource(R.string.content_downloads_file_missing), FailColor) else DownloadStatusText(d, live, queue)
     }
 }
 
@@ -463,11 +487,16 @@ private fun downloadLine(d: DownloadEntity, info: DownloadDetails?): String = bu
 @Composable
 private fun DownloadStatusText(d: DownloadEntity, live: DownloadActivityTracker.ActiveDownload?, queue: List<DownloadEntity>) {
     val sep = stringResource(R.string.content_epg_bits_separator)
+    // Why it failed, waits or was paused: core's wording, the same on the phone.
+    val reason = tv.own.owntv.core.download.DownloadReasons.displayTextOf(d, androidx.compose.ui.platform.LocalContext.current.resources)
     when (d.status) {
         DownloadStatus.COMPLETED -> StageReady()
-        DownloadStatus.FAILED -> StatusLine(stringResource(R.string.content_downloads_failed_group), FailColor)
+        DownloadStatus.FAILED -> StatusLine(
+            listOfNotNull(stringResource(R.string.content_downloads_failed_group), reason).joinToString(sep), FailColor,
+        )
         DownloadStatus.QUEUED -> StatusLine(
-            DownloadQueue.startsAfter(queue, d.id)?.let { stringResource(R.string.content_downloads_starts_after, it.title) }
+            reason
+                ?: DownloadQueue.startsAfter(queue, d.id)?.let { stringResource(R.string.content_downloads_starts_after, it.title) }
                 ?: stringResource(R.string.content_downloads_queued),
         )
         DownloadStatus.RUNNING, DownloadStatus.PAUSED -> {
@@ -475,7 +504,7 @@ private fun DownloadStatusText(d: DownloadEntity, live: DownloadActivityTracker.
             val total = live?.totalBytes?.takeIf { it > 0 } ?: d.totalBytes
             val fraction = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
             val rest = buildList {
-                if (d.status == DownloadStatus.PAUSED) add(stringResource(R.string.content_downloads_paused))
+                if (d.status == DownloadStatus.PAUSED) add(reason ?: stringResource(R.string.content_downloads_paused))
                 live?.bytesPerSecond?.takeIf { it > 0 }?.let { add(stringResource(R.string.content_downloads_speed, decimal(it / 1_048_576.0))) }
                 live?.secondsLeft?.let { add(stringResource(R.string.home_time_left, vodRuntime(maxOf(60, (ceil(it / 60.0) * 60).toInt())))) }
                 if (fraction == null) add(fileSize(done))
@@ -513,7 +542,7 @@ internal data class StageAction(val text: String, val icon: OwnTVIcon, val onCli
 /**
  * A `.dl` row, 1110 × 124 (radius 24, padding 22, gap 24): the 190 × 107 picture, title 24/700 over a
  * 17 muted line, and the 380-wide status on the right. Focused = FX, and only then do its [actions]
- * show under the status (G3). The picture-and-title part holds focus; the actions sit to its right,
+ * show under the status. The picture-and-title part holds focus; the actions sit to its right,
  * so ▶ reaches them and ▲ ▼ move between rows.
  */
 @Composable

@@ -59,9 +59,8 @@ import tv.own.owntv.ui.theme.stageText
 
 /**
  * `.srchf` (tool rows, 48 high, radius 15) and `.sheet .srch` (54, radius 16): a quiet white-6% field,
- * the search glyph and a dim placeholder. TV behaviour as [tv.own.owntv.ui.components.SearchBar]: the
- * field takes D-pad focus like a button, OK opens the keyboard, Back returns to the field. Focused =
- * the 2 px focus ring.
+ * the search glyph and a dim placeholder. The field takes D-pad focus like a button, OK opens the
+ * keyboard, Back returns to the field. Focused = the 2 px focus ring.
  */
 @Composable
 fun StageSearchField(
@@ -182,7 +181,7 @@ fun StageKeyHints(hints: List<Pair<String, String>>, modifier: Modifier = Modifi
                     Modifier
                         .defaultMinSize(minWidth = 34.mpx)
                         .height(30.mpx)
-                        // The mockup's 2 px bottom shade is left out: on the TV it read as a stray bar (owner).
+                        // No 2 px bottom shade: on the TV it read as a stray bar.
                         .background(LocalStagePalette.current.keycap, RoundedCornerShape(8.mpx))
                         // `.mine.light .kc`: a white cap needs an ink rim to stand off the white glass.
                         .then(if (LocalStagePalette.current.isLight) Modifier.border(1.mpx, StageColors.Ink.copy(alpha = 0.1f), RoundedCornerShape(8.mpx)) else Modifier)

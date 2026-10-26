@@ -50,7 +50,7 @@ fun GuideWidthSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) 
     LaunchedEffect(showDialog) {
         if (!showDialog) runCatching { rowFocus.requestFocus() }
     }
-    // P10B-18: the TV Guide row and Reset; the panel draws the two columns at their widths.
+    // The TV Guide row and Reset; the panel draws the two columns at their widths.
     val rules = stringResource(R.string.settings_guide_width_help, *NO_ARGS)
     StageFullPage(
         parents = listOf(stringResource(R.string.settings_group_layout)),
@@ -83,7 +83,7 @@ fun GuideWidthSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) 
             onClick = { vm.setGuideWidths(false, GuideWidthLimits.defaults) },
             help = SettingHelp(reset, rules, hints = settingHints(null, pinnable = false)),
         )
-        // In the page's panel (owner, P12).
+        // In the page's panel.
         if (showDialog) panelEditor({ showDialog = false }) {
             GuideWidthDialog(savedEnabled = enabled, savedShares = current, onSave = vm::setGuideWidths, onDismiss = { showDialog = false })
         }
@@ -99,7 +99,7 @@ private fun GuideWidthDialog(
     onDismiss: () -> Unit,
 ) {
     // The two columns always add up to 100%, so there is one number to set: the channel column's
-    // width; the guide takes the rest. In the page's panel (owner, P12), saved as it changes.
+    // width; the guide takes the rest. In the page's panel, saved as it changes.
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { first.requestFocus() } }
     androidx.compose.foundation.layout.Column(Modifier.trapAllFocusExit().focusGroup()) {

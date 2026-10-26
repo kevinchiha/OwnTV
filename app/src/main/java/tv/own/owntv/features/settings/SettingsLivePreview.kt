@@ -17,7 +17,7 @@ import tv.own.owntv.ui.theme.mpx
 import tv.own.owntv.ui.theme.stageText
 
 /**
- * Settings › Appearance's LIVE PREVIEW (P9-04, G9): a small Live TV guide of the member's own channels,
+ * Settings › Appearance's LIVE PREVIEW: a small Live TV guide of the member's own channels,
  * at a third of the screen's size. Nothing focusable, but it draws with the live accent, focus colour,
  * glass and font, so a change shows here before the row is left.
  */

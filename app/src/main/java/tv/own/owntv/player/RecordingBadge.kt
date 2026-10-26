@@ -38,7 +38,7 @@ import tv.own.owntv.core.theme.AnimationLevel
 /**
  * "REC", over the picture, for as long as anything is being recorded.
  *
- * The status pill carries recordings everywhere else in the app (D13), but the shell hides the pill
+ * The status pill carries recordings everywhere else in the app, but the shell hides the pill
  * during fullscreen playback — so this is the only thing standing between a user and an hour of
  * recording they had no idea was happening. It renders nothing at all when nothing is recording.
  *

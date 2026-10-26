@@ -35,7 +35,7 @@ import tv.own.owntv.core.repository.activeProfileSources
 import tv.own.owntv.core.settings.SettingsRepository
 
 /** One category row in the Customize screen (hidden rows stay visible here, marked, for unhiding).
- *  [categoryId] is null for a user's custom combined category (issue #87) — there is no provider
+ *  [categoryId] is null for a user's custom combined category — there is no provider
  *  row behind it. [providerName] is null when only one source is in scope. */
 data class CustomizeCatRow(
     val key: String,
@@ -142,7 +142,7 @@ class CustomizeViewModel(
                 ) { cats, cust, sources, profile ->
                     val providerNames = sources.associate { it.id to it.name }.takeIf { sourceIds.size > 1 }
                     val orderIndex = cust.categoryOrder.withIndex().associate { (i, k) -> k to i }
-                    // Provider folders + the user's custom combined categories (#87) in ONE list, so
+                    // Provider folders + the user's custom combined categories in ONE list, so
                     // hide/rename/reorder apply uniformly (their keys share the CustomizeKeys
                     // namespace). Custom rows carry categoryId = null and no provider name.
                     val visibleCustomCategories = if (profile?.isKids == true) {
@@ -247,7 +247,7 @@ class CustomizeViewModel(
     fun closeItems() { _selectedCategory.value = null }
 
     /** Data the items ViewModel needs to page the selected category. [categoryId] is null for a
-     *  custom combined category (issue #87) — the items screen then pages the membership join. */
+     *  custom combined category — the items screen then pages the membership join. */
     data class ItemsCtx(val categoryId: Long?, val mediaType: MediaType, val sourceIds: List<Long>)
 
     fun ctxForItems(): ItemsCtx? {
@@ -260,7 +260,7 @@ class CustomizeViewModel(
         )
     }
 
-    // --- custom combined categories (issue #87) ---
+    // --- custom combined categories ---
 
     /** Creates a custom category for the selected section — the "＋ New category" pill. */
     fun createCustomCategory(name: String) {
@@ -272,7 +272,7 @@ class CustomizeViewModel(
     }
 
     /**
-     * Deletes a custom combined category (issue #87). Room rows are cleared FIRST (membership +
+     * Deletes a custom combined category. Room rows are cleared FIRST (membership +
      * manual order inside it), then the DataStore definition — so the rail never shows a half-dead
      * category. The provider items themselves are never touched.
      */
@@ -404,7 +404,7 @@ class CustomizeViewModel(
 
     val rangeSelectedKeys: StateFlow<Set<String>> = span.selectedKeys
 
-    // --- bulk rename (issue #86) ---
+    // --- bulk rename ---
 
     /**
      * One-shot bulk-rename flow for the current section's category rows. Every accepted rename lands
@@ -440,5 +440,17 @@ class CustomizeViewModel(
         val byKey = rows.value.associateBy { it.key }
         bulk.start(keys.mapNotNull { byKey[it]?.let { row -> row.key to row.originalName } })
         return keys
+    }
+
+    /**
+     * Bulk-renames every category the list shows (the section and the visibility filter in force) —
+     * the toolbar's Bulk rename / ✨ Auto cleanup, which used to exist for items only; categories had
+     * just the long-press span. Works on the ORIGINAL names, like the span.
+     */
+    fun bulkRenameAll(autocleanup: Boolean) {
+        val entries = rows.value.map { it.key to it.originalName }
+        if (entries.isEmpty()) return
+        bulk.start(entries)
+        if (autocleanup) bulk.autoCleanup()
     }
 }

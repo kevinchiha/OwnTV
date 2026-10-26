@@ -32,6 +32,7 @@ import tv.own.owntv.ui.stage.PlaylistMark
 import tv.own.owntv.core.database.dao.SourceDao
 import tv.own.owntv.core.database.dao.resolveExistingProfileId
 import tv.own.owntv.core.content.SearchIntent
+import tv.own.owntv.core.content.SearchKind
 import tv.own.owntv.core.content.SearchReader
 import tv.own.owntv.core.content.SearchResults
 import tv.own.owntv.core.repository.ActiveProfileSources
@@ -39,12 +40,12 @@ import tv.own.owntv.core.repository.activeProfileSources
 import tv.own.owntv.core.settings.SettingsRepository
 
 /**
- * Phase 11 — cross-section search over a profile's channels, movies and series.
+ * Cross-section search over a profile's channels, movies and series.
  *
  * The searching itself is core's [SearchReader]: the FTS expression, the hidden items and
  * categories, the kids filter and the Customize renames are the same rules on a phone as on a
  * television, so they are not written twice. What stays here is the screen's own behaviour —
- * debouncing and the recents list. A result is never played here: OK goes to it (issue #233).
+ * debouncing and the recents list. A result is never played here: OK goes to it.
  */
 class SearchViewModel(
     private val profileDao: ProfileDao,
@@ -129,12 +130,12 @@ class SearchViewModel(
 
     fun setQuery(q: String) {
         // KevBox: a new query also forgets the tab the last one was on (_showTab).
-        if (q.trim() != _query.value.trim()) { _tab.value = SearchTab.ALL; _showTab.value = null; lastFocusKey = null }
+        if (q.trim() != _query.value.trim()) { _showTab.value = null; lastFocusKey = null }
         _query.value = q
         if (q.isNotBlank()) _intent.value = null // typing overrides an active launcher intent
     }
 
-    // --- Batch 5: empty-state launcher (recent search terms + Continue / Unwatched / Channels) ---
+    // --- Empty-state launcher (recent search terms + Continue / Unwatched / Channels) ---
 
     /** Persisted recent search terms (most-recent first). */
     val recentSearches: StateFlow<List<String>> = settings.recentSearches
@@ -167,12 +168,14 @@ class SearchViewModel(
         return searchReader.search(pid, ctx.value, q)
     }
 
-    // --- Stage page (SR-01 … SR-07) ---
+    // --- Stage page ---
 
-    /** The open tab; back to All whenever the search text changes. */
-    private val _tab = MutableStateFlow(SearchTab.ALL)
-    val tab: StateFlow<SearchTab> = _tab.asStateFlow()
-    fun setTab(t: SearchTab) { _tab.value = t }
+    /** The filter buttons switched on; none = everything. Kept across new search text; Back clears it. */
+    private val _kinds = MutableStateFlow<Set<SearchKind>>(emptySet())
+    val kinds: StateFlow<Set<SearchKind>> = _kinds.asStateFlow()
+    fun toggleKind(k: SearchKind) { _kinds.value = if (k in _kinds.value) _kinds.value - k else _kinds.value + k }
+    fun showOnly(k: SearchKind) { _kinds.value = setOf(k) }
+    fun clearKinds() { _kinds.value = emptySet() }
 
     /** The row a "Go to" left from ("c12", "m34", "s56"), so Back to Search lands on it again. */
     var lastFocusKey: String? = null
@@ -217,6 +220,3 @@ class SearchViewModel(
         return if (preferred >= 0) profileDao.resolveExistingProfileId(preferred) else null
     }
 }
-
-/** The tabs over the results (SR-01): everything grouped, or one kind. */
-enum class SearchTab { ALL, LIVE, MOVIES, SERIES }

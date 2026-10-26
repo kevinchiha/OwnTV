@@ -36,7 +36,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -60,7 +59,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -69,7 +67,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -102,10 +99,8 @@ import tv.own.owntv.ui.stage.StagePoster
 import tv.own.owntv.ui.stage.StageStill
 import tv.own.owntv.ui.stage.StageSurface
 import tv.own.owntv.ui.stage.StageTag
-import tv.own.owntv.ui.theme.OwnTVTheme
 import tv.own.owntv.ui.theme.StageColors
 import tv.own.owntv.ui.theme.dissolveEdges
-import tv.own.owntv.ui.theme.gradientWash
 import tv.own.owntv.ui.theme.mpx
 import tv.own.owntv.ui.theme.mpxSp
 import tv.own.owntv.ui.theme.stageAccent
@@ -113,16 +108,16 @@ import tv.own.owntv.ui.theme.stageText
 import java.util.Locale
 
 /*
- * Home, Stage (P2-01 hero, P2-02 rows, P2-03 pager). With Trending drawn full-bleed, the top of the screen
+ * Home, Stage (hero, rows, pager). With Trending drawn full-bleed, the top of the screen
  * is the trending title over its dissolving backdrop, and Keep watching sits under it in large stills.
  * Once focus goes down into the rows, the hero folds into one line (eyebrow + title) and the rows move up.
  * Both states are one list, so the focused card is the same composable before and after the fold.
  */
 
-/** The row gap; the headings' mockup positions below already include it. */
+/** The row gap; the headings' design positions below already include it. */
 private val RowGap = 40.mpx
 
-/** How far the full hero's text sits above the mockup's (`top: 170px`), and the rows with it: the
+/** How far the full hero's text sits above the design's (`top: 170px`), and the rows with it: the
  *  top-left corner is empty, and the rows below are what the screen is short of. */
 private val HeroLift = 60.mpx
 
@@ -152,7 +147,6 @@ fun HomeScreen(
     onRestored: () -> Unit = {},
     previewEnabled: Boolean = true,
     firstRowFocusRequester: FocusRequester? = null,
-    onContentScrolled: (Boolean) -> Unit = {},
     /** The content's left edge: beside the resting capsule (150), or 64 inside a docked rail's reserve. */
     contentStart: Dp = 150.mpx,
     /**
@@ -160,9 +154,16 @@ fun HomeScreen(
      * (A plain request on the content area drills to the nearest card instead.) Null on leaving.
      */
     onEntryHook: (((() -> Boolean)?) -> Unit)? = null,
+    /** Sports Hub: ▶ on a Live sports card opens its match page. */
+    onOpenMatch: (tv.own.owntv.core.sports.model.Match) -> Unit = {},
     modifier: Modifier = Modifier,
+    sportsVm: tv.own.owntv.features.sports.SportsViewModel = org.koin.androidx.compose.koinViewModel(),
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
+    // Asked for only while the row is switched on (Layout → Home rows); off costs nothing.
+    val sportsCards = if (HomeRow.LIVE_SPORTS in state.config.visibleOrder) {
+        sportsVm.homeRow.collectAsStateWithLifecycle().value
+    } else emptyList()
     val trendingUnavailableMessage = stringResource(R.string.home_trending_unavailable)
     val heroPreviewEngine = koinInject<HeroPreviewEngine>()
     val engineState by heroPreviewEngine.state.collectAsStateWithLifecycle()
@@ -171,14 +172,6 @@ fun HomeScreen(
     val favoriteMovies by vm.favoriteMovieIds.collectAsStateWithLifecycle()
     val favoriteSeries by vm.favoriteSeriesIds.collectAsStateWithLifecycle()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val chromeScrollThresholdPx = with(LocalDensity.current) { 8.dp.roundToPx() }
-    val contentScrolled by remember(listState, chromeScrollThresholdPx) {
-        derivedStateOf {
-            listState.firstVisibleItemIndex > 0 ||
-                listState.firstVisibleItemScrollOffset > chromeScrollThresholdPx
-        }
-    }
-    LaunchedEffect(contentScrolled) { onContentScrolled(contentScrolled) }
     val homeScope = rememberCoroutineScope()
     val heroFocus = remember { FocusRequester() }
     val fallbackFocus = remember { FocusRequester() }
@@ -194,7 +187,7 @@ fun HomeScreen(
     var detailsTmdbWins by remember { mutableStateOf(false) }
     // Focus is on the hero (its buttons or pager): the list must not scroll, and the hero stays unfolded.
     val heroFocused = remember { mutableStateOf(false) }
-    // Focus has gone down into the rows: the hero folds into its one-line form (P2-02).
+    // Focus has gone down into the rows: the hero folds into its one-line form.
     var inRows by remember { mutableStateOf(false) }
     val rowFirstFocusRequesters = remember { HomeRow.entries.associateWith { FocusRequester() } }
     // A Keep watching card plays its preview only after 3 s of continuous focus (the dwell below).
@@ -202,15 +195,15 @@ fun HomeScreen(
     var focusedHeroIndex by remember { mutableStateOf(-1) }
     val orderedRows = state.config.visibleOrder
     val heroVisible = HomeRow.HERO in orderedRows
-    val hasNonHeroContent = orderedRows.any { it != HomeRow.HERO && rowHasData(it, state) }
+    val hasNonHeroContent = orderedRows.any { it != HomeRow.HERO && rowHasData(it, state, sportsCards.size) }
     val showHeroFallback = heroVisible && state.heroItems.isEmpty() && !hasNonHeroContent
-    val renderRows = orderedRows.filter { rowCanRender(it, state, showHeroFallback) }
-    val firstDataRow = renderRows.firstOrNull { it != HomeRow.HERO && rowHasData(it, state) }
+    val renderRows = orderedRows.filter { rowCanRender(it, state, showHeroFallback, sportsCards.size) }
+    val firstDataRow = renderRows.firstOrNull { it != HomeRow.HERO && rowHasData(it, state, sportsCards.size) }
     val showAllHiddenState = orderedRows.isEmpty()
     val showEmptyState = orderedRows.isNotEmpty() && renderRows.isEmpty()
     val fullBleed = renderRows.firstOrNull() == HomeRow.TRENDING &&
         state.config.trendingStyle == HomeTrendingStyle.HERO
-    // Trending layout = Posters only (P2-04): the folded line on top follows the focused poster.
+    // Trending layout = Posters only: the folded line on top follows the focused poster.
     val posterHero = renderRows.firstOrNull() == HomeRow.TRENDING &&
         state.config.trendingStyle == HomeTrendingStyle.POSTERS
     var posterIndex by remember { mutableIntStateOf(0) }
@@ -228,7 +221,7 @@ fun HomeScreen(
         }
     }
     val playFocus = rowFocusRequester(HomeRow.TRENDING) ?: trendingPrimaryFocus
-    // The control that last had focus on Home, so ▶ out of the rail comes back to exactly it (P1
+    // The control that last had focus on Home, so ▶ out of the rail comes back to exactly it (rail
     // carry-over). Compose's own restorer cannot follow a card inside a lazy row inside a lazy column.
     var lastFocus by remember { mutableStateOf<FocusRequester?>(null) }
     val track: (FocusRequester) -> Unit = { lastFocus = it }
@@ -236,7 +229,7 @@ fun HomeScreen(
         lastFocus ?: if (fullBleed) playFocus else renderRows.firstOrNull()?.let(rowFocusRequester),
     )
     DisposableEffect(onEntryHook) {
-        onEntryHook?.invoke { latestEntry?.let { runCatching { it.requestFocus() }.isSuccess } ?: false }
+        onEntryHook?.invoke { latestEntry?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false }
         onDispose { onEntryHook?.invoke(null) }
     }
 
@@ -329,7 +322,7 @@ fun HomeScreen(
     }
 
     val hero = state.heroItems.getOrNull(state.activeHeroIndex)
-    // Scroll only as far as the focused row needs to be fully on screen (P2-02: focus on Favourite
+    // Scroll only as far as the focused row needs to be fully on screen (focus on Favourite
     // channels leaves Keep watching and the folded title where they are). The TV default instead pins
     // the focused item a third of the way down, which slid the whole page up on every ▼. The hero
     // itself never scrolls.
@@ -374,7 +367,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .onFocusChanged { if (it.hasFocus) onChildFocused() }
-                    // ▶ out of the rail comes back to the card it left from (P1 carry-over): every level
+                    // ▶ out of the rail comes back to the card it left from (rail carry-over): every level
                     // of the list remembers its focused child.
                     .focusGroup(),
                 state = listState,
@@ -392,7 +385,7 @@ fun HomeScreen(
                             TrendingPosterRow(
                                 // Room for the focused poster's lift under the heading when the line sits above.
                                 headerGap = if (posterItem != null) 16.mpx else 0.dp,
-                                // Compose's one-line poster title is 10 px shorter than Chrome's (P2-04, measured).
+                                // Compose's one-line poster title is 10 px shorter than Chrome's (measured).
                                 bottomGap = if (posterItem != null) 10.mpx else 0.dp,
                                 onItemFocused = { posterIndex = it },
                                 title = row.displayTitle(),
@@ -510,6 +503,17 @@ fun HomeScreen(
                                 onChildFocused = onNonHeroFocused,
                             )
                         }
+
+                        HomeRow.LIVE_SPORTS -> tv.own.owntv.features.sports.LiveSportsRow(
+                            cards = sportsCards,
+                            config = sportsVm.sportsConfig.collectAsStateWithLifecycle().value,
+                            start = contentStart,
+                            onOpenMatch = onOpenMatch,
+                            onFocus = onNonHeroFocused,
+                            firstItemFocusRequester = firstItemFocusRequester,
+                            track = track,
+                            modifier = rowModifier,
+                        )
 
                         HomeRow.RECENT_CHANNELS -> HomeLiveRow(
                             title = row.displayTitle(),
@@ -638,8 +642,9 @@ fun HomeScreen(
     InAppToast(trendingToast)
 }
 
-private fun rowHasData(row: HomeRow, state: HomeUiState): Boolean = when (row) {
+private fun rowHasData(row: HomeRow, state: HomeUiState, sportsCards: Int): Boolean = when (row) {
     HomeRow.TRENDING -> state.trendingItems.size >= TrendingDao.MIN_ELIGIBLE_ITEMS
+    HomeRow.LIVE_SPORTS -> sportsCards > 0
     HomeRow.HERO -> state.heroItems.isNotEmpty()
     HomeRow.RECENT_CHANNELS -> when (state.config.recentLiveMode) {
         HomeLiveRowMode.CARDS -> state.recentLive.isNotEmpty()
@@ -655,10 +660,10 @@ private fun rowHasData(row: HomeRow, state: HomeUiState): Boolean = when (row) {
     HomeRow.CONTINUE_SERIES -> state.continueSeries.isNotEmpty()
 }
 
-private fun rowCanRender(row: HomeRow, state: HomeUiState, showHeroFallback: Boolean): Boolean =
+private fun rowCanRender(row: HomeRow, state: HomeUiState, showHeroFallback: Boolean, sportsCards: Int): Boolean =
     when (row) {
         HomeRow.HERO -> state.heroItems.isNotEmpty() || showHeroFallback
-        else -> rowHasData(row, state)
+        else -> rowHasData(row, state, sportsCards)
     }
 
 private fun HeroItem.heroKey(): String = when (this) {
@@ -674,13 +679,13 @@ private fun trendingBackdrop(item: TrendingHomeItem): String? =
             is TrendingHomeItem.Series -> item.series.backdropUrl ?: item.series.posterUrl
         }
 
-/** A rating as the mockup writes it: one decimal, in the user's number format ("8.4", "8,4"). */
+/** A rating as the design writes it: one decimal, in the user's number format ("8.4", "8,4"). */
 private fun ratingText(rating: Double): String = String.format(Locale.getDefault(), "%.1f", rating)
 
 /**
  * `.fadeimg` behind the hero: right-aligned, 1500 of the 1920 width at 16:9, dissolving into the page on
  * its left (34%) and bottom (38%), with the 70% → 0 wash across its left 60% so the title always reads.
- * Folded (P2-02), it is 560 high at 55%, without the wash.
+ * Folded, it is 560 high at 55%, without the wash.
  */
 @Composable
 private fun TrendingBackdrop(item: TrendingHomeItem, folded: Boolean, modifier: Modifier = Modifier) {
@@ -822,8 +827,8 @@ private fun TrendingHero(
                 .wrapContentHeight(Alignment.Top, unbounded = true),
         ) {
             TrendingEyebrow(item, withTag = true)
-            // 18 in the mockup; Compose's trimmed 112 line box starts its glyphs 10 px lower than
-            // Chrome's `line-height: 1` box (measured on the TV against P2-01).
+            // 18 in the design; Compose's trimmed 112 line box starts its glyphs 10 px lower than
+            // Chrome's `line-height: 1` box (measured on the TV).
             Spacer(Modifier.height(8.mpx))
             // The title art when TMDB has it, as the films and series hero do; the text title otherwise,
             // and if the art fails to load. 170 high, the room the films hero gives it.
@@ -938,14 +943,14 @@ private fun TrendingHero(
     }
 }
 
-/** P2-02 / P2-04: the hero folded to its eyebrow and a 60/800 title, nothing focusable. */
+/** The hero folded to its eyebrow and a 60/800 title, nothing focusable. */
 @Composable
 private fun FoldedHeroLine(item: TrendingHomeItem, start: Dp, height: Dp = CompactHeroHeight) {
     Box(Modifier.fillMaxWidth().height(height).padding(start = start, top = 64.mpx)) {
         Column {
             TrendingEyebrow(item, withTag = false)
-            // 8 in the mockup; Compose's 60 px line box starts its glyphs 13 px higher than
-            // Chrome's (measured on the TV against P2-02).
+            // 8 in the design; Compose's 60 px line box starts its glyphs 13 px higher than
+            // Chrome's (measured on the TV).
             Spacer(Modifier.height(21.mpx))
             Text(
                 item.snapshot.localizedTitle,
@@ -957,7 +962,7 @@ private fun FoldedHeroLine(item: TrendingHomeItem, start: Dp, height: Dp = Compa
 }
 
 /**
- * P2-03: the segmented progress under the hero buttons, one segment per trending title. The current one is
+ * The segmented progress under the hero buttons, one segment per trending title. The current one is
  * 70 wide and fills over the 10 s; the ones before it are full. ▼ from the buttons focuses it (the FX
  * look, current segment in the focus colour) and ◀ ▶ then change the title directly — see
  * [trendingPagerTarget].
@@ -1005,7 +1010,7 @@ private fun TrendingPager(count: Int, activeIndex: Int, progress: Float, onNavig
 }
 
 /**
- * Keep watching: 16:9 stills (G12), 384 × 216 under the full hero, 336 × 189 once folded. After 3 s on a
+ * Keep watching: 16:9 stills, 384 × 216 under the full hero, 336 × 189 once folded. After 3 s on a
  * card its preview plays inside the still (the card does not widen, nothing is drawn over it).
  */
 @Composable
@@ -1151,7 +1156,7 @@ internal fun relativeLastWatchedLabel(lastEngagementAt: Long, nowMs: Long): Stri
     return pluralStringResource(R.plurals.home_last_watched_days, elapsedDays.toInt(), elapsedDays.toInt())
 }
 
-/** Continue watching movies / series: 196 × 294 posters (`.pc`), as P2-02 draws the series row. */
+/** Continue watching movies / series: 196 × 294 posters (`.pc`), as the series row draws them. */
 @Composable
 private fun ContinuePosterRow(
     title: String,
@@ -1339,7 +1344,6 @@ private fun HeroFallbackPane(
     focusRequester: FocusRequester,
     onChildFocused: () -> Unit,
 ) {
-    val colors = OwnTVTheme.colors
     Box(
         modifier = modifier
             .aspectRatio(16f / 9f)
@@ -1347,7 +1351,7 @@ private fun HeroFallbackPane(
             .focusable()
             .onFocusChanged { if (it.hasFocus) onChildFocused() }
             .clip(RoundedCornerShape(20.dp))
-            .background(colors.panel)
+            .background(tv.own.owntv.ui.theme.StageColors.GlassOff)
             .padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -1356,16 +1360,16 @@ private fun HeroFallbackPane(
             Spacer(Modifier.height(14.dp))
             Text(
                 text = stringResource(R.string.home_no_preview),
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.onSurfaceVariant,
+                style = tv.own.owntv.ui.theme.stageText(29, 400),
+                color = tv.own.owntv.ui.theme.StageColors.Muted,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.home_continue_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant,
+                style = tv.own.owntv.ui.theme.stageText(25, 400),
+                color = tv.own.owntv.ui.theme.StageColors.Muted,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1377,11 +1381,10 @@ private fun HeroFallbackPane(
 private fun EmptyHomeState(
     modifier: Modifier = Modifier,
 ) {
-    val colors = OwnTVTheme.colors
     Box(
         modifier = modifier
             .focusProperties { canFocus = false }
-            .background(colors.surface),
+            .background(tv.own.owntv.ui.theme.StageColors.GlassOff),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1389,16 +1392,16 @@ private fun EmptyHomeState(
             Spacer(Modifier.height(16.dp))
             Text(
                 text = stringResource(R.string.home_start_watching),
-                style = MaterialTheme.typography.titleLarge,
-                color = colors.onSurface,
+                style = tv.own.owntv.ui.theme.stageText(40, 600),
+                color = tv.own.owntv.ui.theme.StageColors.Text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.home_continue_empty),
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.onSurfaceVariant,
+                style = tv.own.owntv.ui.theme.stageText(29, 400),
+                color = tv.own.owntv.ui.theme.StageColors.Muted,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1410,11 +1413,10 @@ private fun EmptyHomeState(
 private fun AllRowsHiddenState(
     modifier: Modifier = Modifier,
 ) {
-    val colors = OwnTVTheme.colors
     Box(
         modifier = modifier
             .focusProperties { canFocus = false }
-            .background(colors.surface),
+            .background(tv.own.owntv.ui.theme.StageColors.GlassOff),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1422,16 +1424,16 @@ private fun AllRowsHiddenState(
             Spacer(Modifier.height(16.dp))
             Text(
                 text = stringResource(R.string.home_no_rows),
-                style = MaterialTheme.typography.titleLarge,
-                color = colors.onSurface,
+                style = tv.own.owntv.ui.theme.stageText(40, 600),
+                color = tv.own.owntv.ui.theme.StageColors.Text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.home_enable_rows),
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.onSurfaceVariant,
+                style = tv.own.owntv.ui.theme.stageText(29, 400),
+                color = tv.own.owntv.ui.theme.StageColors.Muted,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

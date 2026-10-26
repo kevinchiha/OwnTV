@@ -45,13 +45,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import tv.own.owntv.R
 import tv.own.owntv.core.player.PlayerControl
 import tv.own.owntv.core.player.ControlCluster
-import tv.own.owntv.ui.components.OwnTVButton
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.theme.OwnTVTheme
 import tv.own.owntv.ui.theme.animationsOn
@@ -73,6 +71,8 @@ internal fun TopBar(
     // The clock. Rendered between two equal-weight halves so it lands on the true centre of the screen
     // whatever the channel name and guide card happen to be doing on either side of it.
     centre: (@Composable () -> Unit)? = null,
+    // Live: one more line under the channel name (a Sports match's score).
+    below: (@Composable () -> Unit)? = null,
 ) {
     // Reactive meta so the title row updates instantly on a channel zap (the plain vars aren't observed).
     val meta by player.currentMeta.collectAsStateWithLifecycle()
@@ -111,7 +111,7 @@ internal fun TopBar(
                     }
                     parts.forEachIndexed { i, label ->
                         if (i > 0) Box(Modifier.size(3.dp).clip(CircleShape).background(hudInk.copy(alpha = 0.3f)))
-                        Text(label, style = MaterialTheme.typography.labelMedium, color = hudInk.copy(alpha = 0.5f))
+                        Text(label, style = tv.own.owntv.ui.theme.stageText(22, 700), color = hudInk.copy(alpha = 0.5f))
                     }
                     // The LIVE badge has left the top bar: live status belongs beside the timeline that
                     // describes it, so it is now the stateful badge at the right end of the dock's band A.
@@ -128,7 +128,7 @@ internal fun TopBar(
                     meta.subtitle?.takeIf { it.isNotBlank() }?.let {
                         Text(
                             it,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = tv.own.owntv.ui.theme.stageText(32, 600),
                             color = hudInk.copy(alpha = 0.45f),
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -136,13 +136,14 @@ internal fun TopBar(
                         )
                         Spacer(Modifier.width(10.dp))
                     }
-                    Text(displayTitle, style = MaterialTheme.typography.titleMedium, color = hudInk, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(displayTitle, style = tv.own.owntv.ui.theme.stageText(32, 600), color = hudInk, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                below?.invoke()
             } else {
                 vodSubtitle?.let {
-                    Text(it, style = MaterialTheme.typography.labelMedium, color = hudInk.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(it, style = tv.own.owntv.ui.theme.stageText(22, 700), color = hudInk.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text(displayTitle, style = MaterialTheme.typography.titleMedium, color = hudInk, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(displayTitle, style = tv.own.owntv.ui.theme.stageText(32, 600), color = hudInk, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(2.dp))
                 chipRow()
             }
@@ -168,7 +169,7 @@ private fun ChannelLogo(logoUrl: String?, title: String?, size: Int, modifier: M
         contentAlignment = Alignment.Center,
     ) {
         if (!logoUrl.isNullOrBlank()) AsyncImage(model = logoUrl, contentDescription = null, modifier = Modifier.fillMaxSize())
-        else Text((title ?: "?").take(3).uppercase(), style = MaterialTheme.typography.labelMedium, color = Color(0xFF6FF8E4), fontWeight = FontWeight.Bold)
+        else Text((title ?: "?").take(3).uppercase(), style = tv.own.owntv.ui.theme.stageText(22, 700), color = Color(0xFF6FF8E4), fontWeight = FontWeight.Bold)
     }
 }
 
@@ -179,7 +180,7 @@ internal fun ChannelOsdCard(
     subtitle: String?,
     logoUrl: String?,
     modifier: Modifier = Modifier,
-    /** N3 — now/next under the name on a zap; null (or a channel with no guide) keeps it name-only. */
+    /** Now/next under the name on a zap; null (or a channel with no guide) keeps it name-only. */
     guide: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -188,12 +189,12 @@ internal fun ChannelOsdCard(
     ) {
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF004F46)), contentAlignment = Alignment.Center) {
             if (!logoUrl.isNullOrBlank()) AsyncImage(model = logoUrl, contentDescription = null, modifier = Modifier.fillMaxSize())
-            else Text((title ?: "?").take(3).uppercase(), style = MaterialTheme.typography.labelMedium, color = Color(0xFF6FF8E4), fontWeight = FontWeight.Bold)
+            else Text((title ?: "?").take(3).uppercase(), style = tv.own.owntv.ui.theme.stageText(22, 700), color = Color(0xFF6FF8E4), fontWeight = FontWeight.Bold)
         }
         Column {
-            Text(title ?: "", style = MaterialTheme.typography.titleSmall, color = hudInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title ?: "", style = tv.own.owntv.ui.theme.stageText(25, 500), color = hudInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
             subtitle?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = hudInk.copy(alpha = 0.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(it, style = tv.own.owntv.ui.theme.stageText(20, 500), color = hudInk.copy(alpha = 0.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             guide?.invoke()
         }
@@ -250,13 +251,13 @@ internal fun ChannelNumberCard(digits: String, error: String? = null, modifier: 
         Column(Modifier.padding(start = 16.dp, end = 20.dp, top = 12.dp, bottom = 12.dp)) {
             Text(
                 stringResource(R.string.player_channel_label),
-                style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold,
+                style = tv.own.owntv.ui.theme.stageText(20, 500), color = accent, fontWeight = FontWeight.Bold,
                 letterSpacing = 2.sp,
             )
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     digits,
-                    style = MaterialTheme.typography.headlineSmall, color = hudInk, fontWeight = FontWeight.Bold,
+                    style = tv.own.owntv.ui.theme.stageText(43, 400), color = hudInk, fontWeight = FontWeight.Bold,
                     letterSpacing = 3.sp,
                 )
                 if (error == null) {
@@ -267,7 +268,7 @@ internal fun ChannelNumberCard(digits: String, error: String? = null, modifier: 
                 }
             }
             error?.let {
-                Text(it, style = MaterialTheme.typography.labelMedium, color = Color(0xFFFF8A80), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(it, style = tv.own.owntv.ui.theme.stageText(22, 700), color = Color(0xFFFF8A80), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -283,7 +284,7 @@ internal fun CenterControls(
 ) {
     val seekStep by player.seekStepMs.collectAsStateWithLifecycle() // Settings -> Seek step
     val rewindMode = onRewindLive != null // this is a catch-up-capable Live channel
-    // Read here, not in the HUD root: it ticks every second while rewound (T14).
+    // Read here, not in the HUD root: it ticks every second while rewound.
     val timeshiftOffsetSec = timeshiftOffset()
     val timeshifting = timeshiftOffsetSec != null
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -291,7 +292,7 @@ internal fun CenterControls(
             // Counts down as the archive catches up to the live edge; grows if you pause.
             Text(
                 if (timeshiftOffsetSec <= 1) stringResource(R.string.player_at_live_edge) else stringResource(R.string.player_behind_live, mmss(timeshiftOffsetSec)),
-                style = MaterialTheme.typography.labelLarge,
+                style = tv.own.owntv.ui.theme.stageText(25, 600),
                 color = hudAccent,
             )
             Spacer(Modifier.height(12.dp))
@@ -328,16 +329,17 @@ internal fun BottomBar(
     onInfo: (() -> Unit)? = null, infoOn: Boolean = false, onReport: (() -> Unit)? = null,
     favorite: Boolean = false, onToggleFavorite: (() -> Unit)? = null,
     onPreviousChannel: (() -> Unit)? = null,
+    onOtherChannels: (() -> Unit)? = null, otherChannelsCount: Int = 0,
     onOpenDialog: (HudDialog) -> Unit, onPip: (() -> Unit)?, onAudioMode: (() -> Unit)?,
     onMultiview: (() -> Unit)? = null, onRecordThis: (() -> Unit)? = null, recordingThis: Boolean = false,
-    /** Given to whichever timeline is drawn, so Left/Right with the controls hidden can land on it (N6). */
+    /** Given to whichever timeline is drawn, so Left/Right with the controls hidden can land on it. */
     seekFocus: FocusRequester? = null,
     onBack: () -> Unit, modifier: Modifier = Modifier,
 ) {
     // Changes only while rewound into the archive. The film position is read lower still, by
-    // [VodTimeline], so the tool buttons do not redraw every second (T14).
+    // [VodTimeline], so the tool buttons do not redraw every second.
     val timeshiftOffsetSec = timeshiftOffset()
-    // Only whether one runs: the countdown itself ticks every second, and this bar must not (T14).
+    // Only whether one runs: the countdown itself ticks every second, and this bar must not.
     val sleepLeft = org.koin.compose.koinInject<SleepTimer>().remainingMs.collectAsStateWithLifecycle()
     val sleepRunning by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { sleepLeft.value != null } }
     Dock(modifier = modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 20.dp)) {
@@ -380,7 +382,7 @@ internal fun BottomBar(
         // cluster outward-in and nothing you have already passed ever moves.
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().focusGroup()) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                // H2 — the ORDER comes from core's canonical list, not from the order these lines
+                // The ORDER comes from core's canonical list, not from the order these lines
                 // happen to be written in. Each control keeps its own composable and its own
                 // condition; only the sequence is shared, which is what makes this bar and the
                 // phone's read alike. The `when` is exhaustive, so a control added to the shared
@@ -415,10 +417,16 @@ internal fun BottomBar(
                         PlayerControl.CATCH_UP -> if (onOpenJumpBack != null) {
                             CtrlButton(OwnTVIcon.CATCHUP, label = stringResource(R.string.player_tool_catchup)) { onOpenJumpBack() }
                         }
-                        // N2 — back to the channel watched before; present only once there is one.
+                        // Back to the channel watched before; present only once there is one.
                         PlayerControl.PREVIOUS_CHANNEL -> if (onPreviousChannel != null) {
                             CtrlButton(OwnTVIcon.HISTORY, label = stringResource(R.string.player_previous_channel)) { onPreviousChannel() }
                         }
+                        // Sports Hub: only for a channel started from a match.
+                        PlayerControl.OTHER_CHANNELS -> if (onOtherChannels != null) {
+                            CtrlButton(OwnTVIcon.LIST, label = stringResource(R.string.sports_other_channels_count, otherChannelsCount)) { onOtherChannels() }
+                        }
+                        // Not shown on the TV: Back from the player already returns to the match page.
+                        PlayerControl.MATCH -> Unit
                         // Belongs to the tools cluster; `clusterFor` never hands them to this loop.
                         PlayerControl.BRIGHTNESS, PlayerControl.CHANNEL_LIST, PlayerControl.ENGINE,
                         PlayerControl.ASPECT, PlayerControl.QUALITY, PlayerControl.MINI_PLAYER, PlayerControl.AUDIO_ONLY,
@@ -430,7 +438,7 @@ internal fun BottomBar(
             }
             Spacer(Modifier.weight(1f))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                // H2 — the ORDER is core's, exactly as in the media cluster above. Each control
+                // The ORDER is core's, exactly as in the media cluster above. Each control
                 // keeps its own composable and condition; only the sequence is shared.
                 PlayerControl.clusterFor(tv = true, cluster = ControlCluster.TOOLS).forEach { control ->
                     when (control) {
@@ -452,7 +460,7 @@ internal fun BottomBar(
                         // itself (see MpvVideoSurface), GL mode scales internally.
                         PlayerControl.ASPECT ->
                             CtrlButton(OwnTVIcon.ASPECT, active = zoomMode != ZoomMode.FIT, label = stringResource(R.string.player_tool_aspect)) { onOpenDialog(HudDialog.ZOOM) }
-                        // N11 — only when this stream offers several; tinted while a pick overrides Auto.
+                        // Only when this stream offers several; tinted while a pick overrides Auto.
                         PlayerControl.QUALITY -> {
                             val qualities by player.videoQualities.collectAsStateWithLifecycle()
                             val pick by player.videoQualityPick.collectAsStateWithLifecycle()
@@ -474,7 +482,7 @@ internal fun BottomBar(
                         }
                         // Record what is already on screen. Present only when the setting is on, so
                         // it never needs to explain itself here — the trade-off was accepted when it
-                        // was enabled (D3). Tinted while running, and the label flips, because
+                        // was enabled. Tinted while running, and the label flips, because
                         // "Record" on a button that is already recording is the kind of thing that
                         // loses an hour of somebody's evening.
                         PlayerControl.RECORD -> if (onRecordThis != null) {
@@ -487,7 +495,7 @@ internal fun BottomBar(
                                 ),
                             ) { onRecordThis() }
                         }
-                        // N17 — stop after a while; tinted while a countdown is running.
+                        // Stop after a while; tinted while a countdown is running.
                         PlayerControl.SLEEP_TIMER ->
                             CtrlButton(OwnTVIcon.BEDTIME, active = sleepRunning, label = stringResource(R.string.player_sleep_timer)) { onOpenDialog(HudDialog.SLEEP_TIMER) }
                         // Stream technical info (codec/res/HDR/bitrate/decoder/audio/buffer) —
@@ -501,7 +509,7 @@ internal fun BottomBar(
                         // playback log, so a "this channel judders" complaint carries the
                         // codec/decoder/bitrate that caused it. Only offered while the info overlay
                         // is open — there is nothing to report otherwise, and the bar stays as short
-                        // as it was for everyone who never needs this. H1 made that the rule on both
+                        // as it was for everyone who never needs this. That is the rule on both
                         // apps.
                         PlayerControl.REPORT -> if (infoOn && onReport != null) {
                             CtrlButton(OwnTVIcon.SHARE, label = stringResource(R.string.player_tool_report)) { onReport() }
@@ -510,7 +518,7 @@ internal fun BottomBar(
                         PlayerControl.GO_LIVE, PlayerControl.VOLUME, PlayerControl.BRIGHTNESS,
                         PlayerControl.SPEED, PlayerControl.SUBTITLES, PlayerControl.AUDIO,
                         PlayerControl.FAVOURITE, PlayerControl.CATCH_UP, PlayerControl.PREVIOUS_CHANNEL,
-                        PlayerControl.CHANNEL_LIST,
+                        PlayerControl.OTHER_CHANNELS, PlayerControl.MATCH, PlayerControl.CHANNEL_LIST,
                         -> Unit
                     }
                 }
@@ -526,7 +534,7 @@ private fun volumeIcon(volume: Int): OwnTVIcon = when {
 }
 
 /** A film's seek bar and its two time caps — the only part of the dock that needs the position, so the
- *  only part that recomposes as it ticks (T14). */
+ *  only part that recomposes as it ticks. */
 @Composable
 private fun VodTimeline(player: PlaybackEngine, position: () -> Long, duration: Long, seekFocus: FocusRequester?) {
     val seekStep by player.seekStepMs.collectAsStateWithLifecycle() // Settings -> Seek step
@@ -555,7 +563,6 @@ internal fun NextEpisodeCard(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = OwnTVTheme.colors
     Column(
         modifier = modifier
             .widthIn(max = 360.dp)
@@ -565,31 +572,31 @@ internal fun NextEpisodeCard(
     ) {
         Text(
             stringResource(R.string.player_next_episode, seconds()),
-            style = MaterialTheme.typography.labelLarge,
+            style = tv.own.owntv.ui.theme.stageText(25, 600),
             color = hudAccent,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(4.dp))
         Text(
             title,
-            style = MaterialTheme.typography.titleSmall,
+            style = tv.own.owntv.ui.theme.stageText(25, 500),
             color = hudInk,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OwnTVButton(
+            tv.own.owntv.ui.stage.StageButton(
                 stringResource(R.string.player_play_now),
                 onClick = onPlayNow,
-                icon = OwnTVIcon.PLAY,
                 modifier = Modifier.focusRequester(playFocus),
+                icon = OwnTVIcon.PLAY,
+                tinted = true,
             )
-            OwnTVButton(
+            tv.own.owntv.ui.stage.StageButton(
                 stringResource(R.string.common_cancel),
                 onClick = onCancel,
                 icon = OwnTVIcon.CLOSE,
-                style = tv.own.owntv.ui.components.OwnTVButtonStyle.SECONDARY,
             )
         }
     }

@@ -21,7 +21,6 @@ import tv.own.owntv.core.live.CatchupJumps
 import tv.own.owntv.R
 import tv.own.owntv.ui.theme.mpx
 import tv.own.owntv.ui.format.rememberBestDateFormatter
-import tv.own.owntv.ui.theme.OwnTVTheme
 import tv.own.owntv.ui.components.twoDigits
 
 /**
@@ -46,7 +45,6 @@ internal fun CatchupManualTimeDialog(
     onPick: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = OwnTVTheme.colors
     // One "now" for the dialog's lifetime. A ticking clock would shift every wheel under the user's
     // fingers and make the clamp boundaries move while they aim at them.
     val nowMs = remember { System.currentTimeMillis() }

@@ -47,8 +47,7 @@ fun LocalizedContent(
     // The locale already applied to this Activity's base context (set by attachBaseContext). On a
     // script-family switch the locals cannot represent the new script's shaping, so we recreate and
     // let the fresh Activity wrap with the new tag. Same-script switches update the locals instantly
-    // below — far cheaper than a recreate. No picker exists in Phase 0, so this only fires once the
-    // Phase 2 picker writes [tag].
+    // below — far cheaper than a recreate. This fires when the language picker writes [tag].
     val baseContextTag = remember { localeStore.readBlocking() }
     LaunchedEffect(tag) {
         val current = tag

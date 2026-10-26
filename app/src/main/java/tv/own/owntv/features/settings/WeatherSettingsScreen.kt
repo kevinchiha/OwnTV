@@ -43,7 +43,7 @@ import tv.own.owntv.ui.theme.stageAccent
 import tv.own.owntv.ui.theme.stageText
 
 /**
- * Settings › Appearance › Date, time & weather (P10B-15): the top bar's weather (show, location, °C/°F)
+ * Settings › Appearance › Date, time & weather: the top bar's weather (show, location, °C/°F)
  * and the colours of the clock's three parts, each picked in the Accent colour picker with a live preview
  * of the clock in the panel.
  */

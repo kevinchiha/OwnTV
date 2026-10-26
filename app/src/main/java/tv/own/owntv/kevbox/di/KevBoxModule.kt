@@ -222,7 +222,7 @@ val kevboxModule = module {
     // One show finder for both Search's TV guide tab and the guide's own search.
     single { tv.own.owntv.kevbox.live.ProgrammeTitles(get()) }
     single { tv.own.owntv.kevbox.live.ShowSearch(get(), get(), get()) }
-    single<LocalSources> { CoreLocalSources(get(), get(), get(), get(), get(), get()) }
+    single<LocalSources> { CoreLocalSources(get(), get(), get(), get(), get(), get(), get()) }
     single<ManagedSourceStore> { PrefsManagedSourceStore(androidContext().prefs(PrefsManagedSourceStore.PREFS_NAME)) }
     single { PlaylistReconciler(get(), get()) }
     single { tv.own.owntv.kevbox.release.UpdateProfileAttacher(androidContext(), get(), get(), scope = get()) }

@@ -49,7 +49,7 @@ providers.gradleProperty("owntv.corePath").orNull?.takeIf { it.isNotBlank() }?.l
 
 rootProject.name = "OwnTV"
 include(":app")
-// Baseline-profile generator (audit ST1). Test-only module: it ships nothing to users, it records
+// Baseline-profile generator. Test-only module: it ships nothing to users, it records
 // the cold-start journey on a device and writes the profile :app packages.
 include(":baselineprofile")
  

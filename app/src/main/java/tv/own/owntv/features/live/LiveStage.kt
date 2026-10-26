@@ -66,6 +66,8 @@ import tv.own.owntv.R
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.epg.displayLogoUrl
 import tv.own.owntv.core.live.EpgNowNext
+import tv.own.owntv.core.live.ProviderName
+import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.core.parser.EpgDetails
 import tv.own.owntv.core.parser.XtEpgEntry
 import tv.own.owntv.features.home.timeLeftText
@@ -100,7 +102,7 @@ import tv.own.owntv.ui.theme.stageAccent
 import tv.own.owntv.ui.theme.stageText
 
 /*
- * Live TV in the Stage design (P3-01 … P3-06): the header, the channel rows, the stage on the right,
+ * Live TV in the Stage design: the header, the channel rows, the stage on the right,
  * and the category list as a sheet (Stage layout) or a column (Separate panels). LiveScreen owns the
  * state and the focus plumbing; these only draw.
  */
@@ -223,7 +225,7 @@ internal fun progressOf(p: XtEpgEntry): Float {
     return ((System.currentTimeMillis() - p.startMs).toFloat() / span).coerceIn(0f, 1f)
 }
 
-/** "18:45 – 20:30 · Horror · 2026 · FSK 16": the time range, then only the details the feed carries (G1). */
+/** "18:45 – 20:30 · Horror · 2026 · FSK 16": the time range, then only the details the feed carries. */
 @Composable
 private fun detailsLine(now: XtEpgEntry, details: EpgDetails?): String {
     val formatTime = rememberSystemTimeFormatter()
@@ -301,7 +303,7 @@ internal fun LiveStagePane(
                 Box(Modifier.align(Alignment.TopStart).padding(start = 24.mpx, top = 22.mpx)) { StageLiveBadge(stringResource(R.string.player_live)) }
                 if (playing && streamChips.isNotEmpty()) {
                     Row(Modifier.align(Alignment.TopEnd).padding(end = 22.mpx, top = 22.mpx), horizontalArrangement = Arrangement.spacedBy(6.mpx)) {
-                        // The mockup's three facts — quality, frame rate, sound (owner, 2026-09-30): the
+                        // Three facts — quality, frame rate, sound: the
                         // engine's aspect ratio ("16:9") and declared bitrate ("4.2 Mbps") are left out.
                         streamChips.filterNot { it.contains(':') || it.endsWith("Mbps") }.forEach { StageSpecChip(it) }
                     }
@@ -374,7 +376,7 @@ internal fun LiveStagePane(
 
 /**
  * One "20:30  Kingdom of the Planet of the Apes" entry under the stage, 18 px. Next has the accent
- * time and full-colour title, later is muted. The mockup draws no focused state; focused = FILLED.
+ * time and full-colour title, later is muted. Focused = FILLED.
  */
 @Composable
 private fun LiveScheduleItem(p: XtEpgEntry, accentTime: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -401,7 +403,7 @@ private fun LiveScheduleItem(p: XtEpgEntry, accentTime: Boolean, onClick: () -> 
 internal val edgeScrollSpec = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         // One row of room kept ahead of the highlight, so the next row is already laid out: a held
-        // ▲/▼ otherwise outran the list at the edge and stopped (owner, 2026-09-30).
+        // ▲/▼ otherwise outran the list at the edge and stopped.
         val room = size.coerceAtMost((containerSize - size).coerceAtLeast(0f) / 2f)
         val lead = offset - room
         val trailing = offset + size + room - containerSize
@@ -426,7 +428,7 @@ internal data class LiveCategoryEntry(
 /**
  * Live TV's category list as the sheet and column draw it — the fixed entries with their icons, the
  * provider groups parsed into name and tags — and the "GROUPS · DE" heading above the groups. The TV
- * Guide's category sheet is this same list (P4-03).
+ * Guide's category sheet is this same list.
  */
 @Composable
 internal fun liveCategoryEntries(railItems: List<LiveRailItem>, railCounts: Map<tv.own.owntv.core.live.LiveKey, Int>): Pair<List<LiveCategoryEntry>, String> {
@@ -465,18 +467,21 @@ internal fun liveCategoryEntries(railItems: List<LiveRailItem>, railCounts: Map<
         }
     }
     val groupCountry = remember(entries) { ProviderTags.sharedCountry(entries.mapNotNull { it.name }) } // KevBox: once per list
+    // A group keeps its "UK|" unless the heading below says it for every group.
+    // KevBox: categoryName leaves the country empty, so this keeps the provider's exact name.
+    val labelled = remember(entries, groupCountry) { entries.map { e -> e.name?.let { e.copy(label = ProviderTags.groupLabel(it, groupCountry)) } ?: e } }
     val heading = (if (groupCountry != null) stringResource(R.string.content_live_groups_country, groupCountry) else stringResource(R.string.content_live_groups))
         .uppercase(androidx.compose.ui.text.intl.Locale.current.platformLocale)
-    return entries to heading
+    return labelled to heading
 }
 
 /**
- * The categories: the glass sheet (P3-02, 450 wide, radius 32, "Categories · Live TV") or the flat
- * column (P3-06, the Movies P5-05 column). Search, the fixed entries with icons and counts, then
+ * The categories: the glass sheet (450 wide, radius 32, "Categories · Live TV") or the flat
+ * column (the Movies column). Search, the fixed entries with icons and counts, then
  * "GROUPS · DE" and the provider groups with their tags, counts and playlist marks. The selected
  * category is accent text plus the dot (sheet) or the 4 px bar (column).
  *
- * Focus rules kept from CategoryRail: entering lands on the open category, never a row only browsed;
+ * Focus rules: entering lands on the open category, never a row only browsed;
  * vertical exits are trapped; Right hands focus to the channel list ([onNavigateRight]).
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -531,7 +536,7 @@ internal fun LiveCategories(
     val rowFocusers = remember(visible.size) { List(visible.size) { FocusRequester() } }
     val searchFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
-    // CH+/− in the categories changes the selection; the highlight follows it there, as CategoryRail did.
+    // CH+/− in the categories changes the selection; the highlight follows it there.
     var hasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(selectedIndex) {
         val pos = visible.indexOf(selectedIndex)
@@ -869,7 +874,7 @@ private fun LiveColumnItem(
                     color = on ?: if (selected) a.accent else stageTone(Color(0xFFCDD7D3), StageColors.ItemText),
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
-                // Tags on their own line, so a long name is never cut for them (owner, 2026-09-30).
+                // Tags on their own line, so a long name is never cut for them.
                 val tags = entry.name?.tags.orEmpty()
                 if (tags.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.mpx)) { tags.forEach { StageTag(it, onAccent = on) } }
             }

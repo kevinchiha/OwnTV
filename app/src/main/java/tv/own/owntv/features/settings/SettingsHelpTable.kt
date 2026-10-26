@@ -3,18 +3,18 @@ package tv.own.owntv.features.settings
 import tv.own.owntv.R
 
 /*
- * The words of each Settings row on a Stage page (P10), by row key: root rows by their own key
+ * The words of each Settings row on a Stage page, by row key: root rows by their own key
  * ("theme", "tab_SOURCES"), Video player rows by their Quick key ("vp_hw"), Recording rows by "rec_*".
  * A row's own title and description are used wherever a key is missing here; a long description
  * the row used to carry becomes its panel text when [SETTING_HELP] has nothing better.
  */
 
-/** The short line under the title (the mockup's wording). */
+/** The short line under the title. */
 internal val SETTING_LINE: Map<String, Int> = mapOf(
     "quick_live_preview" to R.string.settings_line_quick_live_preview,
     "quick_preview_sound" to R.string.settings_line_preview_sound,
     "quick_channel_numbers" to R.string.settings_line_quick_channel_numbers,
-    "quick_hdr" to R.string.settings_line_hdr,
+    "quick_hdr" to R.string.settings_line_prefer_sdr,
     "quick_autoplay" to R.string.kevbox_settings_line_catchup_next, // KevBox: reads like the vp_autoplay row (AC-17)
     "quick_check_update" to R.string.settings_line_when_app_opens,
     "epg_offset" to R.string.settings_line_epg_offset,
@@ -52,13 +52,12 @@ internal val SETTING_LINE: Map<String, Int> = mapOf(
     "vp_vod_engine" to R.string.settings_line_vod_engine,
     "vp_vod_engine_sources" to R.string.settings_line_override_playlist,
     "vp_reset_pins" to R.string.settings_line_saved_choices,
-    "vp_forget_fixes" to R.string.settings_line_learned_fixes,
     "vp_external" to R.string.kevbox_settings_line_external, // KevBox: live channels only, no sections (AC-5)
     "vp_vod_buffer" to R.string.kevbox_settings_line_catchup_buffer, // KevBox: catch-up wording (AC-17)
     "vp_vod_timeout" to R.string.settings_line_vod_timeout,
     "vp_vod_reconnects" to R.string.settings_line_vod_reconnects,
     "vp_hw" to R.string.settings_line_hw,
-    "vp_hdr" to R.string.settings_line_hdr,
+    "vp_hdr" to R.string.settings_line_prefer_sdr,
     "vp_max_quality" to R.string.settings_line_max_quality,
     "vp_tunneled" to R.string.settings_line_tunneled,
     "vp_zoom" to R.string.settings_line_zoom,
@@ -70,9 +69,11 @@ internal val SETTING_LINE: Map<String, Int> = mapOf(
     "vp_reset_volume" to R.string.settings_line_saved_volume,
     "vp_surround" to R.string.settings_line_surround,
     "vp_passthrough" to R.string.settings_line_passthrough,
+    "vp_ffmpeg_audio" to R.string.settings_line_ffmpeg_audio,
     "vp_night_mode" to R.string.settings_line_night_mode,
     "vp_volume_leveling" to R.string.settings_line_leveling,
     "vp_audio_sync" to R.string.settings_line_audio_sync,
+    "vp_output_audio_delay" to R.string.settings_line_output_audio_delay,
     "vp_reset_audio_delay" to R.string.settings_line_saved_audio_sync,
     "vp_audio_lang" to R.string.settings_line_audio_lang,
     "vp_sub_lang" to R.string.settings_line_sub_lang,
@@ -110,7 +111,6 @@ internal val SETTING_TITLE: Map<String, Int> = mapOf(
     "tab_WEATHER" to R.string.settings_title_date_time_weather,
     "vp_reset_live_pins" to R.string.settings_title_saved_live_choices,
     "vp_reset_pins" to R.string.settings_title_saved_choices,
-    "vp_forget_fixes" to R.string.settings_title_learned_fixes,
     "vp_tunneled" to R.string.settings_title_tunneled,
     "vp_reset_zoom" to R.string.settings_title_saved_zoom,
     "vp_reset_volume" to R.string.settings_title_saved_volume,
@@ -129,7 +129,7 @@ internal val SETTING_HELP: Map<String, Int> = mapOf(
     "reminders" to R.string.settings_reminders_description,
     "reminder_lead" to R.string.settings_reminder_lead_description,
     "guide_days" to R.string.settings_help_guide_days,
-    "catchup" to R.string.settings_help_catchup,
+    "catchup" to R.string.settings_help_catchup_timezone,
     "catchup_sources" to R.string.settings_catchup_timezone_per_playlist_description,
     "theme" to R.string.settings_help_theme,
     "accent" to R.string.settings_help_accent,
@@ -177,6 +177,7 @@ internal val SETTING_HELP: Map<String, Int> = mapOf(
 /** For a switch row, whether On is the recommended value (the panel tags it). Absent = no tag. */
 internal val SWITCH_RECOMMENDED: Map<String, Boolean> = mapOf(
     "vp_hw" to true,
+    "vp_sw_above_1080p" to false,
     "vp_measured_stats" to false,
     "vp_logging" to false,
     "rec_reserve" to true,

@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.player.FrameRateController.ModeSpec
 
-/** The display-mode choice behind Auto frame rate, including N7's resolution matching. */
+/** The display-mode choice behind Auto frame rate, including resolution matching. */
 class FrameRateChooseModeTest {
 
     private val uhd60 = ModeSpec(1, 3840, 2160, 60f)
@@ -67,5 +67,26 @@ class FrameRateChooseModeTest {
         val chosen = choose(24f, video = 1920 to 1080, seamlessRates = listOf(24f))
         assertEquals(fhd24, chosen?.mode)
         assertFalse(chosen!!.seamless)
+    }
+
+    @Test
+    fun `seamless-only keeps the current mode when it already matches`() {
+        // Android lists only the OTHER rates as a mode's alternatives; staying put is still seamless.
+        val hz30 = ModeSpec(7, 3840, 2160, 30f)
+        val chosen = choose(30f, modes = listOf(uhd60, hz30), current = hz30, seamlessRates = listOf(60f), seamlessOnly = true)
+        assertEquals(hz30, chosen?.mode)
+    }
+
+    @Test
+    fun `no match after a switched mode goes back to the default`() {
+        // A 50p channel after a 30p one on a 60/30 Hz panel: nothing matches, the 30 Hz mode must go.
+        assertEquals(0, FrameRateController.nextModeId(chosenId = null, requestedId = 7))
+    }
+
+    @Test
+    fun `no request when nothing would change`() {
+        assertNull(FrameRateController.nextModeId(chosenId = null, requestedId = 0))
+        assertNull(FrameRateController.nextModeId(chosenId = 7, requestedId = 7))
+        assertEquals(7, FrameRateController.nextModeId(chosenId = 7, requestedId = 0))
     }
 }

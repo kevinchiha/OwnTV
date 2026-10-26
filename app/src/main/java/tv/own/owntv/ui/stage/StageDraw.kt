@@ -35,7 +35,7 @@ import tv.own.owntv.ui.theme.mpx
 import tv.own.owntv.kevbox.ui.bakedBackground // KevBox: the Stage page background as one baked picture.
 
 /*
- * The CSS the Stage mockup is written in, drawn the same way: `box-shadow` glows and outer rings,
+ * The CSS effects the Stage design uses, drawn the same way: `box-shadow` glows and outer rings,
  * the page background, and the glass panel.
  */
 
@@ -113,7 +113,7 @@ fun DrawScope.drawInnerRing(color: Color, width: Float, radius: Float) {
  * - Stage colours: three soft lights over a dark 160° wash (the accent light is the switchable one);
  * - Plain: #070B0A, with Accent light a faint 7% accent light (today's Glass-off page);
  * - Picture: nothing here — MainActivity draws the picture under the whole app — except the Accent
- *   light, drawn over the picture the way the mockup does (`wp-soft`).
+ *   light, drawn over the picture (`wp-soft`).
  * Each light is a cached texture (see GradientTextures), never a brush. The 160° wash runs between
  * three near-black stops that differ by at most 5 per channel, so it is drawn as a vertical fade.
  */
@@ -166,9 +166,9 @@ private fun DrawScope.light(color: Color, alpha: Float, center: Offset, rx: Floa
 /**
  * The Stage glass panel (`.mine .glass`), for chrome only: rail, sheets, menus, pills, cards.
  *
- * Glass on: the #121A1E tint at the user's Glass opacity (56% = the mockup's), a 1 px top highlight
+ * Glass on: the #121A1E tint at the user's Glass opacity (56% by default), a 1 px top highlight
  * (white 10%), a 1 px rim (white 7%) and the drop shadow `0 24 60` black 45%. Over a picture the panel
- * first draws the matching slice of the blurred picture — the mockup's `backdrop-filter`, without a live
+ * first draws the matching slice of the blurred picture — a `backdrop-filter`, without a live
  * blur pass (the G10 cannot afford one): the picture is blurred once when it is chosen.
  * Glass off: solid #121A1C, rim white 5%, shadow black 50%.
  *
@@ -180,10 +180,10 @@ fun Modifier.stageGlass(radius: Dp, overContent: Boolean = false): Modifier {
     val config = LocalGlass.current
     val on = config.enabled
     // Over content (sheets, the rail, menus) the opacity is scaled into 55-100% rather than floored at 80%:
-    // the floor made every setting below 80% look the same (owner, 2026-10-02), the scale keeps text
+    // the floor made every setting below 80% look the same; the scale keeps text
     // readable and still answers each step (50% -> 78%).
     val palette = LocalStagePalette.current
-    // Light glass is the mockup's white 74% at the 56% default, so the flat opacity is lifted (0.3 + 0.8 x).
+    // Light glass is white 74% at the 56% default, so the flat opacity is lifted (0.3 + 0.8 x).
     val flat = if (palette.isLight) (0.3f + 0.8f * config.alpha).coerceIn(0f, 1f) else config.alpha
     val fill = if (on) palette.glassTint.copy(alpha = if (overContent) 0.55f + 0.45f * config.alpha.coerceIn(0f, 1f) else flat) else palette.glassOff
     // `.mine.light .glass`: highlight white 90%, rim ink 7% (8% glass off), shadow rgb(20,40,32) 16% (14% off, 0 20 50).

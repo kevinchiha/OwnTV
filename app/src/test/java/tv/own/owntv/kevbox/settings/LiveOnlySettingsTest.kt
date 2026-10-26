@@ -21,8 +21,9 @@ class LiveOnlySettingsTest {
             "vp_reset_pins", "vp_resume", "vp_afr_pause", "vp_afr_resolution", "vp_multiview",
             "vp_multiview_tiles", "vp_preview_audio",
             "quick_preview_sound",
+            "tab_SPORTS",
         )
-        assertEquals(23, expected.size)
+        assertEquals(24, expected.size)
         assertEquals(expected, LiveOnlySettings.HIDDEN_KEYS)
         expected.forEach { assertFalse(it, LiveOnlySettings.shows(it)) }
     }
