@@ -44,10 +44,34 @@ how to take a new upstream release, check that nothing KevBox did got lost, and 
 `1.0.64`. The version rule below counts only release tags, so the first KevBox Live release is
 still labelled `5.1.0.1`, and it carries those 25 upstream commits and the newer Core.
 
-The first upstream tag merged was `v5.2.1` (2026-10-26, Core `1.0.69`), so releases after it are
-`5.2.1.K`. Upstream deleted `ContentPane.kt` in that release (its empty state had KevBox's "no add
-source" cut); nothing replaced its add-source button. Every step below works out the starting point
-with `git merge-base` rather than a tag name.
+Every step below works out the starting point with `git merge-base` rather than a tag name.
+
+### Upstream releases merged
+
+| Upstream tag | Core | Merged | First KevBox release |
+| --- | --- | --- | --- |
+| `v5.2.1` (includes `v5.2.0`) | `1.0.69` | 2026-10-26, merge `05643f20` | `5.2.1.1` |
+
+What the `v5.2.1` merge changed for KevBox Live:
+
+- 21 files conflicted. Upstream's own UI cleanup deleted `ContentPane.kt` (its empty state held
+  KevBox's "no add source" cut); nothing replaced its add-source button, so the row went from the
+  table.
+- Kept out: Sports (see "Live TV only"), Search's new filter buttons (Live TV, TV Shows, Movies,
+  Series), hidden with `if (false)` like the old tabs, and upstream's "OK previews, OK again
+  watches" guide change (upstream PR #300), which runs only in the TV Guide section KevBox hides.
+  Live TV keeps its own box flow.
+- Kept in, by Kevin's choice: the five new player settings (software decoding above 1080p, FFmpeg
+  audio, audio delay per output, Prefer SDR in place of the HDR switch, the Automatic catch-up time
+  zone). A setting's value no longer turns the accent colour when it differs from the default:
+  upstream's `SettingValue` rows have no such flag.
+- Core 1.0.69 broke KevBox code in four places: `ProviderName` and `ProviderTags` moved to
+  `tv.own.owntv.core.live`; `SourceDao.unlink` is gone, so `kevbox/playlist/CoreLocalSources.kt`
+  deletes the `profile_source` rows itself (see "Why Core is not forked"); `SetupViewModel.createProfile`
+  takes a `picture`; `StageGlyphs.kt` now reads Core's `StageGlyph` list, with KevBox's cog added on
+  top, and upstream's `StageGlyphsTest` leaves the cog out.
+- More's Settings cards are hidden by group (`setOf(SettingsGroup.PROFILE, SettingsGroup.CONTENT)`)
+  instead of by position, so a reorder upstream can no longer hide the wrong cards.
 
 ## Merge steps for each upstream release
 
@@ -57,26 +81,32 @@ after the fork's starting point: `git merge-base --is-ancestor fd74926d vX.Y.Z` 
 tag that fails it (a hotfix such as `v5.1.1` cut from `v5.1.0`) misses some of the 25 commits the
 fork already has; read its changes before deciding to take it.
 
-1. Fetch and update:
+1. Fetch and update, then branch, so `kevbox-live` stays releasable while the merge is under way:
 
    ```sh
    git fetch upstream --tags
    git switch kevbox-live
    git pull --ff-only
+   git switch -c sync/upstream-vX.Y.Z
    ```
 
 2. Run the hidden-features sweep below on the new tag before you merge, so you know what to look
    for.
 
-3. Merge the tag: `git merge vX.Y.Z`.
+3. Merge the tag: `git merge --no-commit vX.Y.Z`.
 
 4. Resolve conflicts by keeping upstream's change and every `KevBox:` block. The proof commands in
    the table below show which KevBox change each file must still hold. Generated files
    (`kevbox_brand_strings.xml`, the art overrides) are never merged by hand: take either side and
-   regenerate them in the next step.
+   regenerate them in the next step. When upstream deleted a file KevBox changed, check what replaced
+   it, accept the deletion (`git rm`) and drop its row from the table. Splitting the conflicted files
+   between helpers by area (settings, shell and player, guide/Live TV/search) worked for `v5.2.1`;
+   none of them may build or touch git while the others work.
 
 5. If `owntvCore` in `gradle/libs.versions.toml` moved, rerun both rebrand scripts and commit what
-   they write (see "Regenerating the rebrand").
+   they write (see "Regenerating the rebrand"). Then build: a Core change shows up as compile errors
+   in fork-only code under `kevbox/`, which no merge conflict flags. Run `CoreContractTest` (see
+   "Error reporting") once it compiles.
 
 6. Check the result:
 
@@ -93,7 +123,23 @@ fork already has; read its changes before deciding to take it.
    file that has a diff hunk without a `KevBox:` comment or is missing from the table, so a file
    that upstream's merge rewrote shows up there.
 
-7. Push `kevbox-live` (`git push origin kevbox-live`), then release.
+   The build's `verifyI18nLiterals` task fails on new literals (a new hidden key, raw SQL) and on
+   entries for literals the merge removed. Classify each new one with
+   `python3 tools/i18n/check_hardcoded_strings.py classify-safe --path <file> --text '<text>' --category <category>`,
+   then clear the stale ones with `python3 tools/i18n/check_hardcoded_strings.py prune-safe`.
+   KevBox tests that count things (`LiveOnlySettingsTest`'s hidden keys) and upstream tests that a
+   KevBox change touches need updating too.
+
+7. Run the hidden-features sweep's after-merge commands, and compare their hits with the ones the
+   same commands give on `kevbox-live`: any new hit is a new route.
+
+8. Try it on the Android TV emulator, both a debug build and the signed x86_64 release build
+   (a release build has crashed on start where the debug one ran). Then put a signed arm release
+   build on Kevin's TV with `VERSION_NAME=A.B.C.0` and its version code (`A*1000000 + B*10000 +
+   C*100`): one below `A.B.C.1`, so the real release still installs over it through the updater.
+
+9. Merge the branch into `kevbox-live` (`git merge --no-ff sync/upstream-vX.Y.Z`), push
+   (`git push origin kevbox-live`), then release `A.B.C.1`. Add a row to "Upstream releases merged".
 
 ## Changed upstream files
 
@@ -187,6 +233,10 @@ git diff "$old" vX.Y.Z -- \
   app/src/main/java/tv/own/owntv/features/more/MoreScreen.kt \
   app/src/main/java/tv/own/owntv/features/setup/SetupWizard.kt \
   | grep -nE '^[-+].*enum class (SettingsTab|MoreItem|Step)\b'
+
+# New sections, and new work that starts at launch or while a channel plays
+git diff "$old" vX.Y.Z -- app/src/main/java \
+  | grep -nE '^\+.*(MainSection\.[A-Z_]+|appScope\.launch|LaunchedEffect\(isTunedLive)'
 ```
 
 After the merge, the same names across the whole app:
@@ -202,6 +252,9 @@ which a member can open), comments, and the `SetupWizard.kt` branches for steps 
 `KEVBOX_OPEN_STEPS` blocks. Any other hit is a new route: cut it with a `// KevBox:` comment where
 the code was, and add a row to the table if the file is new to it. A new `SettingsTab`,
 `MoreItem` or `Step` entry needs a look too: hide it the same way if it leads to a locked screen.
+A new `MainSection` is cut by `selectSection` already, but its Settings page and any background work
+it starts are not: `v5.2.0`'s Sports came with a Settings page, a board rebuild 15 s after every
+launch and a goal watch during playback, all three reachable until hidden (see "Live TV only").
 Leave the locked screens' files in place. Deleting upstream files turns every later merge into a
 conflict.
 
@@ -593,3 +646,10 @@ upstream release. Nothing KevBox Live does needs it: the app sets
 art by resource name, and calls Core's public classes (`HttpClient.redactUrl`, the source and
 playback APIs) from fork-only code. The proof is the last row of the table: the pin file has no
 KevBox change.
+
+One place reads below Core's public API: since Core `1.0.69` dropped `SourceDao.unlink`,
+`kevbox/playlist/CoreLocalSources.kt` (`unlinkEverywhere`, which hides a playlist the admin removed or
+paused) runs `DELETE FROM profile_source WHERE sourceId = ?` on Core's database itself and then
+refreshes Room's observers. If a Core update renames the `profile_source` table or its `sourceId`
+column, that delete fails at run time, not at build time: after a Core bump, hide a playlist from
+kevbox.dev with the emulator signed in and check that its channels leave the guide.
