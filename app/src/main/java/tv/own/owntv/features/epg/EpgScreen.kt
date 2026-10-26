@@ -199,6 +199,9 @@ fun EpgScreen(
     onExpandedChange: (Boolean) -> Unit = {},
     // KevBox: set while the guide was opened from Search (Hold OK); the first Back returns there.
     onBackToSearch: (() -> Unit)? = null,
+    // KevBox: false while full screen covers the guide. Live TV keeps the grid composed behind the player
+    // (KeptHidden), so the grid must not take focus back then (see the overlay effect below).
+    onScreen: Boolean = true,
 ) {
     val vm: EpgViewModel = koinViewModel()
     // Live TV's view model: its preview player (no second decoder), its category list and playlist marks.
@@ -464,11 +467,17 @@ fun EpgScreen(
     val anyOverlay = menuFor != null || channelMenuFor != null || recordMenuFor != null || askPlayerFor != null || matchingChannel != null ||
         offsetChannel != null || orderOpen || dayOpen || review.isNotEmpty()
     var hadOverlay by remember { mutableStateOf(false) }
+    // KevBox: read after the delay below, so the value is the one at that moment, not at the menu's close.
+    val onScreenNow by androidx.compose.runtime.rememberUpdatedState(onScreen)
     LaunchedEffect(anyOverlay) {
         if (anyOverlay) { hadOverlay = true; return@LaunchedEffect }
         if (!hadOverlay) return@LaunchedEffect
         hadOverlay = false
         delay(60)
+        // KevBox: Hold OK › Watch channel closes the menu and opens full screen in one go. Focus handed back
+        // to the grid hidden behind the player then: every key drove the hidden guide and Back did nothing
+        // until a force stop (Jad Harb, Jessica Hokayem, 2026-10-24/25). The player keeps focus instead.
+        if (!onScreenNow) return@LaunchedEffect // KevBox: see above
         (returnTo ?: { focusGrid() }).invoke()
     }
     // Leaving the grid (not for one of its own menus) goes back to the row stage.

@@ -1447,6 +1447,8 @@ fun OwnTVShell(
                             onPlayCatchup = guidePlayCatchup,
                             onAddEpg = { openEpgAdd = true; onSelectSection(MainSection.SETTINGS) },
                             previewEnabled = playerMode == PlayerMode.NONE,
+                            // KevBox: the grid stays composed behind full screen; it must not take focus then.
+                            onScreen = playerMode != PlayerMode.FULLSCREEN,
                             liveMode = true,
                             onEntryHook = { guideEntry = it },
                             // KevBox: Back or ◀ in the category column goes on to the main menu. The column starts
