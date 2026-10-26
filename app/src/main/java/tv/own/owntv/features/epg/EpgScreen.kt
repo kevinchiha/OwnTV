@@ -199,6 +199,9 @@ fun EpgScreen(
     onExpandedChange: (Boolean) -> Unit = {},
     // KevBox: set while the guide was opened from Search (Hold OK); the first Back returns there.
     onBackToSearch: (() -> Unit)? = null,
+    // KevBox: false while full screen covers the guide. Live TV keeps the grid composed behind the player
+    // (KeptHidden), so the grid must not take focus back then (see the overlay effect below).
+    onScreen: Boolean = true,
 ) {
     val vm: EpgViewModel = koinViewModel()
     // Live TV's view model: its preview player (no second decoder), its category list and playlist marks.
@@ -464,11 +467,17 @@ fun EpgScreen(
     val anyOverlay = menuFor != null || channelMenuFor != null || recordMenuFor != null || askPlayerFor != null || matchingChannel != null ||
         offsetChannel != null || orderOpen || dayOpen || review.isNotEmpty()
     var hadOverlay by remember { mutableStateOf(false) }
+    // KevBox: read after the delay below, so the value is the one at that moment, not at the menu's close.
+    val onScreenNow by androidx.compose.runtime.rememberUpdatedState(onScreen)
     LaunchedEffect(anyOverlay) {
         if (anyOverlay) { hadOverlay = true; return@LaunchedEffect }
         if (!hadOverlay) return@LaunchedEffect
         hadOverlay = false
         delay(60)
+        // KevBox: Hold OK › Watch channel closes the menu and opens full screen in one go. Focus handed back
+        // to the grid hidden behind the player then: every key drove the hidden guide and Back did nothing
+        // until a force stop (Jad Harb, Jessica Hokayem, 2026-10-24/25). The player keeps focus instead.
+        if (!onScreenNow) return@LaunchedEffect // KevBox: see above
         (returnTo ?: { focusGrid() }).invoke()
     }
     // Leaving the grid (not for one of its own menus) goes back to the row stage.
@@ -849,6 +858,12 @@ fun EpgScreen(
                     body = stringResource(R.string.content_epg_add_description),
                     action = stringResource(R.string.content_epg_add), onAction = onAddEpg,
                 )
+                // KevBox: an empty Favorites says so and how to add one. It fell through to the line below, whose
+                // "channel ids don't match" note read as a fault, now that taking off the last favourite empties it on the spot.
+                categoryKey == LiveKey.Favorites && state.message == EpgMessage.MismatchedIds -> GuideEmpty(
+                    title = stringResource(R.string.more_fav_empty_title),
+                    body = stringResource(R.string.kevbox_more_fav_empty_body),
+                ) // KevBox: see above
                 state.channels.isEmpty() -> GuideEmpty(title = state.message?.let { epgMessageText(it) } ?: stringResource(R.string.content_epg_no_guide))
                 else -> {
                     val gx = fx(48) + labelW

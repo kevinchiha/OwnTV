@@ -424,6 +424,17 @@ class EpgViewModel(
             .distinctUntilChanged()
             .onEach { load() }
             .launchIn(viewModelScope)
+        // KevBox: a channel added to or taken off Favourites shows at once in the Favorites category and the
+        // "Favorites first" order, whether the change came from the guide's menu or the player's heart
+        // (Kevin, 2026-10-26: a removed channel stayed until he left Favorites and came back).
+        settings.activeProfileId
+            .flatMapLatest { pid -> if (pid < 0) flowOf(emptyList()) else favoriteDao.observeFavoriteIds(pid, MediaType.LIVE) }
+            .map { it.toSet() }
+            .distinctUntilChanged()
+            .drop(1) // KevBox: the screen triggers the initial load itself
+            .filter { _categoryFilter.value == tv.own.owntv.core.live.LiveKey.Favorites || settings.sortGuide.first() == SettingsRepository.GuideSort.FAVORITES }
+            .onEach { load() } // KevBox: see above
+            .launchIn(viewModelScope)
         // Reload when the category filter changes (#8).
         _categoryFilter
             .drop(1)
@@ -583,8 +594,8 @@ class EpgViewModel(
             } else {
                 favoriteDao.add(tv.own.owntv.core.database.entity.FavoriteEntity(profileId = pid, mediaType = MediaType.LIVE, itemId = channel.id))
             }
-            // The "Favorites" guide sort shows only favourited channels — refresh it to match.
-            if (settings.sortGuide.first() == SettingsRepository.GuideSort.FAVORITES) load()
+            // KevBox: the refresh moved to init, which watches the favourites themselves. Was a load() here
+            // for the "Favorites first" order only, so the Favorites category kept a removed channel on screen.
         }
     }
 
