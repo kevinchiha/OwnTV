@@ -858,6 +858,12 @@ fun EpgScreen(
                     body = stringResource(R.string.content_epg_add_description),
                     action = stringResource(R.string.content_epg_add), onAction = onAddEpg,
                 )
+                // KevBox: an empty Favorites says so and how to add one. It fell through to the line below, whose
+                // "channel ids don't match" note read as a fault, now that taking off the last favourite empties it on the spot.
+                categoryKey == LiveKey.Favorites && state.message == EpgMessage.MismatchedIds -> GuideEmpty(
+                    title = stringResource(R.string.more_fav_empty_title),
+                    body = stringResource(R.string.kevbox_more_fav_empty_body),
+                ) // KevBox: see above
                 state.channels.isEmpty() -> GuideEmpty(title = state.message?.let { epgMessageText(it) } ?: stringResource(R.string.content_epg_no_guide))
                 else -> {
                     val gx = fx(48) + labelW
