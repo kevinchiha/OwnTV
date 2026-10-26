@@ -66,7 +66,7 @@ import tv.own.owntv.ui.theme.stageShadow
 import tv.own.owntv.ui.theme.stageText
 
 /*
- * The Stage component set (mockup `.mine` classes). Idle = nothing, selected = accent text + dot or bar,
+ * The Stage component set (the design's `.mine` classes). Idle = nothing, selected = accent text + dot or bar,
  * focused = the one loud thing, in one of four treatments:
  *
  *  FX       rows and cards: accent 34%→14% sweep, 2 px focus ring inside, 44 px accent glow.
@@ -138,8 +138,8 @@ private fun Modifier.stageFocusDecor(style: StageFocus, radius: Dp, a: StageAcce
 }
 
 /**
- * The focusable base every Stage control is built on: D-pad focus and click wiring as in
- * FocusableSurface, the [focusStyle] treatment while focused, [idle] (a fill or [stageGlass]) otherwise.
+ * The focusable base every Stage control is built on: D-pad focus and click wiring (a held OK calls
+ * [onLongClick]), the [focusStyle] treatment while focused, [idle] (a fill or [stageGlass]) otherwise.
  * Nothing is clipped, so rings and glows reach past the bounds exactly as a `box-shadow` does.
  */
 @Composable
@@ -154,11 +154,12 @@ fun StageSurface(
     contentAlignment: Alignment = Alignment.CenterStart,
     /** Drawn as focused without holding focus: a pill whose menu is open over it. */
     highlighted: Boolean = false,
+    /** The focus colours; the player's chrome passes its on-video accent. */
+    accent: StageAccent = stageAccent,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.collectIsFocusedAsState().value || highlighted
-    val accent = stageAccent
     val palette = LocalStagePalette.current
     Box(
         modifier = modifier
@@ -376,7 +377,7 @@ fun StageTool(
 
 /**
  * `.ttab`: "Season 1 12", "Movies 3" — 22/700 muted, the count 16 dim; the open tab in full text colour
- * with a 4 px accent underline glowing at 70%. Focused = FILLED (the mockup draws no focused tab).
+ * with a 4 px accent underline glowing at 70%. Focused = FILLED.
  */
 @Composable
 fun StageTab(label: String, count: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -413,7 +414,7 @@ fun StageTab(label: String, count: String, selected: Boolean, onClick: () -> Uni
 
 /**
  * `.seg2`: two or more options in one white-6% capsule; the chosen one sits on white 13% in full text
- * colour. The mockup draws no focused segment; a focused one takes the FILLED treatment, as `.row2`
+ * colour. A focused one takes the FILLED treatment, as `.row2`
  * does in menus.
  */
 @Composable
@@ -578,7 +579,7 @@ fun StageMenuHeader(title: String, subtitle: String?, leading: (@Composable () -
 
 /**
  * `.menu .mg` / `.sheet .grp`: a dim group label ("WATCH", "GROUPS · DE"). The text is passed in
- * capitals, as the mockup writes it; upper-casing in code would break Turkish (i → İ).
+ * capitals; upper-casing in code would break Turkish (i → İ).
  */
 @Composable
 fun StageGroupLabel(text: String, sheet: Boolean = false) {
@@ -635,26 +636,6 @@ fun StageMenuItem(
     }
 }
 
-/** `.sheet`: a tier that slides over the content (categories, settings groups). */
-@Composable
-fun StageSheet(title: String, modifier: Modifier = Modifier, trailing: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier
-            .stageGlass(StageRadii.Sheet, overContent = true)
-            .padding(horizontal = 16.mpx, vertical = 26.mpx),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 14.mpx, end = 14.mpx, bottom = 16.mpx),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(title, style = stageText(26, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (trailing != null) Text(trailing, style = stageText(17, 400), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        content()
-    }
-}
-
 /**
  * `.sheet .ci`: 56 high, 20/600. Selected = accent text with the glowing dot before it; focused =
  * FILLED. [tags] follow the name; [count] and then [trailing] (the playlist mark) sit on the right.
@@ -668,7 +649,7 @@ fun StageSheetItem(
     count: String? = null,
     selected: Boolean = false,
     onLongClick: (() -> Unit)? = null,
-    /** 2 lets a long name wrap instead of being cut; the row then grows past 56 (owner, 2026-09-30). */
+    /** 2 lets a long name wrap instead of being cut; the row then grows past 56. */
     maxLines: Int = 1,
     tags: (@Composable RowScope.(focused: Boolean) -> Unit)? = null,
     trailing: (@Composable RowScope.(focused: Boolean) -> Unit)? = null,
@@ -947,7 +928,7 @@ private val WatchedFilter = ColorFilter.colorMatrix(
 )
 
 /**
- * `.ep` (P6-01): the 16:9 still, radius 16, with the episode number in its corner, a ✓ for a watched
+ * `.ep`: the 16:9 still, radius 16, with the episode number in its corner, a ✓ for a watched
  * one (its still dimmed), the 6 px progress bar for one in progress; the title 19/700 and the muted
  * line ("Jan 21, 2024 · 24 min · 12 min left") under it. Focused: lifted 1.06 from 50% 30%, the POSTER
  * ring and glow round the still. [artwork] gets the watched filter to apply to its image.
@@ -1098,7 +1079,7 @@ fun StageRatingChip(rating: String, modifier: Modifier = Modifier, small: Boolea
 
 /**
  * `.stp`: "− 90% +" inside a settings row. Display only: the row owns focus and ◀ ▶ change the value
- * (P10, "controls inside the rows").
+ * ("controls inside the rows").
  */
 @Composable
 fun StageStepper(value: String) {

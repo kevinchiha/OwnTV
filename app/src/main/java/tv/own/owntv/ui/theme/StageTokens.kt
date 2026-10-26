@@ -13,24 +13,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Design tokens of the Stage redesign, copied from the frozen mockup (`future-plan/ui-audit-227`,
- * `mockup.css` + `stage.css`).
+ * Design tokens of the Stage design.
  *
- * The mockup is drawn at 1920×1080 and is matched at the default UI Zoom of 90% (decision D1). The TV
- * runs 320 dpi with a 1920×1080 override, so density = 2.0 × zoom = 1.8 px per dp there, and one
- * mockup pixel is 1 / 1.8 dp. Every value can then be copied from the mockup unchanged: an 84 px row
+ * The design is drawn at 1920×1080 and is matched at the default UI Zoom of 90%. The TV runs
+ * 320 dpi with a 1920×1080 override, so density = 2.0 × zoom = 1.8 px per dp there, and one
+ * design pixel is 1 / 1.8 dp. Every value is then written in design pixels: an 84 px row
  * is `84.mpx`. At other zooms Stage scales with the setting like everything else.
  */
 private const val DP_PER_MPX = 1f / 1.8f
 
-/** A mockup pixel as dp (see the file comment). */
+/** A design pixel as dp (see the file comment). */
 val Number.mpx: Dp get() = (toFloat() * DP_PER_MPX).dp
 
-/** A mockup pixel as sp, so the user's font size still scales Stage type. */
+/** A design pixel as sp, so the user's font size still scales Stage type. */
 val Number.mpxSp: TextUnit get() = (toFloat() * DP_PER_MPX).sp
 
 /**
- * Stage's neutrals for one theme (mockup `.mine` / `.mine.light`). Accent and on-accent stay the user's
+ * Stage's neutrals for one theme (`.mine` / `.mine.light`). Accent and on-accent stay the user's
  * own, from [OwnTVTheme.colors]; in light the focus ring is the accent too (see [stageAccent]).
  */
 @Immutable
@@ -125,7 +124,7 @@ data class StagePalette(
             glassTint = Color.White,
             glassOff = Color.White,
             ok = Color(0xFF2B8A3E),
-            // The mockup's light amber (`.rv .sc`); the spec names no separate warn colour.
+            // The light amber (`.rv .sc`); the design names no separate warn colour.
             warn = Color(0xFF9A5A08),
             danger = Color(0xFFD23B2E),
             body = Color(0xFF2D3A35),
@@ -158,7 +157,6 @@ object StageColors {
     val MenuItemText: Color @Composable @ReadOnlyComposable get() = LocalStagePalette.current.menuItemText
     val TagText: Color @Composable @ReadOnlyComposable get() = LocalStagePalette.current.tagText
     val ControlFill: Color @Composable @ReadOnlyComposable get() = LocalStagePalette.current.controlFill
-    val GlassTint: Color @Composable @ReadOnlyComposable get() = LocalStagePalette.current.glassTint
     val GlassOff: Color @Composable @ReadOnlyComposable get() = LocalStagePalette.current.glassOff
     /** Rating chips are unchanged in light. */
     val RatingStar = Color(0xFFFFCC4D)
@@ -213,7 +211,7 @@ fun stageTone(dark: Color, light: Color): Color = if (LocalStagePalette.current.
 @ReadOnlyComposable
 fun stageShadow(alpha: Float): Color = LocalStagePalette.current.shadow(alpha)
 
-/** Corner radii, in mockup pixels. Each phase adds the ones its screens use (rail, video, guide cell…). */
+/** Corner radii, in design pixels (rail, video, guide cell…). */
 object StageRadii {
     val Sheet = 32.mpx
     val Menu = 28.mpx
@@ -240,8 +238,8 @@ val stageAccent: StageAccent
     }
 
 /**
- * Stage type: a mockup size and weight in the user's main font (Plus Jakarta Sans by default).
- * Line height is left to the font, as the mockup's `line-height: normal` leaves it to the browser.
+ * Stage type: a design size and weight in the user's main font (Plus Jakarta Sans by default).
+ * Line height is left to the font, as the design's `line-height: normal` leaves it to the browser.
  */
 @Composable
 @ReadOnlyComposable

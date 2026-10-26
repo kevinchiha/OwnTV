@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -45,11 +44,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import tv.own.owntv.ui.components.FocusableSurface
+import tv.own.owntv.ui.stage.StageFocus
+import tv.own.owntv.ui.stage.StageSurface
 import tv.own.owntv.ui.components.OwnTVIcon
-import tv.own.owntv.ui.theme.OwnTVTheme
 
 /**
  * The docked mini-player (dock-to-corner model). The mpv surface is rendered behind this by the shell;
@@ -122,7 +120,7 @@ fun MiniPlayer(
         ) {
             Text(
                 meta.title ?: "",
-                style = MaterialTheme.typography.labelMedium,
+                style = tv.own.owntv.ui.theme.stageText(22, 700),
                 color = hudInk,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -203,24 +201,19 @@ private fun MiniBtn(
     onClick: () -> Unit,
 ) {
     val accent = hudAccent
-    FocusableSurface(
+    val size = if (lead) 38.dp else 30.dp
+    StageSurface(
         onClick = onClick,
-        modifier = modifier.size(if (lead) 38.dp else 30.dp),
-        shape = CircleShape,
-        focusedScale = 1.02f,
+        radius = size / 2,
+        modifier = modifier.size(size),
         // The dark tiles take focus as light. Play is already the accent circle, so washing it in
-        // more accent would say nothing — it takes a white rim instead.
-        focusLight = if (lead) null else accent,
-        showFocusBorder = !lead,
-        focusedContainerColor = accent,
+        // more accent would say nothing — it fills and takes a white ring instead.
+        focusStyle = if (lead) StageFocus.FILLED else StageFocus.FX,
         // Play is the one accent circle; everything else is a small dark tile.
-        unfocusedContainerColor = if (lead) accent else hudInk.copy(alpha = 0.10f),
-        selectedContainerColor = if (lead) accent else hudInk.copy(alpha = 0.10f),
+        idle = Modifier.background(if (lead) accent else hudInk.copy(alpha = 0.10f), CircleShape),
+        accent = hudFocus(ring = if (lead) hudInk else accent),
         contentAlignment = Alignment.Center,
     ) { focusedTile ->
-        if (lead && focusedTile) {
-            Box(Modifier.matchParentSize().border(1.5.dp, hudInk.copy(alpha = 0.9f), CircleShape))
-        }
         OwnTVIcon(
             icon,
             tint = when {

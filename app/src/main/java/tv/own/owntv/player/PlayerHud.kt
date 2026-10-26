@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -45,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -57,12 +55,9 @@ import tv.own.owntv.core.i18n.horizontalDirection
 import tv.own.owntv.core.settings.RemoteShortcutAction
 import tv.own.owntv.core.settings.RemoteShortcutPress
 import tv.own.owntv.ui.components.LocalRemoteShortcuts
-import tv.own.owntv.ui.components.OwnTVButton
-import tv.own.owntv.ui.components.OwnTVButtonStyle
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.OwnTVSpinner
 import tv.own.owntv.ui.components.displayText // PlayerFailureReason.displayText, for the error overlay
-import tv.own.owntv.ui.theme.LocalActionSurface
 import tv.own.owntv.ui.theme.gradientWash
 
 /**
@@ -144,9 +139,9 @@ fun PlayerHud(
     // Switch to audio-only mode (stops video decode, surfaces the top-bar now-playing bar). Null hides it.
     onAudioMode: (() -> Unit)? = null,
     // Live only, and only when Multiview is switched on in Settings: turn this channel into tile 1 of
-    // the grid. Null hides the button entirely — the feature is opt-in (D3's shape, applied to D5).
+    // the grid. Null hides the button entirely — the feature is opt-in, like the record button.
     onMultiview: (() -> Unit)? = null,
-    // Live only, and only once "Record what I'm watching" is switched on in Settings (D3): record the
+    // Live only, and only once "Record what I'm watching" is switched on in Settings: record the
     // channel already playing, over the connection already open. Null hides the button entirely —
     // the feature does not exist until the user has accepted the one-connection trade-off.
     onRecordThis: (() -> Unit)? = null,
@@ -172,14 +167,14 @@ fun PlayerHud(
     onScrubLive: ((Int) -> Unit)? = null, // timeline scrub: +sec = back, −sec = toward live
     // The playing channel's guide, for the timeline's programme ticks and the scrub bubble's name.
     liveProgrammes: List<LiveProgramme> = emptyList(),
-    /** N4 — the saved copy's holes, for the rewind bar. */
+    /** The saved copy's holes, for the rewind bar. */
     liveGaps: () -> List<LongRange> = { emptyList() },
     // "Go back to…": aim at a point in the archive instead of nudging toward it with rewind. Null =
     // not a catch-up channel. [jumpBackOptions] is read when the list opens so its clock times are
     // computed against the moment the user asked, not the moment the HUD was composed.
     jumpBackOptions: (() -> List<Int>)? = null,
     onJumpBack: ((Int) -> Unit)? = null,
-    // N2 — back to the channel watched before this one. Null hides the button (no previous channel yet).
+    // Back to the channel watched before this one. Null hides the button (no previous channel yet).
     onPreviousChannel: (() -> Unit)? = null,
     // Archive depth of the current channel, for the exact-time picker's day/HH:MM bounds.
     jumpBackWindowSec: (() -> Int)? = null,
@@ -200,10 +195,10 @@ fun PlayerHud(
     // true = currently playing on ExoPlayer.
     vodOnExo: Boolean? = null,
     onToggleVodEngine: (() -> Unit)? = null,
-    // Movie/episode only: open the OpenSubtitles search from the Subtitles dialog (subtitle plan §4).
+    // Movie/episode only: open the OpenSubtitles search from the Subtitles dialog.
     // Null for Live TV and when there's no current-item context, which hides the ADD SUBTITLES row.
     onSearchSubtitles: (() -> Unit)? = null,
-    // Movie/episode only: pick a local subtitle file (plan §7) — no account needed, same gating.
+    // Movie/episode only: pick a local subtitle file — no account needed, same gating.
     onSelectLocalSubtitle: (() -> Unit)? = null,
     // Favorite toggle for the CURRENT item (live channel / movie / series). Null hides the button
     // (no item context). [favorite] = current state — fills the star teal when true.
@@ -213,20 +208,29 @@ fun PlayerHud(
     // (the EPG data lives in LiveViewModel, not the player). Rendered on the right edge whenever the
     // controls are visible, like the top-bar channel card; informational only, never focusable.
     liveEpgCard: (@Composable () -> Unit)? = null,
-    // N3 — now/next lines for the channel-change banner (the playing channel's guide). Null = name only.
+    // Now/next lines for the channel-change banner (the playing channel's guide). Null = name only.
     zapGuide: (@Composable () -> Unit)? = null,
     // The archive's own wall-clock instant while catch-up/rewind is playing; null means the picture is
     // the present, and only the real clock shows. Drives the second, framed clock at top centre.
     // Lambda for the same reason as [timeshiftOffsetSec]: this instant advances every second too.
     watchingWallMs: (() -> Long?)? = null,
-    // N17 — when the programme on air ends, read as the sleep timer opens. Null = no "End of programme".
+    // When the programme on air ends, read as the sleep timer opens. Null = no "End of programme".
     sleepProgrammeEndMs: (() -> Long?)? = null,
-    // N6 — Settings → "Left and right rewind live TV": with the controls hidden, Left/Right on a
+    // Settings → "Left and right rewind live TV": with the controls hidden, Left/Right on a
     // catch-up channel scrub instead of opening the lists. Films always seek.
     liveLeftRightRewinds: Boolean = false,
+    // Sports Hub — only for a channel started from a match; all null means the plain Live player.
+    // The match's score line under the channel name, drawn only while the controls are up.
+    matchLine: (@Composable () -> Unit)? = null,
+    // The other channels showing the match, and their count for the tool's label.
+    onOtherChannels: (() -> Unit)? = null,
+    otherChannelsCount: Int = 0,
+    // The match page.
+    // A goal toast for another followed match is up: OK switches to it instead of showing the controls.
+    onToastOk: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    // T14 — nothing that ticks is read in this root scope: with the controls hidden it used to recompose
+    // Nothing that ticks is read in this root scope: with the controls hidden it used to recompose
     // the whole HUD once a second for a position nobody could see. The offset, the archive clock and the
     // position are handed down as lambdas and read by the piece that draws them.
     val timeshiftOffset: () -> Int? = { timeshiftOffsetSec?.invoke() }
@@ -272,7 +276,7 @@ fun PlayerHud(
     val retryFocus = remember { FocusRequester() }
     val catchFocus = remember { FocusRequester() }
     val nextFocus = remember { FocusRequester() }
-    // The timeline, and whether the next reveal of the controls lands on it rather than Play (N6).
+    // The timeline, and whether the next reveal of the controls lands on it rather than Play.
     val seekFocus = remember { FocusRequester() }
     var focusSeekOnShow by remember { mutableStateOf(false) }
 
@@ -291,7 +295,7 @@ fun PlayerHud(
     // 2026-10-14). Upstream opened with them showing for 4.5 s.
     var controlsVisible by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) } // stream technical-info overlay
-    // Used only by "Report this stream", which writes the current readout into the playback log (F18).
+    // Used only by "Report this stream", which writes the current readout into the playback log.
     val reportContext = androidx.compose.ui.platform.LocalContext.current
     var wakeTick by remember { mutableIntStateOf(0) }
     val forceShow = error != null || dialog != HudDialog.NONE
@@ -310,6 +314,17 @@ fun PlayerHud(
     var engineMsg by remember { mutableStateOf<String?>(null) }
     var engineFlash by remember { mutableIntStateOf(0) }
     LaunchedEffect(engineFlash) { if (engineFlash > 0) { delay(1800); engineMsg = null } }
+    // A channel juddering on ExoPlayer: say once that the other engine may play it smoothly. Longer than
+    // the switch confirmation — this one has to be read.
+    val smoothnessHint by player.smoothnessHint.collectAsStateWithLifecycle()
+    val smoothnessHintText = stringResource(R.string.player_smoothness_hint)
+    LaunchedEffect(smoothnessHint) {
+        if (smoothnessHint) {
+            engineMsg = smoothnessHintText
+            delay(6_000)
+            if (engineMsg == smoothnessHintText) engineMsg = null
+        }
+    }
     // Wrap the engine toggles so a click also surfaces the toast naming the engine we're switching TO.
     val toggleCompat: (() -> Unit)? = onToggleCompatMode?.let { cb -> {
         engineMsg = if (compatMode == true) switchedToExo else switchedToMpv; engineFlash++; cb()
@@ -465,7 +480,6 @@ fun PlayerHud(
             else -> remoteShortcuts.dispatch(action)
         }
     }
-    CompositionLocalProvider(LocalActionSurface provides null) {
     Box(
         modifier = modifier.fillMaxSize()
             .onPreviewKeyEvent { e ->
@@ -569,7 +583,7 @@ fun PlayerHud(
                 canZap && e.key == Key.MediaPrevious -> { zap(-1); true }
                 canZap && isLive && !controlsVisible && e.key == Key.DirectionUp -> { zap(1); true }
                 canZap && isLive && !controlsVisible && e.key == Key.DirectionDown -> { zap(-1); true }
-                // N6 — Left/Right with the controls hidden: reveal them on the timeline and take the first
+                // Left/Right with the controls hidden: reveal them on the timeline and take the first
                 // step, so the jump is seen and holding the key goes on scrubbing the bar itself. Physical
                 // keys, like the bars: left is back in time in every locale. A film always does this; a
                 // live channel only with its archive and the setting on — otherwise the lists below.
@@ -594,6 +608,8 @@ fun PlayerHud(
                     e.key.horizontalDirection(layoutDirection) == HorizontalDirection.START -> { onOpenChannelList(); true }
                 onOpenHistoryList != null && !controlsVisible &&
                     e.key.horizontalDirection(layoutDirection) == HorizontalDirection.END -> { onOpenHistoryList(); true }
+                onToastOk != null && !controlsVisible &&
+                    (e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter) -> { onToastOk(); true }
                 controlsVisible -> { wakeTick++; false }
                 else -> false
             }
@@ -609,7 +625,7 @@ fun PlayerHud(
         // Stream technical info — drawn over everything (and kept up even when the controls auto-hide), so
         // you can read live bitrate/buffer while watching. Toggled from the bottom bar's info button.
         if (showInfo) {
-            // Sits clear of the taller unified top strip (logo + guide) rather than under the old title row.
+            // Sits clear of the taller unified top strip (logo + guide) rather than under a title row.
             StreamInfoOverlay(player, modifier = Modifier.align(Alignment.TopEnd).padding(top = 112.dp, end = 20.dp))
         }
 
@@ -643,7 +659,7 @@ fun PlayerHud(
         // The REC badge, and it is deliberately OUTSIDE `if (controlsVisible)`.
         //
         // The shell hides the status pill during fullscreen playback, so without this a recording
-        // running behind the picture would be completely invisible — which is the one thing D13 says
+        // running behind the picture would be completely invisible — which is the one thing that
         // must not happen. It is drawn whenever anything is recording, HUD up or down, and it is not
         // focusable and not interactive: stopping a recording is the Recordings screen's job, and a
         // stop button one stray D-pad press from the middle of a programme is not a kindness.
@@ -676,6 +692,7 @@ fun PlayerHud(
             TopBar(
                 player, isLive, listOfNotNull(engineChip) + streamChips.ifEmpty { listOfNotNull(videoRes) }, duration, onBack,
                 modifier = Modifier.align(Alignment.TopStart),
+                below = matchLine,
                 trailing = if (error == null) liveEpgCard else null,
                 // Hidden behind an error overlay along with the rest of the chrome: a clock ticking
                 // over a failure message just draws the eye to the wrong thing.
@@ -702,12 +719,13 @@ fun PlayerHud(
                     liveGaps = liveGaps,
                     onOpenJumpBack = if (onJumpBack != null) { { dialog = HudDialog.JUMP_BACK } } else null,
                     onPreviousChannel = onPreviousChannel,
+                    onOtherChannels = onOtherChannels, otherChannelsCount = otherChannelsCount,
                     compatMode = compatMode, onToggleCompatMode = toggleCompat,
                     vodOnExo = vodOnExo, onToggleVodEngine = toggleVod,
                     onInfo = { showInfo = !showInfo }, infoOn = showInfo,
                     onReport = {
                         val meta = player.currentMeta.value
-                        // The readout is gathered on the player's own thread now (A-F2), so the report is
+                        // The readout is gathered on the player's own thread now, so the report is
                         // written from a coroutine. The confirmation still flashes immediately — the user
                         // pressed a button and must see it acknowledged.
                         // Read at the press, not per tick.
@@ -758,7 +776,7 @@ fun PlayerHud(
             ) {
                 Text(
                     msg,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = tv.own.owntv.ui.theme.stageText(25, 600),
                     color = hudInk,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
@@ -775,31 +793,31 @@ fun PlayerHud(
                 // KevBox: an expired subscription says so in place of the error title, reason and detail
                 // lines; Retry and the recording-conflict buttons below stay (AC-28).
                 if (channelShowsExpired) {
-                    Text(stringResource(R.string.kevbox_expired), style = MaterialTheme.typography.titleLarge, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
+                    Text(stringResource(R.string.kevbox_expired), style = tv.own.owntv.ui.theme.stageText(40, 600), color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
                 } else {
-                Text(stringResource(R.string.player_playback_error), style = MaterialTheme.typography.titleLarge, color = Color.White)
+                Text(stringResource(R.string.player_playback_error), style = tv.own.owntv.ui.theme.stageText(40, 600), color = Color.White)
                 Spacer(Modifier.height(8.dp))
                 error?.let {
-                    Text(it.displayText(), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center)
+                    Text(it.displayText(), style = tv.own.owntv.ui.theme.stageText(25, 400), color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center)
                 }
                 // Structured technical detail so a user can report the real cause without adb/logcat:
                 // plain reason → media spec (codec • resolution • decoder) → raw engine/codec line.
                 errorInfo?.let { info ->
                     info.reason?.let {
                         Spacer(Modifier.height(8.dp))
-                        Text(it.displayText(), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.92f), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
+                        Text(it.displayText(), style = tv.own.owntv.ui.theme.stageText(25, 400), color = Color.White.copy(alpha = 0.92f), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
                     }
                     info.spec?.let {
                         Spacer(Modifier.height(4.dp))
-                        Text(it.displayText(), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.55f), textAlign = TextAlign.Center)
+                        Text(it.displayText(), style = tv.own.owntv.ui.theme.stageText(22, 700), color = Color.White.copy(alpha = 0.55f), textAlign = TextAlign.Center)
                     }
                     info.raw?.takeIf { it.isNotBlank() }?.let {
                         Spacer(Modifier.height(4.dp))
-                        Text(stringResource(R.string.player_raw_error, it), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
+                        Text(stringResource(R.string.player_raw_error, it), style = tv.own.owntv.ui.theme.stageText(22, 400), color = Color.White.copy(alpha = 0.6f), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
                     }
                 }
                 } // KevBox: end of the upstream error text
-                // D9 — while a recording is what took the picture away, this screen has TWO buttons
+                // While a recording is what took the picture away, this screen has TWO buttons
                 // instead of a lone Retry, because Retry alone cannot work: the provider's only
                 // stream is busy and trying again just fails again.
                 //
@@ -811,27 +829,27 @@ fun PlayerHud(
                 if (recordingConflict != null) {
                     Text(
                         stringResource(R.string.player_recording_conflict),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = tv.own.owntv.ui.theme.stageText(25, 400),
                         color = Color.White.copy(alpha = 0.92f),
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(0.8f),
                     )
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OwnTVButton(
+                        tv.own.owntv.ui.stage.StageButton(
                             stringResource(R.string.player_keep_watching_stop_recording),
                             onClick = { recordingConflict.stopAndRetry() },
-                            icon = OwnTVIcon.PLAY,
                             modifier = Modifier.focusRequester(retryFocus),
+                            icon = OwnTVIcon.PLAY,
+                            tinted = true,
                         )
-                        OwnTVButton(
+                        tv.own.owntv.ui.stage.StageButton(
                             stringResource(R.string.settings_close),
                             onClick = onBack,
-                            style = OwnTVButtonStyle.SECONDARY,
                         )
                     }
                 } else {
-                    OwnTVButton(stringResource(R.string.common_retry), onClick = { player.retry() }, icon = OwnTVIcon.PLAY, modifier = Modifier.focusRequester(retryFocus))
+                    tv.own.owntv.ui.stage.StageButton(stringResource(R.string.common_retry), onClick = { player.retry() }, modifier = Modifier.focusRequester(retryFocus), icon = OwnTVIcon.PLAY, tinted = true)
                 }
             }
             // A provider wait looks like loading, because that is what it is: the channel is queued behind
@@ -849,7 +867,7 @@ fun PlayerHud(
                         Spacer(Modifier.height(14.dp))
                         Text(
                             stringResource(R.string.player_reconnecting),
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = tv.own.owntv.ui.theme.stageText(25, 400),
                             color = Color.White.copy(alpha = 0.85f),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth(0.7f),
@@ -865,7 +883,7 @@ fun PlayerHud(
                             wait.message ?: stringResource(R.string.player_provider_busy),
                             wait.secondsLeft,
                         ),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = tv.own.owntv.ui.theme.stageText(25, 400),
                         color = Color.White.copy(alpha = 0.85f),
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(0.7f),
@@ -874,7 +892,6 @@ fun PlayerHud(
             }
         }
     }
-    } // CompositionLocalProvider
 
     when (dialog) {
         // Track lists are SNAPSHOT once when the dialog opens (re-polled only while still empty —
@@ -923,7 +940,7 @@ fun PlayerHud(
                 onDismiss = { dialog = HudDialog.NONE },
                 onSearchSubtitles = onSearchSubtitles?.let { open -> { dialog = HudDialog.NONE; open() } },
                 onSelectLocalSubtitle = onSelectLocalSubtitle?.let { open -> { dialog = HudDialog.NONE; open() } },
-                // Subtitle timing (plan §8): only when adjustment applies to the ACTIVE subtitle on the
+                // Subtitle timing: only when adjustment applies to the ACTIVE subtitle on the
                 // current engine (any mpv text sub; external side-loads on ExoPlayer).
                 subDelayMs = subDelay,
                 onAdjustSubDelay = if (player.subtitleTimingAvailable()) player::adjustSubtitleDelay else null,

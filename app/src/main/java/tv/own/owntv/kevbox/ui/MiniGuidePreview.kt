@@ -64,7 +64,7 @@ import tv.own.owntv.features.epg.ProgrammeStripCanvas
 import tv.own.owntv.features.epg.guideNowLine
 import tv.own.owntv.features.epg.programmeEyebrow
 import tv.own.owntv.features.live.LivePlate
-import tv.own.owntv.features.live.ProviderTags
+import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.kevbox.live.GuideSidebar
 import tv.own.owntv.kevbox.live.LiveOnly
 import tv.own.owntv.ui.components.BackgroundPicture

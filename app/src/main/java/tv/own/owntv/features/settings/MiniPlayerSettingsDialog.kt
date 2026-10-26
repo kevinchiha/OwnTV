@@ -35,7 +35,7 @@ import tv.own.owntv.player.labelRes
 import tv.own.owntv.ui.components.trapAllFocusExit
 
 /**
- * Settings → Video player → Mini player: how big the docked mini-player is, and which corner it sits
+ * Settings › Watching & recording › Mini-player: how big the docked mini-player is, and which corner it sits
  * in. Both are also adjustable on the fly from the mini-player's own resize / move buttons.
  *
  * Two settings, so this is **one panel** rather than a screen holding two rows that each opened another
@@ -92,7 +92,7 @@ fun MiniPlayerSettingsDialog(onDismiss: () -> Unit) {
             }
         }
     }
-    // Two settings: in the page's panel (owner, P12), a Stage popup elsewhere.
+    // Two settings: in the page's panel, a Stage popup elsewhere.
     if (panelEditor(onDismiss) { form() }) return
     tv.own.owntv.ui.stage.StagePopup(onDismiss = onDismiss, title = stringResource(R.string.settings_mini_player), body = stringResource(R.string.settings_mini_player_description)) { form() }
 }

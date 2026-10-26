@@ -46,7 +46,7 @@ import tv.own.owntv.core.i18n.horizontalDirection
 import tv.own.owntv.core.parser.XtEpgEntry
 import tv.own.owntv.features.home.relativeLastWatchedLabel
 import tv.own.owntv.features.live.LiveStageRow
-import tv.own.owntv.features.live.ProviderTags
+import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.features.settings.SettingsViewModel
 import tv.own.owntv.kevbox.ui.swallowHeldOk // KevBox: Hold OK removes a history row
 import androidx.compose.runtime.withFrameNanos // KevBox: refocus after a removal

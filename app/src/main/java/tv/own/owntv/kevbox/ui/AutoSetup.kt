@@ -53,7 +53,7 @@ fun KevBoxAutoSetup(firstRun: Boolean, onDone: (Long?) -> Unit, modifier: Modifi
             settings.setAnimationLevel(AnimationLevel.FULL)
         }
         // -1 is upstream's "the letter" avatar, the one its create-profile step starts on.
-        vm.createProfile(profileName, avatarId = -1, isKids = false, pin = null) { vm.finish(onDone) }
+        vm.createProfile(profileName, avatarId = -1, isKids = false, pin = null, picture = null) { vm.finish(onDone) }
     }
     Box(modifier.stageBackground(stageAccent.accent), contentAlignment = Alignment.Center) {
         BrandMark(rememberAppliedIcon(), 180.mpx, followAccent = false)

@@ -28,7 +28,7 @@ import tv.own.owntv.core.database.entity.SourceEntity
 import tv.own.owntv.ui.components.trapAllFocusExit
 
 /**
- * The Stage playlist switcher (P1-07): the options-menu style, 520 wide under the playlist pill, over
+ * The Stage playlist switcher: the options-menu style, 520 wide under the playlist pill, over
  * the Stage scrim with the pill itself redrawn above it, lit, at [pillBounds]. Rows: "All playlists"
  * with the layers icon, then each playlist with its mark and channel count; a ✓ marks the current one.
  */

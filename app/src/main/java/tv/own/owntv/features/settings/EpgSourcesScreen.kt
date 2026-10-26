@@ -40,7 +40,6 @@ import tv.own.owntv.ui.components.rememberDialogFocusRestore
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.OwnTVSpinner
 import tv.own.owntv.ui.components.trapAllFocusExit
-import tv.own.owntv.ui.theme.OwnTVTheme
 import tv.own.owntv.core.sync.work.EpgSyncState
 import tv.own.owntv.core.util.classifySyncFailure
 import tv.own.owntv.ui.components.displayText
@@ -59,7 +58,6 @@ fun EpgSourcesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, startOnA
     val deletingIds by vm.deletingIds.collectAsStateWithLifecycle()
     // KevBox: the automatic guide's ids; null until known, and until then no feed offers Delete (AC-26).
     val automaticIds by vm.automaticIds.collectAsStateWithLifecycle()
-    val colors = OwnTVTheme.colors
 
     var editing by remember { mutableStateOf<EpgSource?>(null) }
     var adding by remember { mutableStateOf(startOnAdd) }
@@ -129,7 +127,7 @@ fun EpgSourcesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, startOnA
         return
     }
 
-    // P10B-11: the guides as rows; the focused one's Re-sync / Edit / Delete in the panel.
+    // The guides as rows; the focused one's Re-sync / Edit / Delete in the panel.
     val actionsFocus = remember { FocusRequester() }
     StageFullPage(
         parents = listOf(stringResource(R.string.settings_group_sources)),
@@ -240,8 +238,8 @@ private fun EpgRow(
     val subtitle = if (tv.own.owntv.core.repository.EpgRepository.stalkerSourceIdOf(source.url) != null) {
         stringResource(R.string.settings_epg_sources_portal_guide)
     } else {
-        // KevBox: masked. An Xtream guide's URL carries the line's username and password (AC-34).
-        HttpClient.redactUrl(source.url)
+        // Never the account's user name and password: an XMLTV address often carries both.
+        tv.own.owntv.core.network.HttpClient.redactUrl(source.url)
     }
     val catchupNote = count?.third?.takeIf { it > 0 }?.let {
         pluralStringResource(R.plurals.settings_epg_sources_catchup, it, it)
@@ -323,7 +321,7 @@ private fun EpgRow(
         keepPanel = keepPanel,
         help = SettingHelp(
             title = source.name,
-            // The address on one line, the counts under it (owner).
+            // The address on one line, the counts under it.
             text = subtitle,
             hints = listOf(
                 "▶" to stringResource(R.string.settings_key_actions),
@@ -380,7 +378,7 @@ internal fun EpgSourceForm(
     val fillFocus = remember { FocusRequester() }
     val submitFocus = remember { FocusRequester() }
 
-    // P10B-12: the fields as rows, Add & sync in the panel (▶ from any row).
+    // The fields as rows, Add & sync in the panel (▶ from any row).
     val parent = stringResource(R.string.settings_epg_sources_title)
     val ok = stringResource(R.string.common_ok)
     val back = stringResource(R.string.common_back)
@@ -528,7 +526,7 @@ private fun PlaylistEpgPicker(
     onDismiss: () -> Unit,
 ) {
     val options by produceState<List<EpgSourcesViewModel.PlaylistEpg>?>(initialValue = null) { value = runCatching { load() }.getOrDefault(emptyList()) }
-    // A list picked from: in the page's panel (owner, P12), a Stage popup elsewhere.
+    // A list picked from: in the page's panel, a Stage popup elsewhere.
     val list: @Composable () -> Unit = {
         val firstFocus = remember { FocusRequester() }
         LaunchedEffect(options) { if (!options.isNullOrEmpty()) { kotlinx.coroutines.delay(60); runCatching { firstFocus.requestFocus() } } }
@@ -539,8 +537,7 @@ private fun PlaylistEpgPicker(
             else -> Column(Modifier.trapAllFocusExit().focusGroup()) {
                 opts.forEach { opt ->
                     // A portal guide has no address to show — say what it is instead.
-                    // KevBox: the address is masked; the Xtream guide URL holds the line's credentials (AC-34).
-                    val line = if (tv.own.owntv.core.repository.EpgRepository.stalkerSourceIdOf(opt.url) != null) stringResource(R.string.settings_epg_sources_portal_guide) else HttpClient.redactUrl(opt.url)
+                    val line = if (tv.own.owntv.core.repository.EpgRepository.stalkerSourceIdOf(opt.url) != null) stringResource(R.string.settings_epg_sources_portal_guide) else tv.own.owntv.core.network.HttpClient.redactUrl(opt.url)
                     tv.own.owntv.ui.stage.StagePopupOption(
                         title = opt.name, subtitle = line, onClick = { onPick(opt) },
                         modifier = if (opt == opts.first()) Modifier.focusRequester(firstFocus) else Modifier,

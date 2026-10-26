@@ -30,7 +30,7 @@ import tv.own.owntv.ui.theme.mpx
 import tv.own.owntv.ui.theme.stageText
 
 /**
- * Settings › Appearance › Glass & background (GB-01 … GB-05): BACKGROUND — Background (Stage / Picture /
+ * Settings › Appearance › Glass & background: BACKGROUND — Background (Stage / Picture /
  * Plain), Picture, Picture look (Sharp / Soft / Dark), Darken, Blur, Accent light — and GLASS — the switch
  * and Glass opacity — then Reset. Every row's panel carries a live preview of Live TV on the background.
  * Rows that only apply to a picture show "Picture only" / "—" and cannot be focused without one.
@@ -195,7 +195,7 @@ internal fun glassBackgroundSummary(background: BackgroundConfig, glass: tv.own.
     return bg + dotSeparator() + g
 }
 
-/** The value a row shows when it does not apply right now: dim text, no chevron (the mockup's `off()`). */
+/** The value a row shows when it does not apply right now: dim text, no chevron. */
 private fun dimValue(text: String) = SettingValue.Custom {
     Text(text, style = stageText(18, 700), color = StageColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }

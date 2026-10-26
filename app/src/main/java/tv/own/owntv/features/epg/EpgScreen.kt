@@ -62,7 +62,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
@@ -76,7 +75,7 @@ import tv.own.owntv.core.model.RecordingStatus
 import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.features.live.LiveCategories
 import tv.own.owntv.features.live.LiveViewModel
-import tv.own.owntv.features.live.ProviderTags
+import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.features.live.edgeScrollSpec
 import tv.own.owntv.features.live.liveCategoryEntries
 import tv.own.owntv.features.live.liveEpgShiftLabel
@@ -101,8 +100,9 @@ private fun epgMessageText(message: EpgMessage): String = when (message) {
     EpgMessage.MismatchedIds -> stringResource(R.string.content_epg_mismatched_ids)
 }
 
+/** The one line an auto-match outcome reads as — beside the Guide's button, and in the shell's toast off it. */
 @Composable
-private fun epgMatchSummaryText(summary: EpgMatchSummary): String = when (summary) {
+internal fun epgMatchSummaryText(summary: EpgMatchSummary): String = when (summary) {
     EpgMatchSummary.CatchupUnavailable -> stringResource(R.string.content_epg_catchup_unavailable)
     EpgMatchSummary.MatchedNoProgrammes -> stringResource(R.string.content_epg_matched_no_programmes)
     EpgMatchSummary.AddPlaylist -> stringResource(R.string.content_epg_add_playlist_first)
@@ -153,7 +153,7 @@ private fun cursorStep(progs: List<EpgProgrammeEntity>, cursor: Long, dir: Int, 
 }
 
 /**
- * The TV Guide in the Stage design (P4-01): the focused channel's preview and the focused programme
+ * The TV Guide in the Stage design: the focused channel's preview and the focused programme
  * with its actions on top; one control line (Today · Now · Category · Order · Search · Auto-match EPG);
  * the ruler with the now-line; 8 slim rows of channel labels and programme cells.
  *
@@ -161,7 +161,7 @@ private fun cursorStep(progs: List<EpgProgrammeEntity>, cursor: Long, dir: Int, 
  * ▲ ▼ step rows at the same time), so a week of guide stays one node per row. OK watches — the channel,
  * or a programme that has been on from the archive; holding OK or ☰ opens the programme menu.
  *
- * With [liveMode] this is Live TV's Guide view (G14): the category is Live TV's own, the title says
+ * With [liveMode] this is Live TV's Guide view: the category is Live TV's own, the title says
  * Live TV, and List view goes back to the channel list.
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -172,7 +172,6 @@ fun EpgScreen(
     onAddEpg: () -> Unit = {},
     restoreFocus: Boolean = false,
     onRestored: () -> Unit = {},
-    onContentScrolled: (Boolean) -> Unit = {},
     /** Required: every live tune in the app goes through the one shared path in LiveViewModel, so a
      *  channel gets the same Prefer HLS handling, ExoPlayer→mpv ladder, per-channel engine pin and
      *  external-player routing however the user reached it. */
@@ -266,8 +265,14 @@ fun EpgScreen(
     }
     LaunchedEffect(Unit) { vm.load() } // reload from DB each time the guide is opened
 
-    // The focused channel plays in the video after the focus settles, as in Live TV.
+    // The preview stays on its channel while the guide is browsed; OK on a row brings that row's channel
+    // into it, and OK again on the channel already there watches it full screen. Following the focus made
+    // every row passed on the way to another one play for a moment.
     val effectivePreview = previewEnabled && livePreviewSetting && guidePreview
+    // KevBox: the TV Guide section only. Live TV keeps its own way (focus previews with the preview on, the
+    // top box with it off; see onOk), so the two never both act on one OK. Reads previewChannelState in the
+    // key handlers, not in composition. Was: `effectivePreview && (!previewArmed || previewChannel?.id != ch.id)`.
+    val previewNeeds: (ChannelEntity) -> Boolean = { ch -> !liveMode && effectivePreview && (!previewArmed || previewChannelState.value?.id != ch.id) }
     // Switching the Guide's own preview off stops what is already playing, not only the next channel.
     LaunchedEffect(guidePreview) { if (!guidePreview && previewEnabled) liveVm.stopPreview() }
     LaunchedEffect(if (effectivePreview) previewChannelState.value?.id else null, effectivePreview, previewArmed) { // KevBox: see previewChannelState
@@ -292,7 +297,6 @@ fun EpgScreen(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val rowListState = rememberLazyListState()
-    LaunchedEffect(rowListState.firstVisibleItemIndex > 0) { onContentScrolled(rowListState.firstVisibleItemIndex > 0) }
 
     // --- The time axis: one scroll position shared by the ruler, the now-line and every row. ----------
     val ppm = with(density) { GuideGridDefaults.PxPerMin.toPx() }
@@ -302,7 +306,7 @@ fun EpgScreen(
     fun maxScroll(): Int = (pxAt(state.windowEnd) - timelinePx).toInt().coerceAtLeast(0)
     fun timeAt(px: Float): Long = state.windowStart + (px / ppm * 60_000f).toLong()
     // A time is shown 3/8 of the way across, as the guide always had it: the programme on now keeps room
-    // on both sides and its title is never cut (owner, 2026-09-30).
+    // on both sides and its title is never cut.
     fun showTime(t: Long) {
         scrollPx = (pxAt(t) - timelinePx * 3f / 8f).toInt().coerceIn(0, maxScroll())
     }
@@ -697,12 +701,16 @@ fun EpgScreen(
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            // Entering from the rail lands in the grid, on the row focus was on.
+            // Entering from the rail lands in the grid, on the row focus was on. Not while the search field
+            // is opening: the Search button it replaces held focus, so the field's own request enters from
+            // outside too, and redirecting it would send focus to the grid instead.
             // KevBox: in Live TV with the guide making room for the column, on the column's open category.
             .focusProperties {
                 onEnter = {
                     if (liveMode && !expanded) runCatching { columnFocus.requestFocus() }
-                    else if (state.channels.isNotEmpty()) runCatching { rowFocus(focusedRow.coerceIn(0, state.channels.size - 1)).requestFocus() }
+                    else if (state.channels.isNotEmpty() && !(searchOpen && !searchHadFocus)) {
+                        runCatching { rowFocus(focusedRow.coerceIn(0, state.channels.size - 1)).requestFocus() }
+                    }
                 }
             }
             .focusGroup(),
@@ -749,7 +757,7 @@ fun EpgScreen(
                     modifier = Modifier.padding(start = 46.mpx, top = 76.mpx).widthIn(max = 1080.mpx),
                 )
             }
-            // The key hints at the bottom right of the top area, level with the video's bottom edge (owner, 2026-10-01).
+            // The key hints at the bottom right of the top area, level with the video's bottom edge.
             // KevBox: liveMode, so ◀ reads "Categories" in Live TV, and OK reads "Preview" on a channel not yet in the box.
             val okPreviews = liveMode && previewEnabled && topChannel != null && !inBox(topChannel)
             Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus, liveMode = liveMode, okPreviews = okPreviews) }
@@ -781,7 +789,7 @@ fun EpgScreen(
 
         }
 
-        // The control line (452): one row, every header button of the old guide kept.
+        // The control line (452): one row with every guide header button.
         val viewTime = timeAt(scrollPx + timelinePx * 3f / 8f)
         val viewDay = localMidnight(viewTime)
         // KevBox: Live TV has no control line (title, day, Now, category, order, search, List view,
@@ -867,7 +875,7 @@ fun EpgScreen(
                 state.channels.isEmpty() -> GuideEmpty(title = state.message?.let { epgMessageText(it) } ?: stringResource(R.string.content_epg_no_guide))
                 else -> {
                     val gx = fx(48) + labelW
-                    // The number column fits the longest channel number (38 = the mockup's three digits).
+                    // The number column fits the longest channel number (38 = three digits).
                     val numberWidth = maxOf(38f, (state.channels.maxOfOrNull { it.number?.toString()?.length ?: 0 } ?: 0) * 11f).mpx
                     // KevBox: the guide search's group headings by the row they sit above, and the text that
                     // outlines matching shows: the query the load used (null under two letters, so the grid
@@ -930,13 +938,19 @@ fun EpgScreen(
                                         selectedRow = isSelectedRow, // KevBox: see isSelectedRow
                                         cursorTime = cursorTime,
                                         cellMode = inCellMode,
-                                        onEnterCell = { cursorTime = System.currentTimeMillis(); inCellMode = true },
+                                        onEnterCell = {
+                                            cursorTime = System.currentTimeMillis()
+                                            inCellMode = true
+                                            if (previewNeeds(channel)) liveVm.onChannelFocused(channel)
+                                        },
                                         recordingStarts = recordingsByChannel[channel.id].orEmpty(),
                                         reminderStarts = remindersByChannel[channel.id].orEmpty(),
                                         onFocused = {
                                             focusedRow = index
                                             if (cursorTime !in state.windowStart until state.windowEnd) cursorTime = System.currentTimeMillis()
-                                            liveVm.onChannelFocused(channel)
+                                            // KevBox: Live TV still follows focus (its guide lookup, or the focus
+                                            // preview when that is on). Was: `if (!effectivePreview)` alone.
+                                            if (liveMode || !effectivePreview) liveVm.onChannelFocused(channel)
                                         },
                                         onCursor = { cursorTime = it },
                                         onShow = { p -> selected = channel to p },
@@ -953,7 +967,7 @@ fun EpgScreen(
                                                 else -> { stepTo(to); true }
                                             }
                                         },
-                                        onOk = { p -> onOk(channel, p) },
+                                        onOk = { p -> if (previewNeeds(channel)) liveVm.onChannelFocused(channel) else onOk(channel, p) },
                                         okOnRow = liveMode, // KevBox: OK on a Live TV row previews, then watches
                                         matchText = matchText, // KevBox: matching shows get an accent outline
 
@@ -1027,7 +1041,7 @@ fun EpgScreen(
             )
         }
 
-        // ◀ … Category ▾ (P4-03): Live TV's own list as the sheet, titled for the guide.
+        // ◀ … Category ▾: Live TV's own list as the sheet, titled for the guide.
         if (sheetOpen) {
             val railCounts by liveVm.railCounts.collectAsStateWithLifecycle()
             val (sheetEntries, _) = liveCategoryEntries(railItems, railCounts)
@@ -1313,7 +1327,7 @@ private fun GuideEmpty(title: String, body: String? = null, action: String? = nu
 }
 
 /**
- * How to move, under the programme beside the video (owner, 2026-10-01: in place of the old action buttons,
+ * How to move, under the programme beside the video (in place of action buttons,
  * which could not be reached without leaving the channel — they are all in Hold OK's menu). At row level:
  * OK Browse · ▲▼ Channels · ◀ Menu · Hold OK Options; inside a row: OK Watch · ◀ ▶ Programs · Back Channels.
  */

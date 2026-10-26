@@ -91,13 +91,13 @@ enum class RailState {
  */
 data class NowPlayingRail(val logoUrl: String?, val audioMode: Boolean, val playing: Boolean)
 
-/** The mockup's rail order (`screens.js` `cRail`): Search first, the Guide right after Live TV, More last. */
+/** The rail order: Search first, Sports then the Guide right after Live TV, More last. */
 private val StageRailOrder = listOf(
-    MainSection.SEARCH, MainSection.HOME, MainSection.LIVE_TV, MainSection.EPG,
+    MainSection.SEARCH, MainSection.HOME, MainSection.LIVE_TV, MainSection.SPORTS, MainSection.EPG,
     MainSection.MOVIES, MainSection.SERIES, MainSection.DOWNLOADS,
 )
 
-/** The rail's width with names (P1b): Normal 280 · Wide 340 · Extra wide 400; Compact is the 84 capsule. */
+/** The rail's width with names: Normal 280 · Wide 340 · Extra wide 400; Compact is the 84 capsule. */
 private val NavSize.openWidth get() = when (this) {
     NavSize.COMPACT -> 84
     NavSize.NORMAL -> 280
@@ -116,7 +116,7 @@ fun railDockedReserve(size: NavSize) =
 val StageContentTop = 110.mpx
 
 /**
- * The Stage navigation rail (P1-01 … P1-05, P1-13 … P1-17): a floating glass capsule, the rail at its
+ * The Stage navigation rail: a floating glass capsule, the rail at its
  * [size] over a scrim or docked, or only the accent glow at the edge. [count] is the number beside an
  * item (Wide and up) and [detail] the line under its name (Extra wide), null for none. [length] Full
  * runs the rail the height of the screen. Entering the rail from the content always lands on the
@@ -220,7 +220,7 @@ fun StageRail(
                         }
                     }
                 }
-                // ▶ always leaves for the content (P10B B1). The open rail can cover the content's left
+                // ▶ always leaves for the content. The open rail can cover the content's left
                 // column (More's sheet), and then the D-pad search finds nothing to its right and focus
                 // simply stayed in the rail.
                 .onKeyEvent { e ->
@@ -280,6 +280,7 @@ private val MainSection.stageIcon: OwnTVIcon
         MainSection.HOME -> OwnTVIcon.HOME
         MainSection.LIVE_TV -> OwnTVIcon.LIVE_TV
         MainSection.EPG -> OwnTVIcon.EPG
+        MainSection.SPORTS -> OwnTVIcon.SPORTS
         MainSection.MOVIES -> OwnTVIcon.MOVIES
         MainSection.SERIES -> OwnTVIcon.SERIES
         MainSection.DOWNLOADS -> OwnTVIcon.DOWNLOADS
@@ -319,7 +320,7 @@ private fun ColumnScope.RailBrand(open: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BrandMark(icon, 50.mpx)
-        // The #227 wordmark, 130 wide (`.brandrow`, `wordmarkC()`).
+        // The wordmark, 130 wide (`.brandrow`, `wordmarkC()`).
         Wordmark(130.mpx)
     }
 }

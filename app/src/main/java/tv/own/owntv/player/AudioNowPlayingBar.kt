@@ -83,9 +83,9 @@ import tv.own.owntv.ui.theme.animationsOn
 
 /**
  * The wide "now-playing" bar shown in the top bar (left of the weather chip) while [PlayerMode.AUDIO]
- * is active — Audio Mode plan §6. Video is stopped; only audio plays.
+ * is active. Video is stopped; only audio plays.
  *
- * **Two-stage focus (owner spec):**
+ * **Two-stage focus:**
  *  1. **Collapsed** — no D-pad focus: equaliser cover + title + a static play/pause glyph.
  *  2. **Stage 1 — pill focused:** focus lands on the WHOLE bar as one target (highlighted, expanded to
  *     show the full row). The inner buttons are NOT individually navigable yet.
@@ -199,7 +199,7 @@ fun AudioNowPlayingBar(
             .focusGroup(),
     ) {
         if (!expanded) {
-            // Rest (P1-08): a glass pill in the Continue pill's place — equaliser, "Now playing", title.
+            // Rest: a glass pill in the Continue pill's place — equaliser, "Now playing", title.
             Row(
                 Modifier.height(50.mpx).widthIn(max = 470.mpx).stageGlass(StageRadii.Pill).padding(horizontal = 18.mpx),
                 horizontalArrangement = Arrangement.spacedBy(10.mpx),
@@ -212,7 +212,7 @@ fun AudioNowPlayingBar(
                 Text(meta.title ?: "", style = stageText(18, 700), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         } else {
-            // Focused (P1-09): the whole card is one target, drawn FX. OK (P1-10/11): the accent rim,
+            // Focused: the whole card is one target, drawn FX. OK: the accent rim,
             // and focus moves into the buttons.
             val r = 22.mpx
             Row(
@@ -375,7 +375,7 @@ private fun pulse(): Float {
 }
 
 /**
- * Bars that dance while [playing] and freeze flat when paused (Audio Mode plan §3/§6). Also stands in
+ * Bars that dance while [playing] and freeze flat when paused. Also stands in
  * for the missing picture on the sidebar's Now Playing item while Audio Mode is running.
  */
 @Composable

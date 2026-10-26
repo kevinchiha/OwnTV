@@ -33,6 +33,8 @@ class SetupViewModel(
     /** A restore runs here, not in [viewModelScope]: Back while it runs leaves the app, and a restore
      *  cancelled half way leaves a profile with some of its data and none of the rest. */
     private val appScope: kotlinx.coroutines.CoroutineScope,
+    private val profiles: tv.own.owntv.core.profile.ProfileManager,
+    private val profileDao: tv.own.owntv.core.database.dao.ProfileDao,
 ) : ViewModel() {
 
     // ---- Remote (companion) add-source: a LAN web form fills the Add Source screen from another device. ----
@@ -87,9 +89,16 @@ class SetupViewModel(
         finish(onDone)
     }
 
-    /** Creates the profile (not active yet); the rest of onboarding attaches content to it. */
-    fun createProfile(name: String, avatarId: Int, isKids: Boolean, pin: String?, onCreated: (Long) -> Unit = {}) {
-        viewModelScope.launch { onCreated(importer.createProfile(name, avatarId, isKids, pin)) }
+    /**
+     * Creates the profile (not active yet); the rest of onboarding attaches content to it. [picture],
+     * when one was chosen, is stored once the profile has an id to store it under.
+     */
+    fun createProfile(name: String, avatarId: Int, isKids: Boolean, pin: String?, picture: File?, onCreated: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val id = importer.createProfile(name, avatarId, isKids, pin)
+            if (picture != null) profileDao.getById(id)?.let { profiles.setCustomAvatar(it, picture) }
+            onCreated(id)
+        }
     }
 
     fun startXtream(
@@ -163,8 +172,8 @@ class SetupViewModel(
      * ask for the backup password via [SourceImporter.ImportState.NeedPassword].
      *
      * [sections] is what the user ticked before the restore began, and defaults to all of it — which
-     * is what the wizard did unconditionally until it gained a picker of its own. Settings → Backup
-     * & Restore has always asked; the first run, where a restore is most likely, did not.
+     * is what the wizard did unconditionally until it gained a picker of its own. More → Backup &
+     * Restore has always asked; the first run, where a restore is most likely, did not.
      */
     fun importBackup(
         file: File,

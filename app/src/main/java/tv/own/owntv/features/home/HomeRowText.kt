@@ -22,6 +22,7 @@ fun HomeRow.displayTitle(): String = stringResource(
     when (this) {
         HomeRow.TRENDING -> R.string.home_row_now_trending
         HomeRow.HERO -> R.string.home_row_keep_watching
+        HomeRow.LIVE_SPORTS -> R.string.sports_home_row
         HomeRow.RECENT_CHANNELS -> R.string.home_row_recent_channels
         HomeRow.FAVORITE_CHANNELS -> R.string.home_row_favorite_channels
         HomeRow.FAVORITE_MOVIES -> R.string.home_row_favorite_movies
@@ -36,6 +37,7 @@ fun HomeRow.settingsDescription(): String = stringResource(
     when (this) {
         HomeRow.TRENDING -> R.string.home_row_trending_description
         HomeRow.HERO -> R.string.home_row_hero_description
+        HomeRow.LIVE_SPORTS -> R.string.sports_home_row_description
         HomeRow.RECENT_CHANNELS -> R.string.home_row_recent_description
         HomeRow.FAVORITE_CHANNELS -> R.string.home_row_favorite_description
         HomeRow.FAVORITE_MOVIES -> R.string.home_row_favorite_movies_description

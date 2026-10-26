@@ -4,7 +4,7 @@ package tv.own.owntv.kevbox.live
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import tv.own.owntv.core.nav.MainSection
-import tv.own.owntv.features.live.ProviderName
+import tv.own.owntv.core.live.ProviderName
 
 class LiveOnlyTest {
 

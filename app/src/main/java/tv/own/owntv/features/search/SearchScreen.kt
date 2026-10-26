@@ -67,6 +67,7 @@ import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import tv.own.owntv.R
 import tv.own.owntv.core.content.SearchIntent
+import tv.own.owntv.core.content.SearchKind
 import tv.own.owntv.core.content.ProgrammeSearchResult
 import tv.own.owntv.core.content.SearchResults
 import tv.own.owntv.core.database.dao.ChannelSearchResult
@@ -78,7 +79,7 @@ import tv.own.owntv.core.metadata.HeadlineTitle
 import tv.own.owntv.features.live.LivePlate
 import tv.own.owntv.features.live.LiveStagePane
 import tv.own.owntv.features.live.LiveViewModel
-import tv.own.owntv.features.live.ProviderTags
+import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.features.movies.movieTitleInfo
 import tv.own.owntv.features.series.seriesTitleInfo
 import tv.own.owntv.features.settings.dotSeparator
@@ -120,6 +121,16 @@ private fun SearchIntent.displayLabel(): String = stringResource(
     },
 )
 
+@Composable
+private fun SearchKind.label(): String = stringResource(
+    when (this) {
+        SearchKind.LIVE -> R.string.common_nav_live_tv
+        SearchKind.TV_SHOWS -> R.string.search_on_tv
+        SearchKind.MOVIES -> R.string.common_nav_movies
+        SearchKind.SERIES -> R.string.common_nav_series
+    },
+)
+
 /** One line of the results column: a group heading, a result, or the "All n channels" row. */
 private sealed interface Entry {
     val key: String
@@ -133,14 +144,14 @@ private sealed interface Entry {
     data class AllChannels(val count: Int) : Entry { override val key = "all-channels" }
 }
 
-/** All shows the first four channels, then the "All n channels" row, so movies are always on screen. */
+/** With several kinds shown: the first four channels, then the "All n channels" row, so the rest stay on screen. */
 private const val ALL_TAB_CHANNELS = 4
 
 /**
- * Global search in the Stage design (SR-01 … SR-07): the title band, the field, tabs over grouped
+ * Global search in the Stage design: the title band, the field, tabs over grouped
  * results on the left, and on the right the focused result — Live TV's own preview pane for a channel,
- * the poster panel for a movie or series. A movie or series goes to its own page (issue #233). Back
- * clears the search first, then leaves.
+ * the poster panel for a movie or series. Search only shows: OK goes to the item, where
+ * playing, downloading and every option already live. Back clears the search first, then leaves.
  *
  * KevBox: a channel plays the way Live TV's grid plays one (Kevin, 2026-10-14). Moving through the
  * results plays nothing; OK puts the channel in the box on the right, OK on the channel already there
@@ -176,7 +187,7 @@ fun SearchScreen(
     val curated by vm.curatedResults.collectAsStateWithLifecycle()
     val intent by vm.intent.collectAsStateWithLifecycle()
     val recent by vm.recentSearches.collectAsStateWithLifecycle()
-    val tab by vm.tab.collectAsStateWithLifecycle()
+    val kinds by vm.kinds.collectAsStateWithLifecycle()
     val marks by vm.playlistMarks.collectAsStateWithLifecycle()
     val categoryNames by vm.categoryNames.collectAsStateWithLifecycle()
     val focusedMeta by vm.focusedMeta.collectAsStateWithLifecycle()
@@ -192,7 +203,7 @@ fun SearchScreen(
     val showTabFocus = remember { tv.own.owntv.kevbox.live.SearchShowTab.entries.associateWith { FocusRequester() } }
 
     val fieldFocus = remember { FocusRequester() }
-    val tabFocus = remember { SearchTab.entries.associateWith { FocusRequester() } }
+    val filterFocus = remember { SearchKind.entries.associateWith { FocusRequester() } }
     val jumpFocus = remember { FocusRequester() }
     val scheduleFocus = remember { FocusRequester() }
     val rowFocus = remember { HashMap<String, FocusRequester>() }
@@ -210,8 +221,10 @@ fun SearchScreen(
     // KevBox: a typed query splits into a Channels tab and a TV guide tab (Kevin, 2026-10-14); a Jump to
     // list keeps the one grouped list.
     val openShowTab = tv.own.owntv.kevbox.live.pickShowTab(chosenShowTab, shown.channels.size, shows.size)
-    val groupedEntries = searchEntries(shown, SearchTab.ALL, capChannels = false)
-    val channelEntries = searchEntries(shown, SearchTab.LIVE, capChannels = false)
+    // KevBox: upstream's filter buttons (Live TV, TV Shows, Movies, Series) stay hidden, so the kinds the
+    // view model holds are never applied. Was: `results.only(kinds)` and `grouped = !singleKind`.
+    val groupedEntries = searchEntries(shown, grouped = true, capChannels = false)
+    val channelEntries = searchEntries(shown, grouped = false, capChannels = false)
     val showEntries = showEntries(shows)
     val entries = when {
         !searching -> groupedEntries
@@ -224,6 +237,7 @@ fun SearchScreen(
     val hasResults = !shown.isEmpty || (searching && shows.size > 0) // KevBox: shows count as results
     val nothingFound = !hasResults && !loading // KevBox
     val showTabsRow = searching && hasResults // KevBox
+    var filterFocused by remember { mutableStateOf<SearchKind?>(null) } // KevBox: stays null, the buttons are hidden
 
     // The focused row drives the right side; nothing focused yet = the first result.
     var focusedKey by remember { mutableStateOf<String?>(null) }
@@ -262,6 +276,7 @@ fun SearchScreen(
         }
         vm.setQuery("")
         vm.setIntent(null)
+        vm.clearKinds()
         if (returnToHomeOnBack) onReturnToHome()
         else runCatching { fieldFocus.requestFocus() }
     }
@@ -383,7 +398,7 @@ fun SearchScreen(
         val panelX = fx(944)
         val panelW = fx(912)
 
-        // Title band: "Search" + "“sky” · 12 results" (SR-01).
+        // Title band: "Search" + "“sky” · 12 results".
         val titleModifier = Modifier.padding(start = fx(84), top = 52.mpx).width(fx(826))
         if (showingResults) {
             val total = shown.channels.size + shown.movies.size + shown.series.size + shown.programmes.size +
@@ -407,9 +422,8 @@ fun SearchScreen(
                 .width(listW)
                 .focusRequester(fieldFocus)
                 .onFocusChanged { fieldHasFocus = it.hasFocus } // KevBox: for ▼'s wait below
-                // ▼ lands on the open tab, not whichever tab is nearest below.
-                // KevBox: no tabs, so ▼ lands on the first result, from the pill and from the text being edited
-                // alike (the default search found nothing below the field).
+                // KevBox: no filter buttons, so ▼ lands on the first result (or KevBox's tabs, below), from the
+                // pill and from the text being edited alike (the default search found nothing below the field).
                 // KevBox: scrolled there first. The list keeps its scroll position while Search stays open (a
                 // channel no longer takes you to Live TV), so new results can open scrolled down, with the
                 // first row not laid out and its focus request failing: ▼ then did nothing (Kevin, 2026-10-14).
@@ -444,7 +458,7 @@ fun SearchScreen(
                         true
                     } else false
                 }
-                .focusProperties { down = if (!showingResults) jumpFocus else FocusRequester.Default },
+                .focusProperties { down = if (!showingResults) jumpFocus else FocusRequester.Default }, // KevBox: ▼ handled above
         )
 
         if (!showingResults) {
@@ -465,21 +479,20 @@ fun SearchScreen(
             )
         }
 
-        if (false) { // KevBox: no tab row; with Movies and Series gone, All and Live TV were the same list.
-            // Tabs (SR-01): the focused tab is the open one, so ◀ ▶ change it.
+        // KevBox: upstream's filter buttons stay hidden. Movies and Series never show, and KevBox's own
+        // Channels and TV guide tabs below replace Live TV and TV Shows. Was: `if (searching) {`.
+        if (false) {
+            // Filter buttons: OK switches one on or off, several can be on, none on shows everything.
             Row(Modifier.padding(start = fx(84) - 12.mpx, top = 192.mpx), horizontalArrangement = Arrangement.spacedBy(16.mpx)) {
-                listOf(
-                    Triple(SearchTab.ALL, stringResource(R.string.settings_customize_filter_all), results.channels.size + results.movies.size + results.series.size + results.programmes.size),
-                    Triple(SearchTab.LIVE, stringResource(R.string.common_nav_live_tv), results.channels.size + results.programmes.size),
-                    Triple(SearchTab.MOVIES, stringResource(R.string.common_nav_movies), results.movies.size),
-                    Triple(SearchTab.SERIES, stringResource(R.string.common_nav_series), results.series.size),
-                ).forEach { (t, label, n) ->
+                SearchKind.entries.forEach { k ->
                     StageTab(
-                        label = label,
-                        count = localizedInteger(n),
-                        selected = tab == t,
-                        onClick = { vm.setTab(t) },
-                        modifier = Modifier.focusRequester(tabFocus.getValue(t)).onFocusChanged { if (it.isFocused) vm.setTab(t) },
+                        label = k.label(),
+                        count = localizedInteger(results.count(k)),
+                        selected = k in kinds,
+                        onClick = { vm.toggleKind(k) },
+                        modifier = Modifier
+                            .focusRequester(filterFocus.getValue(k))
+                            .onFocusChanged { if (it.isFocused) filterFocused = k else if (filterFocused == k) filterFocused = null },
                     )
                 }
             }
@@ -555,7 +568,8 @@ fun SearchScreen(
                                 ?.let { scope.launch { focusRow(entries[it].key) } }
                         },
                     ) // KevBox: see above
-                    // ▲ out of the results lands on the open tab (KevBox: the search field when there are no tabs).
+                    // ▲ out of the results lands on the first button that is on, not the one nearest the row.
+                    // KevBox: on the open Channels / TV guide tab instead, or the search field when there are no tabs.
                     .focusProperties {
                         onExit = {
                             if (searching && requestedFocusDirection == FocusDirection.Up) {
@@ -576,8 +590,8 @@ fun SearchScreen(
                         is Entry.AllChannels -> StageTool(
                             text = pluralStringResource(R.plurals.search_all_channels, e.count, e.count),
                             icon = OwnTVIcon.LIST,
-                            // The first channel keeps its row (same key) in the Live TV tab, so focus moves
-                            // onto it first; otherwise it would fall onto the All tab and switch back.
+                            // The first channel keeps its row (same key) with only Live TV on, so focus moves
+                            // onto it first rather than up onto the filter buttons.
                             onClick = {
                                 scope.launch {
                                     shown.channels.firstOrNull()?.let { first ->
@@ -586,7 +600,7 @@ fun SearchScreen(
                                         withFrameNanos { }
                                         runCatching { requesterFor(key).requestFocus() }
                                     }
-                                    vm.setTab(SearchTab.LIVE)
+                                    vm.showOnly(SearchKind.LIVE)
                                 }
                             },
                             modifier = rowModifier.padding(top = 10.mpx),
@@ -684,9 +698,12 @@ fun SearchScreen(
             }
         }
 
-        // Key hints, bottom left (SR-01).
+        // Key hints, bottom left.
         val hints = buildList {
-            if (showingResults && hasResults) { // KevBox: shows count as results
+            val onFilter = filterFocused
+            if (onFilter != null) {
+                add(stringResource(R.string.common_ok) to stringResource(if (onFilter in kinds) R.string.content_key_unselect else R.string.content_key_select))
+            } else if (showingResults && hasResults) { // KevBox: shows count as results
                 add(
                     stringResource(R.string.common_ok) to stringResource(
                         when (active) {
@@ -726,22 +743,22 @@ private fun Entry.channel(): ChannelEntity? = when (this) {
     else -> null
 }
 
-/** The rows in display order for [tab]; All groups them under headings (SR-01). */
+/** The rows in display order; [grouped] puts each kind under its heading, else one flat list. */
 @Composable
-private fun searchEntries(results: SearchResults, tab: SearchTab, capChannels: Boolean): List<Entry> {
+private fun searchEntries(results: SearchResults, grouped: Boolean, capChannels: Boolean): List<Entry> {
     val live = stringResource(R.string.common_nav_live_tv)
     val movies = stringResource(R.string.common_nav_movies)
     val series = stringResource(R.string.common_nav_series)
     val onTv = stringResource(R.string.search_on_tv)
     val sep = dotSeparator()
-    return remember(results, tab, capChannels, live, movies, series, onTv, sep) {
+    return remember(results, grouped, capChannels, live, movies, series, onTv, sep) {
         val locale = java.util.Locale.getDefault()
         fun heading(label: String, n: Int, key: String) = Entry.Heading(label.uppercase(locale) + sep + n.toString(), key)
-        when (tab) {
-            SearchTab.LIVE -> results.channels.map { Entry.Channel(it) } + results.programmes.map { Entry.Programme(it) }
-            SearchTab.MOVIES -> results.movies.map { Entry.Movie(it) }
-            SearchTab.SERIES -> results.series.map { Entry.Series(it) }
-            SearchTab.ALL -> buildList {
+        if (!grouped) {
+            results.channels.map { Entry.Channel(it) } + results.programmes.map { Entry.Programme(it) } +
+                results.movies.map { Entry.Movie(it) } + results.series.map { Entry.Series(it) }
+        } else {
+            buildList {
                 if (results.channels.isNotEmpty()) {
                     add(heading(live, results.channels.size, "h-live"))
                     val cap = capChannels && results.channels.size > ALL_TAB_CHANNELS
@@ -847,7 +864,7 @@ private fun SearchRow(
     // KevBox: Hold OK on a channel opens it in Live TV's guide (Kevin, 2026-10-14). Upstream: nothing (#233).
     onLongClick: () -> Unit = {},
 ) {
-    StageRow(onClick = onClick, onLongClick = onLongClick, height = 84.mpx, horizontalPadding = 18.mpx, gap = 18.mpx, modifier = modifier.fillMaxWidth()) { focused ->
+    StageRow(onClick = onClick, onLongClick = onLongClick, height = 84.mpx, horizontalPadding = 18.mpx, gap = 18.mpx, modifier = modifier.fillMaxWidth()) { focused -> // KevBox: onLongClick
         leading()
         Column(Modifier.weight(1f)) {
             Text(title, style = stageText(21, 700), color = if (focused) StageColors.FxText else StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -871,7 +888,7 @@ private fun SmallPoster(url: String?, placeholder: OwnTVIcon) {
 }
 
 /**
- * The poster panel (SR-02 … 04), in the Live TV preview's frame and place: the backdrop 16:9 (or the
+ * The poster panel, in the Live TV preview's frame and place: the backdrop 16:9 (or the
  * poster blurred, with the sharp poster at the right), a MOVIE / SERIES tag, the title art or name at
  * the bottom left; under it year • genres • runtime • ★ rating and tags, three lines of plot, five cast.
  */
@@ -944,7 +961,7 @@ private fun PosterPanel(info: VodTitleInfo, series: Boolean, modifier: Modifier 
     }
 }
 
-/** SR-06: JUMP TO (Continue watching · Unwatched · Channels), RECENT SEARCHES as rows, then Clear. */
+/** The empty page: JUMP TO (Continue watching · Unwatched · Channels), RECENT SEARCHES as rows, then Clear. */
 @Composable
 private fun Launcher(
     firstFocus: FocusRequester,
@@ -1001,7 +1018,7 @@ private fun RecentRow(term: String, onClick: () -> Unit) {
     }
 }
 
-/** SR-06's glass card: what Search does, and where a result takes you. */
+/** The empty page's glass card: what Search does, and where a result takes you. */
 @Composable
 private fun LauncherCard(modifier: Modifier = Modifier) {
     Column(modifier.stageGlass(30.mpx).padding(horizontal = 38.mpx, vertical = 34.mpx)) {
@@ -1018,7 +1035,7 @@ private fun LauncherCard(modifier: Modifier = Modifier) {
     }
 }
 
-/** SR-05: "Nothing found for “qwzx”" and what search looks in. */
+/** No results: "Nothing found for “qwzx”" and what search looks in. */
 @Composable
 private fun NothingFound(title: String, modifier: Modifier = Modifier) {
     Column(modifier) {
