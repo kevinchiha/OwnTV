@@ -78,3 +78,4 @@ rows, i18n literal classification.
 - Task 1: started at 335d7752
 - Task 1: landed (79a3f170). link() is top-level internal in FootballListings.kt; extra internal listings() and parseListings(); hardcoded_baseline.txt unchanged.
 - Task 2: started at c53f54db
+- Task 2: landed (557e77f7). MARK = "\u0001kevbox-liveonsat"; Room reads in RoomListedChannelReads; a cached Core answer now waits for one listings read (up to SupabaseApi's 15 s timeout on a slow network); the hub's channelsFound (Remind me) is not merged.
