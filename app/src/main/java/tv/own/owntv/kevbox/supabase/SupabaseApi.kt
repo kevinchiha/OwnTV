@@ -67,6 +67,21 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         return response
     }
 
+    /**
+     * The football matches LiveOnSat lists with kickoff between [fromIso] and [toIso], each with the
+     * provider channels kevbox.dev matched to it, earliest first. Both bounds are ISO-8601 UTC
+     * instants ending in `Z`, as the query goes out unencoded.
+     */
+    suspend fun selectFootballListings(accessToken: String, fromIso: String, toIso: String): ApiResponse {
+        // One `and` filter: the query is a map, so two `kickoff` keys cannot both go out.
+        val query = mapOf(
+            "select" to LISTING_COLUMNS,
+            "and" to "(kickoff.gte.$fromIso,kickoff.lte.$toIso)",
+            "order" to "kickoff.asc",
+        )
+        return send(LISTING_PATH, query, accessToken) { get() }
+    }
+
     suspend fun accessVerdict(accessToken: String): ApiResponse =
         post(VERDICT_PATH, emptyMap(), JSONObject(), accessToken)
 
@@ -159,7 +174,9 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     ): ApiResponse {
         val base = root ?: return UNREACHABLE
         val url = base.newBuilder().addPathSegments(path).apply {
-            // Every query value is a constant of this file, so it goes out as written (commas kept).
+            // Every query value is a constant of this file, or the football listings' `and` filter
+            // around two ISO-8601 UTC timestamps ending in `Z` (no `+` to encode), so it goes out as
+            // written (commas kept).
             query.forEach { (name, value) -> addEncodedQueryParameter(name, value) }
         }.build()
         val request = Request.Builder().url(url)
@@ -190,6 +207,8 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val PLAYLIST_PATH = "rest/v1/member_playlist"
         const val PLAYLIST_COLUMNS = "client_number,name,server_url,username,password"
         const val PROXY_COLUMNS = ",proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password"
+        const val LISTING_PATH = "rest/v1/football_listing"
+        const val LISTING_COLUMNS = "kickoff,competition,home,away,channels"
         const val HTTP_BAD_REQUEST = 400
         const val UNDEFINED_COLUMN = "42703"
         const val VERDICT_PATH = "rest/v1/rpc/get_access_verdict"
