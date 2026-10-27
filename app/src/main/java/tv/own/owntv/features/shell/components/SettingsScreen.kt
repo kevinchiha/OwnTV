@@ -108,7 +108,6 @@ internal enum class TileTone { PRIMARY, SECONDARY, TERTIARY }
 
 // KevBox: SOURCES (Playlists, which opened ManageSourcesScreen) gives way to CHOOSE_PLAYLIST; BACKUP and
 // LOCAL_SYNC are gone. Members add, edit, restore and sync no sources: the admin assigns playlists.
-// KevBox: SPORTS stays (upstream's Sports page); LiveOnlySettings hides its row and search entry.
 private enum class SettingsTab { ROOT, LANGUAGE, CHOOSE_PLAYLIST, EPG, CUSTOMIZE, HOME, NETWORK, DNS, METADATA, OPEN_SUBTITLES, WEATHER, CH_NAV, PANEL_WIDTH, GUIDE_WIDTH, GLASS_EFFECT, CONTENT_MENUS, FONTS, BROWSING, SUBTITLE_STYLE, SPORTS }
 
 @Composable
@@ -1082,8 +1081,7 @@ fun SettingsScreen(
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_logging"), stringResource(R.string.settings_detailed_playback_logging), stringResource(R.string.settings_search_keywords_detailed_logging), OwnTVIcon.INFO, TileTone.SECONDARY) { jumpVideo("vp_logging", false) },
             // KevBox: no Proxy entry; the proxy is set in kevbox.dev.
             SettingsSearchEntry(stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_group_app), stringResource(R.string.settings_group_network)), stringResource(R.string.settings_dns), stringResource(R.string.settings_search_keywords_dns), OwnTVIcon.DNS, TileTone.SECONDARY) { open(SettingsTab.DNS) },
-            SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.sports_title), stringResource(R.string.sports_leagues), OwnTVIcon.SPORTS, TileTone.PRIMARY,
-                key = tabRowKey(SettingsTab.SPORTS)) { open(SettingsTab.SPORTS) }, // KevBox: key, hidden; KevBox Live has no Sports
+            SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.sports_title), stringResource(R.string.sports_leagues), OwnTVIcon.SPORTS, TileTone.PRIMARY) { open(SettingsTab.SPORTS) },
             // Settings inside a sub-screen, by their own names (kept out of line: this function is at the JVM size limit).
             *subScreenSearchEntries { t -> open(t) }.toTypedArray(),
             SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.settings_app_startup), stringResource(R.string.settings_search_keywords_startup), OwnTVIcon.POWER, TileTone.SECONDARY,

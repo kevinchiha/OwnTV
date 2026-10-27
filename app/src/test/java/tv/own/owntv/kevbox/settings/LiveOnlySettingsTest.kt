@@ -21,16 +21,15 @@ class LiveOnlySettingsTest {
             "vp_reset_pins", "vp_resume", "vp_afr_pause", "vp_afr_resolution", "vp_multiview",
             "vp_multiview_tiles", "vp_preview_audio",
             "quick_preview_sound",
-            "tab_SPORTS",
         )
-        assertEquals(24, expected.size)
+        assertEquals(23, expected.size)
         assertEquals(expected, LiveOnlySettings.HIDDEN_KEYS)
         expected.forEach { assertFalse(it, LiveOnlySettings.shows(it)) }
     }
 
     @Test
     fun keysOutsideTheListStillShow() {
-        listOf("vp_afr", "vp_reset_live_pins", "vp_forget_fixes", "quick_live_preview", "tab_CUSTOMIZE")
+        listOf("vp_afr", "vp_reset_live_pins", "vp_forget_fixes", "quick_live_preview", "tab_CUSTOMIZE", "tab_SPORTS")
             .forEach { assertTrue(it, LiveOnlySettings.shows(it)) }
     }
 

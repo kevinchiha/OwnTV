@@ -163,7 +163,7 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         }
         // Sports: core decides from Auto rebuild whether the stored board is due ("on every app start",
         // or older than the chosen hours). It reads one small file and touches no database.
-        if (tv.own.owntv.kevbox.live.LiveOnly.SPORTS) appScope.launch { // KevBox: no Sports in KevBox Live (LiveOnly.SPORTS)
+        appScope.launch {
             kotlinx.coroutines.delay(SPORTS_START_DELAY_MS)
             runCatching { GlobalContext.get().get<tv.own.owntv.core.sports.SportsRepository>().appStarted() }
         }

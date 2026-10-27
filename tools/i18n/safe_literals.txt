@@ -1116,7 +1116,6 @@
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt	tab_METADATA
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt	tab_OPEN_SUBTITLES
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt	tab_PANEL_WIDTH
-1	preference-key	app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt	tab_SPORTS
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt	vod_layout
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt	vp_afr_pause
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt	vp_afr_resolution
