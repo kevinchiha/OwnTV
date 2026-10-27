@@ -76,3 +76,4 @@ rows, i18n literal classification.
 - plan check: 3 problems (two `kickoff` keys in a map, literals classified too late for preBuild, MARK leaking into the preview caption); all fixed in the plan.
 - baseline: gate green on kevbox-live (testStandardDebugUnitTest lintStandardDebug, check-divergence).
 - Task 1: started at 335d7752
+- Task 1: landed (79a3f170). link() is top-level internal in FootballListings.kt; extra internal listings() and parseListings(); hardcoded_baseline.txt unchanged.
