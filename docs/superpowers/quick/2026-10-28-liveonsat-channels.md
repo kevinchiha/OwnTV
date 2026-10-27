@@ -75,3 +75,4 @@ rows, i18n literal classification.
 ## Build log
 - plan check: 3 problems (two `kickoff` keys in a map, literals classified too late for preBuild, MARK leaking into the preview caption); all fixed in the plan.
 - baseline: gate green on kevbox-live (testStandardDebugUnitTest lintStandardDebug, check-divergence).
+- Task 1: started at 335d7752
