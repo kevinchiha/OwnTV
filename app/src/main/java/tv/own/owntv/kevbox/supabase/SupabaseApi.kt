@@ -44,6 +44,12 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
+    // The football listings only add to Find channels and the goal toast's switch, so their read
+    // gives up after a few seconds in all (connect, send and read together) instead of 15 s per step.
+    private val listingClient = client.newBuilder()
+        .callTimeout(LISTING_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+
     private val root = baseUrl.trim().trimEnd('/').takeIf { it.isNotEmpty() }?.toHttpUrlOrNull()
 
     suspend fun passwordGrant(email: String, password: String): ApiResponse {
@@ -70,7 +76,8 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     /**
      * The football matches LiveOnSat lists with kickoff between [fromIso] and [toIso], each with the
      * provider channels kevbox.dev matched to it, earliest first. Both bounds are ISO-8601 UTC
-     * instants ending in `Z`, as the query goes out unencoded.
+     * instants ending in `Z`, as the query goes out unencoded. The whole call times out after 4 s,
+     * which answers NoNetwork like any other timeout.
      */
     suspend fun selectFootballListings(accessToken: String, fromIso: String, toIso: String): ApiResponse {
         // One `and` filter: the query is a map, so two `kickoff` keys cannot both go out.
@@ -79,7 +86,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
             "and" to "(kickoff.gte.$fromIso,kickoff.lte.$toIso)",
             "order" to "kickoff.asc",
         )
-        return send(LISTING_PATH, query, accessToken) { get() }
+        return send(LISTING_PATH, query, accessToken, listingClient) { get() }
     }
 
     suspend fun accessVerdict(accessToken: String): ApiResponse =
@@ -170,6 +177,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         path: String,
         query: Map<String, String>,
         accessToken: String?,
+        via: OkHttpClient = client,
         method: Request.Builder.() -> Request.Builder,
     ): ApiResponse {
         val base = root ?: return UNREACHABLE
@@ -186,7 +194,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
             .build()
         return withContext(Dispatchers.IO) {
             try {
-                client.newCall(request).execute().use { response ->
+                via.newCall(request).execute().use { response ->
                     ApiResponse.Http(response.code, response.body.string())
                 }
             } catch (_: SSLException) {
@@ -202,6 +210,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         /** No HTTP exchange happened, and no network outage explains it. Callers read it as failed. */
         val UNREACHABLE = ApiResponse.Http(0, "")
         const val TIMEOUT_SECONDS = 15L
+        const val LISTING_TIMEOUT_SECONDS = 4L
         const val TOKEN_PATH = "auth/v1/token"
         const val LOGOUT_PATH = "auth/v1/logout"
         const val PLAYLIST_PATH = "rest/v1/member_playlist"

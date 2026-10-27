@@ -37,18 +37,22 @@ class FootballListingsTest {
 
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
+            // A password sign-in always signs in member B.
+            if (request.url.encodedPath == TOKEN_PATH) return canned(request, 200, B_TOKEN_BODY)
             if (request.url.encodedPath != LISTING_PATH) throw UnknownHostException("no canned response")
             requests += request
             val code = answers.removeFirstOrNull() ?: 200
             if (code == NO_NETWORK) throw UnknownHostException("no network")
-            return Response.Builder()
-                .request(request)
-                .protocol(Protocol.HTTP_1_1)
-                .code(code)
-                .message("canned")
-                .body((if (code == 200) body else "").toResponseBody("application/json".toMediaType()))
-                .build()
+            return canned(request, code, if (code == 200) body else "")
         }
+
+        private fun canned(request: Request, code: Int, text: String): Response = Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(code)
+            .message("canned")
+            .body(text.toResponseBody("application/json".toMediaType()))
+            .build()
     }
 
     private class MemoryStore(var session: StoredSession?) : SessionStore {
@@ -173,6 +177,23 @@ class FootballListingsTest {
     }
 
     @Test
+    fun `the same instance reads again when another member signs in`() = runBlocking {
+        val match = match(kickoff = "2026-10-28T19:45:00Z", home = KOLN, away = UNION)
+        assertEquals("FC Cologne", listings.listingFor(match)?.home)
+        assertEquals(1, server.requests.size)
+
+        // B signs in on the same auth, well within A's 10 fresh minutes; B's own listings are empty.
+        auth.signIn("b@example.com", "b-password")
+        assertEquals(USER_B, auth.userId.value)
+        server.body = "[]"
+        clock += MINUTE
+
+        assertNull(listings.listingFor(match))
+        assertEquals(2, server.requests.size)
+        assertEquals("Bearer b-token", server.requests.last().header("Authorization"))
+    }
+
+    @Test
     fun `listingFor links a football match by kickoff and teams`() = runBlocking {
         val match = match(kickoff = "2026-10-28T19:45:00Z", home = KOLN, away = UNION)
 
@@ -222,6 +243,15 @@ class FootballListingsTest {
         assertEquals(COLOGNE_UNION, link(match, listOf(later, COLOGNE_UNION)))
     }
 
+    @Test
+    fun `both teams found beats a closer kickoff with one team`() {
+        val oneTeam = listing("2026-10-28T19:49:00Z", "Cologne", "Freiburg")
+        // Gap 0 for the one-team listing, gap 4 minutes for the both-teams one.
+        val match = match(kickoff = "2026-10-28T19:49:00Z", home = KOLN, away = UNION)
+
+        assertEquals(COLOGNE_UNION, link(match, listOf(oneTeam, COLOGNE_UNION)))
+    }
+
     private fun match(kickoff: String, home: Team, away: Team) = Match(
         id = "401",
         sport = Sport.SOCCER,
@@ -246,6 +276,14 @@ class FootballListingsTest {
         const val NO_NETWORK = -1
         const val BASE = "https://test.supabase.local"
         const val LISTING_PATH = "/rest/v1/football_listing"
+        const val TOKEN_PATH = "/auth/v1/token"
+
+        val B_TOKEN_BODY: String = JSONObject()
+            .put("access_token", "b-token")
+            .put("refresh_token", "r-b")
+            .put("expires_in", 3600)
+            .put("user", JSONObject().put("id", USER_B).put("email", "b@example.com"))
+            .toString()
 
         val KOLN = Team(id = "1", name = "1. FC Köln", shortName = "Köln", abbreviation = "KOE", location = "Köln")
         val UNION = Team(id = "2", name = "1. FC Union Berlin", shortName = "Union Berlin", abbreviation = "FCU", location = "Berlin")

@@ -1138,8 +1138,10 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/sports/FootballListings.kt	listed_as
 1	json	app/src/main/java/tv/own/owntv/kevbox/sports/FootballListings.kt	name
 1	json	app/src/main/java/tv/own/owntv/kevbox/sports/FootballListings.kt	stream_id
+1	technical	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	kevbox-liveonsat
 1	log	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	KevBoxListed
+1	regex	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	\\s+
 1	log	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	listed channels failed: ${e.javaClass.simpleName}
 3	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt	\0
 2	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	\0

@@ -33,8 +33,8 @@ data class FootballListing(
  * The football_listing rows for now − 6 h to now + 36 h, kept in memory for the signed-in member.
  *
  * A good copy is reused for 10 minutes. A failed or non-2xx read keeps the last good copy (or none)
- * and the next read waits a minute. Signing out or another member signing in drops the copy. Nothing
- * here throws or logs.
+ * and the next read waits a minute; a read that runs out of SupabaseApi's 4 s listings timeout is a
+ * failed read. Signing out or another member signing in drops the copy. Nothing here throws or logs.
  */
 class FootballListings(
     private val auth: KevBoxAuth,
@@ -115,7 +115,8 @@ private const val ONE_TEAM_WINDOW_MS = 5 * 60_000L
 /**
  * The listing that is [match]: kickoff within 15 minutes and both teams named in its `home v away`
  * text, or one team when the kickoffs are within 5 minutes. Teams compare by Core's [TeamNames]
- * tokens, so "FC Cologne" finds ESPN's "1. FC Köln". The closest kickoff wins, then both teams found.
+ * tokens, so "FC Cologne" finds ESPN's "1. FC Köln". A listing with both teams found beats one with
+ * one team; among equals, the closest kickoff wins.
  */
 internal fun link(match: Match, listings: List<FootballListing>): FootballListing? {
     if (match.sport != Sport.SOCCER) return null
@@ -130,7 +131,7 @@ internal fun link(match: Match, listings: List<FootballListing>): FootballListin
             val linked = found == 2 || (found == 1 && gap <= ONE_TEAM_WINDOW_MS)
             if (linked) Triple(listing, gap, found) else null
         }
-        .minWithOrNull(compareBy<Triple<FootballListing, Long, Int>> { it.second }.thenByDescending { it.third })
+        .minWithOrNull(compareByDescending<Triple<FootballListing, Long, Int>> { it.third }.thenBy { it.second })
         ?.first
 }
 

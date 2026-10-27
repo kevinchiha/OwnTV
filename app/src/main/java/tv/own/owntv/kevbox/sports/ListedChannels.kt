@@ -2,6 +2,7 @@
 package tv.own.owntv.kevbox.sports
 
 import android.util.Log
+import java.util.Locale
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -40,8 +41,10 @@ class ListedChannels(
 ) {
     /**
      * [match]'s listed channels in the listing's order, one option per channel. A channel is found
-     * by its provider stream id first and its exact name second. Empty when nothing links, and on
-     * any failure, so Find channels never breaks on it.
+     * by its provider stream id first, but only when its name is the listing's name too (ignoring
+     * case and runs of spaces: another playlist can reuse the id for some other channel), and by its
+     * exact name second. Empty when nothing links, and on any failure, so Find channels never breaks
+     * on it.
      */
     suspend fun options(match: Match): List<WatchOption> = try {
         val listed = listings.listingFor(match)?.channels.orEmpty()
@@ -53,7 +56,8 @@ class ListedChannels(
             val byRemoteId = found.filter { it.remoteId != null }.groupBy { it.remoteId }
             val byName = found.groupBy { it.name }
             listed.mapNotNull { c ->
-                c.streamId.takeIf { it.isNotEmpty() }?.let { byRemoteId[it]?.first() }
+                val name = looseName(c.name)
+                c.streamId.takeIf { it.isNotEmpty() }?.let { id -> byRemoteId[id]?.firstOrNull { looseName(it.name) == name } }
                     ?: c.name.takeIf { it.isNotEmpty() }?.let { byName[it]?.first() }
             }
                 .distinctBy { it.id }
@@ -81,6 +85,21 @@ class ListedChannels(
 
         /** True for an option [options] made. */
         fun isListed(o: WatchOption): Boolean = o.guideTitle == MARK
+
+        /**
+         * [shown] with its listed options moved to the front, each group in its own order. Core's
+         * WatchList sort can lift a guide hit above them; this puts them back on top. [shown] itself
+         * when none is listed.
+         */
+        fun listedFirst(shown: List<WatchOption>): List<WatchOption> {
+            val (listed, rest) = shown.partition(::isListed)
+            return if (listed.isEmpty()) shown else listed + rest
+        }
+
+        private val SPACES = Regex("\\s+")
+
+        /** [name] lowercased, trimmed, with each run of whitespace as one space. */
+        private fun looseName(name: String): String = name.trim().replace(SPACES, " ").lowercase(Locale.ROOT)
     }
 }
 

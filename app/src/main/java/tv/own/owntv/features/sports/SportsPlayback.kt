@@ -43,7 +43,7 @@ class SportsPlayback(
     private val sourceDao: SourceDao,
     private val repository: SportsRepository,
     private val watchReader: WatchReader,
-    // KevBox: LiveOnSat's listed channels, first in the player's other-channels panel.
+    // KevBox: LiveOnSat's listed channels, first in what channelsFor gives the goal toast's switch.
     private val listedChannels: tv.own.owntv.kevbox.sports.ListedChannels,
 ) {
     private val _session = MutableStateFlow<SportsSession?>(null)
@@ -98,9 +98,13 @@ class SportsPlayback(
     suspend fun channelsFor(match: Match): List<WatchOption> {
         val config = settings.activeSportsConfig.first()
         val core = watchReader.found(match) { SportsMemory.rememberedFor(config, it) } ?: return emptyList()
-        // KevBox: LiveOnSat's listed channels go first; with none, the list is Core's alone.
+        // KevBox: the goal toast's "switch to that match" plays the first of these, so LiveOnSat's
+        // listed channels go first, and stay first after Core's sort; with none, the list is Core's
+        // alone. A listings call made here gives up after 4 s (SupabaseApi's listings timeout).
         val options = tv.own.owntv.kevbox.sports.ListedChannels.merge(listedChannels.options(match), core)
         val liveSources = activeProfileSources(settings, sourceDao).first().liveSourceIds
-        return WatchList.of(options, WatchFilter.from(config, Locale.getDefault().language, liveSources)).shown
+        return tv.own.owntv.kevbox.sports.ListedChannels.listedFirst(
+            WatchList.of(options, WatchFilter.from(config, Locale.getDefault().language, liveSources)).shown,
+        )
     }
 }

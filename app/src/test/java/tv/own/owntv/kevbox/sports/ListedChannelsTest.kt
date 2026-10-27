@@ -80,7 +80,8 @@ class ListedChannelsTest {
     @Test
     fun `the stream id beats the name and the order follows the listing`() = runBlocking {
         val sky = channel(1, remoteId = "1001", name = "DE: Sky Sport 1")
-        val ardById = channel(2, remoteId = "1002", name = "DE: ARD HD")
+        // The stream id agrees on the name once case and runs of spaces are ignored.
+        val ardById = channel(2, remoteId = "1002", name = "de:  ARD")
         val ardByName = channel(3, remoteId = "7777", name = "DE: ARD")
         val reads = FakeReads(listOf(sky, ardById, ardByName))
         val listed = listedChannels(
@@ -99,6 +100,31 @@ class ListedChannelsTest {
         assertEquals(listOf(ardById, sky), options.map { it.channel })
         assertTrue(options.all { it.tier == WatchTier.GUIDE && it.guideTitle == ListedChannels.MARK })
         assertTrue(options.all(ListedChannels::isListed))
+    }
+
+    @Test
+    fun `a stream id reused by another playlist for another channel does not count`() = runBlocking {
+        // Playlist 2 reuses stream id 1001 for a channel that has nothing to do with the listing.
+        val unrelated = channel(5, remoteId = "1001", name = "UK: Sky Sports Main Event", sourceId = 2)
+        val sky = channel(6, remoteId = "4242", name = "DE: Sky Sport 1", sourceId = 1)
+        val listed = listedChannels(
+            listOf(ListedChannel("1001", "DE: Sky Sport 1", "Sky Sport Germany 1")),
+            FakeReads(listOf(unrelated, sky)),
+        )
+
+        assertEquals(listOf(sky), listed.options(cologneUnion()).map { it.channel })
+    }
+
+    @Test
+    fun `listedFirst moves the listed options to the front and keeps each group's order`() {
+        val sky = WatchOption(channel(1, remoteId = "1001", name = "DE: Sky Sport 1"), WatchTier.GUIDE, "Bundesliga: Köln v Union")
+        val ard = WatchOption(channel(2, remoteId = "1002", name = "DE: ARD"), WatchTier.GUIDE, ListedChannels.MARK)
+        val bein = WatchOption(channel(3, remoteId = "1003", name = "AR: beIN Sports 1"), WatchTier.EVENT)
+        val zdf = WatchOption(channel(4, remoteId = "1004", name = "DE: ZDF"), WatchTier.GUIDE, ListedChannels.MARK)
+
+        assertEquals(listOf(ard, zdf, sky, bein), ListedChannels.listedFirst(listOf(sky, ard, bein, zdf)))
+        val none = listOf(sky, bein)
+        assertSame(none, ListedChannels.listedFirst(none))
     }
 
     @Test
@@ -143,8 +169,8 @@ class ListedChannelsTest {
         assertTrue(!ListedChannels.isListed(core[0]))
     }
 
-    private fun channel(id: Long, remoteId: String, name: String) =
-        ChannelEntity(id = id, sourceId = 1, categoryId = 10, name = name, streamUrl = "http://x/$id.ts", remoteId = remoteId)
+    private fun channel(id: Long, remoteId: String, name: String, sourceId: Long = 1) =
+        ChannelEntity(id = id, sourceId = sourceId, categoryId = 10, name = name, streamUrl = "http://x/$id.ts", remoteId = remoteId)
 
     private fun cologneUnion() = Match(
         id = "401",
