@@ -202,18 +202,18 @@ class ShellViewModel(
 
     fun selectSection(section: MainSection) {
         // KevBox: a request for a removed browse section (Home from Search's Back, a deep link to a
-        // movie) lands on Live TV instead. The redirect in init only runs when the visible set changes,
-        // and in KevBox Live it never does.
-        _selectedSection.value =
-            if (section in MainSection.allBrowse && section !in tv.own.owntv.kevbox.live.LiveOnly.browseSections) MainSection.LIVE_TV else section
+        // movie) lands on Live TV instead; Sports opens as asked (LiveOnly.sectionToOpen). The redirect
+        // in init only runs when the visible set changes.
+        _selectedSection.value = tv.own.owntv.kevbox.live.LiveOnly.sectionToOpen(section)
     }
 
     /** Which browse sections currently show as icons in the rail (v4.3.0 — Nav menu customization).
      *  The rule itself lives in core's [NavVisibility], shared with the mobile app's bottom bar. */
-    // KevBox: Live TV only (no Home, Movies, Series, Downloads or TV Guide page), whatever Core's
-    // NavVisibility would show; see LiveOnly.browseSections.
-    val visibleSections: StateFlow<Set<MainSection>> = kotlinx.coroutines.flow.flowOf(tv.own.owntv.kevbox.live.LiveOnly.browseSections)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), tv.own.owntv.kevbox.live.LiveOnly.browseSections)
+    // KevBox: Live TV, plus Sports unless Settings › Sports › Show in menu is off (no Home, Movies,
+    // Series, Downloads or TV Guide page), whatever Core's NavVisibility would show; see LiveOnly.menuSections.
+    val visibleSections: StateFlow<Set<MainSection>> = settings.navMenuHidden.map { tv.own.owntv.kevbox.live.LiveOnly.menuSections(it) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), tv.own.owntv.kevbox.live.LiveOnly.menuSections(emptySet()))
 
     init {
         // v4.3.0 — if the section the user is viewing becomes hidden (in either mode), jump to the first

@@ -1786,8 +1786,7 @@ fun OwnTVShell(
                 val matchSession = sportsSession?.takeIf { s -> isTunedLive && s.options.any { it.channel.id == previewChannel?.id } }
                 var showOtherChannels by remember { mutableStateOf(false) }
                 var goalToast by remember { mutableStateOf<tv.own.owntv.core.sports.MatchAlert?>(null) }
-                // KevBox: no goal watch, KevBox Live has no Sports (LiveOnly.SPORTS). Was: if (isTunedLive).
-                LaunchedEffect(isTunedLive) { if (isTunedLive && tv.own.owntv.kevbox.live.LiveOnly.SPORTS) sportsPlayback.goals().collect { goalToast = it } }
+                LaunchedEffect(isTunedLive) { if (isTunedLive) sportsPlayback.goals().collect { goalToast = it } }
                 LaunchedEffect(goalToast) { if (goalToast != null) { kotlinx.coroutines.delay(GOAL_TOAST_MS); goalToast = null } }
                 // A goal elsewhere: play that match's best channel if Find channels already found one,
                 // else open its match page, where they can be found.
@@ -1798,8 +1797,8 @@ fun OwnTVShell(
                         val best = options.firstOrNull()
                         if (best == null) {
                             sportsPlayback.pendingMatch.value = m to previewChannel
-                            // KevBox: not a Back, so the stream stops (was: exitPlayer()). KevBox Live has no
-                            // Sports page: selectSection turns SPORTS into Live TV.
+                            // KevBox: not a Back, so the stream stops on the way to the match page instead of
+                            // shrinking into the Live TV box (was: exitPlayer()).
                             exitPlayerWith(false)
                             onSelectSection(MainSection.SPORTS)
                         } else if (liveVm.ensurePlayingByIdAsync(best.channel.id, options.map { it.channel })) {

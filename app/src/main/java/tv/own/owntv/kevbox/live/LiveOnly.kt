@@ -18,11 +18,30 @@ object LiveOnly {
     fun categoryName(raw: String): ProviderName = ProviderName(raw.trim(), emptyList(), null)
 
     /**
-     * The browse sections the left menu shows, in place of Core's NavVisibility: Live TV only. Search
-     * and More (which holds Settings) are pinned rail items outside this set. Live TV shows even
-     * before the playlist has synced, so the menu never falls back to Settings alone.
+     * The browse sections the left menu always shows: Live TV only. Search and More (which holds
+     * Settings) are pinned rail items outside this set. Live TV shows even before the playlist has
+     * synced, so the menu never falls back to Settings alone. Screens that ask "is Live TV the only
+     * section?" (Customize, Navigation's Menu items) read this set, so Sports stays out of it.
      */
     val browseSections: Set<MainSection> = setOf(MainSection.LIVE_TV)
+
+    /**
+     * The browse sections the menu shows, in place of Core's NavVisibility: [browseSections] plus
+     * Sports, unless the member turned off Settings › Sports › Show in menu (Kevin, 2026-10-28: Sports
+     * shows for everyone by default). [hidden] is Core's navMenuHidden, the set that switch writes.
+     * Unlike upstream, the switch counts in both menu modes: KevBox Live has no Menu items picker.
+     */
+    fun menuSections(hidden: Set<String>): Set<MainSection> =
+        if (MainSection.SPORTS.name in hidden) browseSections else browseSections + MainSection.SPORTS
+
+    /**
+     * Where a request to open [section] lands. Removed browse sections (Home from Search's Back, a
+     * deep link to a movie) open Live TV. Sports opens even when hidden from the menu, so a goal
+     * alert can still show its match page, as upstream does.
+     */
+    fun sectionToOpen(section: MainSection): MainSection =
+        if (section in MainSection.allBrowse && section !in browseSections && section != MainSection.SPORTS) MainSection.LIVE_TV
+        else section
 
     /**
      * The KevBox accent. AutoSetup writes it at first run; since 0.2 the accent is fixed through
@@ -35,11 +54,4 @@ object LiveOnly {
      * pill. Hidden (Kevin, 2026-10-16). The Continue remote shortcut does not depend on it.
      */
     const val SHOW_CONTINUE_PILL = false
-
-    /**
-     * Whether upstream's Sports Hub runs at all (upstream 5.2.0). KevBox Live has no Sports section and
-     * hides Settings › Sports, so the board rebuild after launch and the goal watch while a channel
-     * plays stay off: they would only fetch scores nobody sees.
-     */
-    const val SPORTS = false
 }
