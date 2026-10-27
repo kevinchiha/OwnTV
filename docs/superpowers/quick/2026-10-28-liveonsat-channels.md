@@ -81,3 +81,4 @@ rows, i18n literal classification.
 - Task 2: landed (557e77f7). MARK = "\u0001kevbox-liveonsat"; Room reads in RoomListedChannelReads; a cached Core answer now waits for one listings read (up to SupabaseApi's 15 s timeout on a slow network); the hub's channelsFound (Remind me) is not merged.
 - Task 3: started at 53ac085e
 - Task 3: landed (003b407c). Fully qualified names, so no import hunk; no other guideTitle printers; the player panel reuses ChannelRow.
+- ocr: 3 comments (3 medium), JSON committed.
