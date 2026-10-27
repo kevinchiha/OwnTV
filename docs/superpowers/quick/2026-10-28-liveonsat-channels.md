@@ -77,3 +77,4 @@ rows, i18n literal classification.
 - baseline: gate green on kevbox-live (testStandardDebugUnitTest lintStandardDebug, check-divergence).
 - Task 1: started at 335d7752
 - Task 1: landed (79a3f170). link() is top-level internal in FootballListings.kt; extra internal listings() and parseListings(); hardcoded_baseline.txt unchanged.
+- Task 2: started at c53f54db
