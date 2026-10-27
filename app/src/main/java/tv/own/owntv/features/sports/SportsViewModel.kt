@@ -112,6 +112,8 @@ class SportsViewModel(
     private val reminders: ReminderManager,
     private val playback: SportsPlayback,
     sourceDao: SourceDao,
+    // KevBox: LiveOnSat's listed channels, first in Find channels' list.
+    private val listedChannels: tv.own.owntv.kevbox.sports.ListedChannels,
 ) : ViewModel() {
 
     private val config = settings.activeSportsConfig.distinctUntilChanged()
@@ -213,12 +215,14 @@ class SportsViewModel(
             if (w == null) return@transformLatest emit(ChannelSearch.Checking)
             if (w != WatchWindow.Open) return@transformLatest emit(ChannelSearch.Closed(w as WatchWindow))
             val found = watchReader.found(m) { SportsMemory.rememberedFor(c, it) }
+            // KevBox: LiveOnSat's listed channels go first; with none, the list is Core's alone.
             when {
-                found != null -> emit(ChannelSearch.Found(found))
+                found != null -> emit(ChannelSearch.Found(tv.own.owntv.kevbox.sports.ListedChannels.merge(listedChannels.options(m), found)))
                 !asked -> emit(ChannelSearch.NotSearched)
                 else -> {
                     emit(ChannelSearch.Searching)
-                    emit(ChannelSearch.Found(watchReader.watchFor(listOf(m)) { SportsMemory.rememberedFor(c, it) }[m.key].orEmpty()))
+                    val core = watchReader.watchFor(listOf(m)) { SportsMemory.rememberedFor(c, it) }[m.key].orEmpty()
+                    emit(ChannelSearch.Found(tv.own.owntv.kevbox.sports.ListedChannels.merge(listedChannels.options(m), core)))
                 }
             }
         }.flowOn(Dispatchers.Default)

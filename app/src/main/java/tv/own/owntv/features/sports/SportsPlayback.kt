@@ -43,6 +43,8 @@ class SportsPlayback(
     private val sourceDao: SourceDao,
     private val repository: SportsRepository,
     private val watchReader: WatchReader,
+    // KevBox: LiveOnSat's listed channels, first in the player's other-channels panel.
+    private val listedChannels: tv.own.owntv.kevbox.sports.ListedChannels,
 ) {
     private val _session = MutableStateFlow<SportsSession?>(null)
     val session: StateFlow<SportsSession?> = _session.asStateFlow()
@@ -95,7 +97,9 @@ class SportsPlayback(
      */
     suspend fun channelsFor(match: Match): List<WatchOption> {
         val config = settings.activeSportsConfig.first()
-        val options = watchReader.found(match) { SportsMemory.rememberedFor(config, it) } ?: return emptyList()
+        val core = watchReader.found(match) { SportsMemory.rememberedFor(config, it) } ?: return emptyList()
+        // KevBox: LiveOnSat's listed channels go first; with none, the list is Core's alone.
+        val options = tv.own.owntv.kevbox.sports.ListedChannels.merge(listedChannels.options(match), core)
         val liveSources = activeProfileSources(settings, sourceDao).first().liveSourceIds
         return WatchList.of(options, WatchFilter.from(config, Locale.getDefault().language, liveSources)).shown
     }
