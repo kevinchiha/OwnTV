@@ -224,7 +224,8 @@ fun SportsMatchScreen(
                 GuideVideo(
                     channel = video?.channel,
                     channelLine = video?.channel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(sep) },
-                    nowTitle = video?.guideTitle,
+                    // KevBox: a channel LiveOnSat lists carries ListedChannels.MARK as its guide title, not a programme, so it gets no caption.
+                    nowTitle = video?.takeUnless { tv.own.owntv.kevbox.sports.ListedChannels.isListed(it) }?.guideTitle,
                     previewEngine = liveVm.previewEngine,
                     showVideo = previewOn && focused != null,
                     modifier = Modifier.fillMaxWidth(),
@@ -583,6 +584,8 @@ internal fun ChannelRow(o: WatchOption, m: Match, onClick: () -> Unit, onHold: (
             }
             val (color, icon, text) = when {
                 playing -> Triple(StageColors.Muted, null, stringResource(R.string.sports_playing_now))
+                // KevBox: a channel LiveOnSat lists for this match reads "Listed by LiveOnSat", with the guide tier's icon and colour.
+                tv.own.owntv.kevbox.sports.ListedChannels.isListed(o) -> Triple(TierGuide, OwnTVIcon.EPG, stringResource(R.string.kevbox_sports_listed_by_liveonsat))
                 o.tier == WatchTier.GUIDE -> Triple(TierGuide, OwnTVIcon.EPG, o.guideTitle?.let { stringResource(R.string.sports_reason_guide, it) } ?: stringResource(R.string.sports_confirmed))
                 o.tier == WatchTier.EVENT -> Triple(TierEvent, OwnTVIcon.LIVE_TV, stringResource(R.string.sports_reason_event))
                 o.tier == WatchTier.REMEMBERED -> Triple(TierPick, OwnTVIcon.STAR, stringResource(R.string.sports_reason_pick, leagueName(m)))
