@@ -17,6 +17,8 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.core.database.entity.ChannelEntity
+import tv.own.owntv.core.sports.WatchFilter
+import tv.own.owntv.core.sports.WatchList
 import tv.own.owntv.core.sports.WatchOption
 import tv.own.owntv.core.sports.WatchTier
 import tv.own.owntv.core.sports.model.Competitor
@@ -116,15 +118,41 @@ class ListedChannelsTest {
     }
 
     @Test
-    fun `listedFirst moves the listed options to the front and keeps each group's order`() {
-        val sky = WatchOption(channel(1, remoteId = "1001", name = "DE: Sky Sport 1"), WatchTier.GUIDE, "Bundesliga: Köln v Union")
-        val ard = WatchOption(channel(2, remoteId = "1002", name = "DE: ARD"), WatchTier.GUIDE, ListedChannels.MARK)
-        val bein = WatchOption(channel(3, remoteId = "1003", name = "AR: beIN Sports 1"), WatchTier.EVENT)
-        val zdf = WatchOption(channel(4, remoteId = "1004", name = "DE: ZDF"), WatchTier.GUIDE, ListedChannels.MARK)
+    fun `a listing with no name finds its channel by the stream id alone`() = runBlocking {
+        val sky = channel(1, remoteId = "1001", name = "DE: Sky Sport 1")
+        val listed = listedChannels(listOf(ListedChannel("1001", "", "Sky Sport Germany 1")), FakeReads(listOf(sky)))
 
-        assertEquals(listOf(ard, zdf, sky, bein), ListedChannels.listedFirst(listOf(sky, ard, bein, zdf)))
-        val none = listOf(sky, bein)
-        assertSame(none, ListedChannels.listedFirst(none))
+        assertEquals(listOf(sky), listed.options(cologneUnion()).map { it.channel })
+    }
+
+    @Test
+    fun `listedFirst lifts a listed channel the filter passes above a passing Core channel`() {
+        val sky = WatchOption(channel(1, remoteId = "1001", name = "DE: Sky Sport 1"), WatchTier.GUIDE, "Bundesliga: Köln v Union")
+        val zdf = WatchOption(channel(4, remoteId = "1004", name = "DE: ZDF"), WatchTier.GUIDE, ListedChannels.MARK)
+        val filter = WatchFilter(sourceIds = setOf(1L), strict = false)
+        val shown = WatchList.of(listOf(sky, zdf), filter).shown
+
+        assertEquals(listOf(zdf, sky), ListedChannels.listedFirst(shown, filter::accepts))
+        val none = listOf(sky)
+        assertSame(none, ListedChannels.listedFirst(none, filter::accepts))
+    }
+
+    @Test
+    fun `listedFirst keeps a listed channel the filter rejects below a passing Core channel`() {
+        // Playlist 1 passes the filter; playlist 2 fails it and shows only because strict filtering is off.
+        val sky = WatchOption(channel(1, remoteId = "1001", name = "DE: Sky Sport 1"), WatchTier.GUIDE, "Bundesliga: Köln v Union")
+        val bein = WatchOption(channel(3, remoteId = "1003", name = "AR: beIN Sports 1", sourceId = 2), WatchTier.GUIDE, "Köln v Union")
+        val ard = WatchOption(channel(2, remoteId = "1002", name = "DE: ARD", sourceId = 2), WatchTier.GUIDE, ListedChannels.MARK)
+        val filter = WatchFilter(sourceIds = setOf(1L), strict = false)
+        val shown = WatchList.of(listOf(ard, sky, bein), filter).shown
+        assertEquals(listOf(sky, ard, bein), shown)
+
+        // The rejected listed channel goes first among the rejected ones, never above Sky.
+        val zdf = WatchOption(channel(4, remoteId = "1004", name = "DE: ZDF"), WatchTier.GUIDE, ListedChannels.MARK)
+        val withPassingListed = WatchList.of(listOf(sky, bein, zdf, ard), filter).shown
+        assertEquals(listOf(sky, zdf, bein, ard), withPassingListed)
+        assertEquals(listOf(zdf, sky, ard, bein), ListedChannels.listedFirst(withPassingListed, filter::accepts))
+        assertEquals(sky, ListedChannels.listedFirst(shown, filter::accepts).first())
     }
 
     @Test

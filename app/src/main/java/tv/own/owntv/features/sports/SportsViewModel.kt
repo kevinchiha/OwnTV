@@ -255,9 +255,10 @@ class SportsViewModel(
                 standings = leagueKey?.let { b.standings[it] },
                 config = c,
                 search = s,
-                // KevBox: LiveOnSat's listed channels stay first after Core's sort; the rest keep Core's order.
+                // KevBox: LiveOnSat's listed channels stay first after Core's sort, among the channels the
+                // filter passes and among the ones it rejects; the rest keep Core's order.
                 list = WatchList.of(opts, filter, preferred, alsoList = preferred.toSet())
-                    .let { it.copy(shown = tv.own.owntv.kevbox.sports.ListedChannels.listedFirst(it.shown)) },
+                    .let { it.copy(shown = tv.own.owntv.kevbox.sports.ListedChannels.listedFirst(it.shown, filter::accepts)) },
                 filter = filter,
                 playlists = lists,
                 preferredLanguages = preferred,

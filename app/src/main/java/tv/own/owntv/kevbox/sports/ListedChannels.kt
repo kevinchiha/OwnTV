@@ -43,8 +43,8 @@ class ListedChannels(
      * [match]'s listed channels in the listing's order, one option per channel. A channel is found
      * by its provider stream id first, but only when its name is the listing's name too (ignoring
      * case and runs of spaces: another playlist can reuse the id for some other channel), and by its
-     * exact name second. Empty when nothing links, and on any failure, so Find channels never breaks
-     * on it.
+     * exact name second. A listing with no name has nothing to agree with, so its stream id counts
+     * on its own. Empty when nothing links, and on any failure, so Find channels never breaks on it.
      */
     suspend fun options(match: Match): List<WatchOption> = try {
         val listed = listings.listingFor(match)?.channels.orEmpty()
@@ -57,7 +57,8 @@ class ListedChannels(
             val byName = found.groupBy { it.name }
             listed.mapNotNull { c ->
                 val name = looseName(c.name)
-                c.streamId.takeIf { it.isNotEmpty() }?.let { id -> byRemoteId[id]?.firstOrNull { looseName(it.name) == name } }
+                c.streamId.takeIf { it.isNotEmpty() }
+                    ?.let { id -> byRemoteId[id]?.firstOrNull { name.isEmpty() || looseName(it.name) == name } }
                     ?: c.name.takeIf { it.isNotEmpty() }?.let { byName[it]?.first() }
             }
                 .distinctBy { it.id }
@@ -87,13 +88,19 @@ class ListedChannels(
         fun isListed(o: WatchOption): Boolean = o.guideTitle == MARK
 
         /**
-         * [shown] with its listed options moved to the front, each group in its own order. Core's
-         * WatchList sort can lift a guide hit above them; this puts them back on top. [shown] itself
-         * when none is listed.
+         * [shown] (a `WatchList.shown` built with the filter [accepts] comes from) with its listed
+         * options moved up. `WatchList.of` puts every option the filter passes ahead of the ones it
+         * rejects (those are only shown with strict filtering off), then sorts each group, and that
+         * sort can lift a guide hit above a listed channel. So the listed options go first within the
+         * passing group and within the rejected group, and the passing group stays ahead: a listed
+         * channel the filter rejects never climbs above one it passes. Each part keeps its own order.
+         * [shown] itself when none is listed.
          */
-        fun listedFirst(shown: List<WatchOption>): List<WatchOption> {
-            val (listed, rest) = shown.partition(::isListed)
-            return if (listed.isEmpty()) shown else listed + rest
+        fun listedFirst(shown: List<WatchOption>, accepts: (WatchOption) -> Boolean): List<WatchOption> {
+            if (shown.none(::isListed)) return shown
+            val (passing, rejected) = shown.partition(accepts)
+            fun listedUp(group: List<WatchOption>) = group.partition(::isListed).let { (listed, rest) -> listed + rest }
+            return listedUp(passing) + listedUp(rejected)
         }
 
         private val SPACES = Regex("\\s+")

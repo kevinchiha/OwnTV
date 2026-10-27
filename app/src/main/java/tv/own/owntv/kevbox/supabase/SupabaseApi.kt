@@ -4,7 +4,9 @@ package tv.own.owntv.kevbox.supabase
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -192,18 +194,29 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
             .apply { if (accessToken != null) header(AUTH_HEADER, "Bearer $accessToken") }
             .method()
             .build()
+        val call = via.newCall(request)
         return withContext(Dispatchers.IO) {
-            try {
-                via.newCall(request).execute().use { response ->
-                    ApiResponse.Http(response.code, response.body.string())
-                }
-            } catch (_: SSLException) {
-                UNREACHABLE
-            } catch (_: IOException) {
-                // Connection refused, unknown host, timeout, reset: all mean no usable network.
-                ApiResponse.NoNetwork
+            // The blocking execute() runs inside a cancellable continuation whose cancel handler
+            // cancels the call. OkHttp ignores thread interrupts during a socket read, but a
+            // cancelled call closes its socket, so a cancelled caller (a search dropped for a newer
+            // one) does not wait for the request to finish. The cancelled call's IOException is
+            // dropped: the caller gets a CancellationException, never NoNetwork.
+            suspendCancellableCoroutine { cont ->
+                cont.invokeOnCancellation { call.cancel() }
+                cont.resume(exchange(call))
             }
         }
+    }
+
+    private fun exchange(call: okhttp3.Call): ApiResponse = try {
+        call.execute().use { response ->
+            ApiResponse.Http(response.code, response.body.string())
+        }
+    } catch (_: SSLException) {
+        UNREACHABLE
+    } catch (_: IOException) {
+        // Connection refused, unknown host, timeout, reset: all mean no usable network.
+        ApiResponse.NoNetwork
     }
 
     private companion object {

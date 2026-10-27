@@ -5,8 +5,15 @@ import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLPeerUnverifiedException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -18,6 +25,8 @@ import okio.Buffer
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.kevbox.usage.Stretch
 import tv.own.owntv.kevbox.usage.toEntry
@@ -68,6 +77,32 @@ class SupabaseApiTest {
         assertEquals(ApiResponse.NoNetwork, api.passwordGrant("m@example.com", "pw"))
         assertEquals(ApiResponse.NoNetwork, api.selectPlaylists("a1"))
         assertEquals(ApiResponse.NoNetwork, api.accessVerdict("a1"))
+    }
+
+    @Test
+    fun `cancelling the caller cancels the call and surfaces as cancellation`() = runBlocking {
+        val started = CountDownLatch(1)
+        val sawCancel = AtomicBoolean(false)
+        // Hangs like a slow server until OkHttp cancels the call, or 10 s pass.
+        val hanging = Interceptor { chain ->
+            started.countDown()
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while (!chain.call().isCanceled() && System.nanoTime() < deadline) Thread.sleep(10)
+            sawCancel.set(chain.call().isCanceled())
+            throw IOException("Canceled")
+        }
+        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(hanging).build(), BASE, "anon-key")
+        var result: ApiResponse? = null
+        val job = launch(Dispatchers.Default) { result = api.accessVerdict("a1") }
+        withContext(Dispatchers.IO) { assertTrue(started.await(5, TimeUnit.SECONDS)) }
+
+        val before = System.nanoTime()
+        job.cancelAndJoin()
+
+        assertTrue(System.nanoTime() - before < TimeUnit.SECONDS.toNanos(2))
+        assertTrue(job.isCancelled)
+        assertNull(result)
+        assertTrue(sawCancel.get())
     }
 
     @Test
