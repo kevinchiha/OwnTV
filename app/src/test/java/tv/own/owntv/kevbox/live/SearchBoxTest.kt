@@ -163,4 +163,12 @@ class SearchBoxTest {
         assertFalse(s.clearBox)
         assertFalse(s.stopPreview)
     }
+
+    @Test
+    fun aSportsBoxEmptiesOnAnyOtherScreenWhileThePlayerIsOpen() {
+        for (to in listOf(MainSection.LIVE_TV, MainSection.HOME)) {
+            assertEquals(SectionShown(clearBox = true, stopPreview = false), sectionShown(to, playerIdle = false, boxSection = MainSection.SPORTS))
+        }
+        assertEquals(SectionShown(clearBox = false, stopPreview = false), sectionShown(MainSection.SPORTS, playerIdle = false, boxSection = MainSection.SPORTS))
+    }
 }
