@@ -244,11 +244,21 @@ class SportsViewModel(
                 }
             }
         }.flowOn(Dispatchers.Default)
-        combine(boards, config, search, pageFilter, playlists) { b, c, s, f, lists ->
+        // KevBox: LiveOnSat's list needs no guide, so it shows before Find channels can run (too early)
+        // or before it is pressed, read again every 5 minutes; Core's guide search keeps its window.
+        val searchAndListed = search.transformLatest { s ->
+            emit(s to emptyList<WatchOption>())
+            while (tv.own.owntv.kevbox.sports.ListedChannels.showsListedBefore(s)) {
+                val listed = listedChannels.options(m)
+                if (listed.isNotEmpty()) emit(s to listed)
+                delay(5 * 60_000L)
+            }
+        }.flowOn(Dispatchers.Default)
+        combine(boards, config, searchAndListed, pageFilter, playlists) { b, c, (s, listed), f, lists ->
             val appLanguage = Locale.getDefault().language
             val filter = f ?: WatchFilter.from(c, appLanguage, lists.map { it.first })
             val preferred = c.preferredLanguages(appLanguage).toList()
-            val opts = (s as? ChannelSearch.Found)?.options.orEmpty()
+            val opts = tv.own.owntv.kevbox.sports.ListedChannels.pageOptions(s, listed) // KevBox: listed alone before a search
             MatchPageState(
                 match = b.match(m.key) ?: m,
                 summary = b.summaries[m.key],

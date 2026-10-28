@@ -20,7 +20,9 @@ import tv.own.owntv.core.repository.activeProfileSources
 import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.core.sports.WatchOption
 import tv.own.owntv.core.sports.WatchTier
+import tv.own.owntv.core.sports.WatchWindow
 import tv.own.owntv.core.sports.model.Match
+import tv.own.owntv.features.sports.ChannelSearch
 
 /** The channel reads [ListedChannels] needs, behind an interface so it is unit-tested on a fake. */
 interface ListedChannelReads {
@@ -86,6 +88,25 @@ class ListedChannels(
 
         /** True for an option [options] made. */
         fun isListed(o: WatchOption): Boolean = o.guideTitle == MARK
+
+        /**
+         * True while the match page waits on a search that has not run: Find channels is still too
+         * early (more than 30 minutes before kick-off), or open but not pressed. LiveOnSat's list does
+         * not depend on the guide, so the page shows it then; Core's guide search keeps its window.
+         */
+        fun showsListedBefore(search: ChannelSearch): Boolean =
+            search == ChannelSearch.NotSearched ||
+                (search is ChannelSearch.Closed && search.window is WatchWindow.TooEarly)
+
+        /**
+         * The options the match page lists: a search's own result once it ran, [listed] alone while
+         * [showsListedBefore] holds, and none otherwise (searching, checking, or the match is over).
+         */
+        fun pageOptions(search: ChannelSearch, listed: List<WatchOption>): List<WatchOption> = when {
+            search is ChannelSearch.Found -> search.options
+            showsListedBefore(search) -> listed
+            else -> emptyList()
+        }
 
         /**
          * [shown] (a `WatchList.shown` built with the filter [accepts] comes from) with its listed

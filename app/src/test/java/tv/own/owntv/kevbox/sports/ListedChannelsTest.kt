@@ -21,6 +21,7 @@ import tv.own.owntv.core.sports.WatchFilter
 import tv.own.owntv.core.sports.WatchList
 import tv.own.owntv.core.sports.WatchOption
 import tv.own.owntv.core.sports.WatchTier
+import tv.own.owntv.core.sports.WatchWindow
 import tv.own.owntv.core.sports.model.Competitor
 import tv.own.owntv.core.sports.model.Match
 import tv.own.owntv.core.sports.model.MatchState
@@ -30,6 +31,7 @@ import tv.own.owntv.kevbox.session.KevBoxAuth
 import tv.own.owntv.kevbox.session.SessionStore
 import tv.own.owntv.kevbox.session.StoredSession
 import tv.own.owntv.kevbox.supabase.SupabaseApi
+import tv.own.owntv.features.sports.ChannelSearch
 
 class ListedChannelsTest {
 
@@ -195,6 +197,22 @@ class ListedChannelsTest {
         assertEquals(listOf(listed[0], core[0], core[2]), ListedChannels.merge(listed, core))
         assertSame(core, ListedChannels.merge(emptyList(), core))
         assertTrue(!ListedChannels.isListed(core[0]))
+    }
+
+    @Test
+    fun `listed channels show before a search runs, and only then`() {
+        val listed = listOf(WatchOption(channel(2, remoteId = "1002", name = "DE: ARD"), WatchTier.GUIDE, ListedChannels.MARK))
+        val core = listOf(WatchOption(channel(1, remoteId = "1001", name = "DE: Sky Sport 1"), WatchTier.EVENT))
+        val tooEarly = ChannelSearch.Closed(WatchWindow.TooEarly(opensAt = 0L))
+
+        assertEquals(listed, ListedChannels.pageOptions(tooEarly, listed))
+        assertEquals(listed, ListedChannels.pageOptions(ChannelSearch.NotSearched, listed))
+        assertEquals(core, ListedChannels.pageOptions(ChannelSearch.Found(core), listed))
+        assertEquals(emptyList<WatchOption>(), ListedChannels.pageOptions(ChannelSearch.Closed(WatchWindow.Ended), listed))
+        assertEquals(emptyList<WatchOption>(), ListedChannels.pageOptions(ChannelSearch.Searching, listed))
+        assertEquals(emptyList<WatchOption>(), ListedChannels.pageOptions(ChannelSearch.Checking, listed))
+        assertTrue(ListedChannels.showsListedBefore(tooEarly))
+        assertTrue(!ListedChannels.showsListedBefore(ChannelSearch.Closed(WatchWindow.Ended)))
     }
 
     private fun channel(id: Long, remoteId: String, name: String, sourceId: Long = 1) =

@@ -209,10 +209,11 @@ fun SportsMatchScreen(
                 }
                 when (val s = state.search) {
                     is ChannelSearch.Found -> Unit
-                    is ChannelSearch.Closed -> { ClosedNote(s.window); return@Column }
+                    // KevBox: before a search runs, LiveOnSat's listed channels (state.list) show under the note or button.
+                    is ChannelSearch.Closed -> { ClosedNote(s.window); if (state.list.total == 0) return@Column }
                     else -> {
                         FindChannels(busy = s == ChannelSearch.Searching || s == ChannelSearch.Checking, searching = s == ChannelSearch.Searching, onFind = vm::findChannels)
-                        return@Column
+                        if (state.list.total == 0 || s != ChannelSearch.NotSearched) return@Column // KevBox: listed channels below
                     }
                 }
                 if (state.list.total == 0) {
