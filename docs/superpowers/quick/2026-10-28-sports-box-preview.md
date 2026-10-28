@@ -113,3 +113,4 @@ hunks in `SportsMatchScreen.kt`, `SportsScreen.kt` and `OwnTVShell.kt`, with UPS
   2. The Back-restore effect has `m.key` as a key, so it restarts on the goal toast's new match with its list state and rows; the same match's Back restore is unchanged.
   3. The restore reads its ids from drawn rows (`channelRowsShown`), so Back while Find channels runs focuses the tabs after one retry.
   4. `tab` is `remember(m.key)`, so a new match opens on Channels.
+- device recheck on 8991d978 (kevbox_a14, AC Milan v Bologna): OK previews (Arena Premium 3 and 2); rail to Live TV while previewing stops the stream ("stop() — intentional", no audio player left), Live TV shows its own empty box; Back to the hub leaves no player running. Arena Premium 2 was slow to start once (provider side; plays on retry).
