@@ -55,3 +55,4 @@ Fork-only `kevbox/sports/FootballListings.kt` and `kevbox/live/LiveVideoStage.kt
 - plan check: 4 problems (the BASKETBALL case does not flip; the select-string test changes; Core times MMA cards from the first prelim, so MMA uses both names within 12 hours; boxing rows are tagged mma but link to nothing). Task 1's test file is SearchBoxTest. All fixed in the plan.
 - baseline: gate green on kevbox-live 5af394b4 (tests, lint, divergence 0 failures).
 - Task 1+2: started at 0f0705b2 (one implementer: one Gradle project)
+- Task 1+2: landed (062fac91 sound fix, 1089663d listings). No interface bent, no file outside Files. link() keeps the match's own sport, then linkByTeams (soccer, basketball), linkByFighters (mma: both names, 12 h) or linkBySeries (racing: 15 min, competition contains leagueName, blank never links). safe_literals.txt classified the new literals. Implementer's gate: green, divergence 0 failures.
