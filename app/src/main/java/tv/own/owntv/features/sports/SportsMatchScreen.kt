@@ -241,7 +241,7 @@ fun SportsMatchScreen(
 }
 
 private val MatchTab.label: Int get() = when (this) {
-    MatchTab.CHANNELS -> R.string.kevbox_sports_tab_channels // KevBox
+    MatchTab.CHANNELS -> R.string.kevbox_sports_tab_channels // KevBox: the Channels tab
     MatchTab.TIMELINE -> R.string.sports_tab_timeline
     MatchTab.STATS -> R.string.sports_tab_stats
     MatchTab.LINEUPS -> R.string.sports_tab_lineups
