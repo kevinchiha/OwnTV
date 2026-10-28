@@ -56,3 +56,4 @@ tests, a KevBox string (en + fr), and a new UPSTREAM-SYNC row.
 - plan check: 3 problems (gate needs a commit first; AC-6 restore needs scrolling to the card's row and position; the AC-10 switch had no file). All fixed in the plan.
 - baseline: gate green on kevbox-live 71bc2621 (the merge just gated).
 - Task 1: started at 0e339a76
+- Task 1: landed (81c00233). No interface bent. SoonRows holds one LazyListState per sport and reveals a card (column to its row, row to the card); it relies on the soon rows staying the column's last items. The hub's restore now uses requestFocus(FocusDirection.Enter), which returns a Boolean (runCatching never failed, so the old loop stopped after one try); this also covers Live now cards. Implementer's gate green.
