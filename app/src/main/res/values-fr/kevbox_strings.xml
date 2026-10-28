@@ -56,4 +56,5 @@
     <!-- Sports › Watch live: LiveOnSat -->
     <string name="kevbox_sports_listed_by_liveonsat">Listé par LiveOnSat</string>
     <string name="kevbox_settings_card_sports">Ligues, équipes, alertes, chaînes</string>
+    <string name="kevbox_sports_tab_channels">Chaînes</string>
 </resources>

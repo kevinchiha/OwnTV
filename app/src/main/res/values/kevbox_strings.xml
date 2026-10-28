@@ -138,4 +138,5 @@
     <!-- Sports › a match › Watch live, and the player's other-channels panel: the reason under a channel LiveOnSat lists for the match. -->
     <string name="kevbox_sports_listed_by_liveonsat">Listed by LiveOnSat</string>
     <string name="kevbox_settings_card_sports">Leagues, teams, alerts, channels</string>
+    <string name="kevbox_sports_tab_channels">Channels</string>
 </resources>
