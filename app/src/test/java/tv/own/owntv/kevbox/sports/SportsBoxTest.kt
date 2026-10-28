@@ -8,6 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.nav.MainSection
+import tv.own.owntv.core.sports.WatchWindow
+import tv.own.owntv.features.sports.ChannelSearch
 import tv.own.owntv.kevbox.live.LiveVideoStage
 
 class SportsBoxTest {
@@ -73,5 +75,48 @@ class SportsBoxTest {
     fun `no box or no stage has nothing to stop`() {
         assertFalse(clearSportsBox(LiveVideoStage()))
         assertFalse(clearSportsBox(null))
+    }
+
+    /** Every ChannelSearch case, and whether its rows show with a playlist and channels in the list. */
+    private val rowsBySearch: List<Pair<ChannelSearch, Boolean>> = listOf(
+        ChannelSearch.Found(emptyList()) to true,
+        ChannelSearch.Closed(WatchWindow.TooEarly(opensAt = 0L)) to true,
+        ChannelSearch.Closed(WatchWindow.Ended) to true,
+        ChannelSearch.NotSearched to true,
+        ChannelSearch.Searching to false,
+        ChannelSearch.Checking to false,
+    )
+
+    @Test
+    fun `the rows show for every search but a running one, given a playlist and channels`() {
+        for ((search, shows) in rowsBySearch) {
+            assertEquals("$search", shows, channelRowsShown(search, hasPlaylist = true, total = 3))
+            assertFalse("$search, empty list", channelRowsShown(search, hasPlaylist = true, total = 0))
+            assertFalse("$search, no playlist", channelRowsShown(search, hasPlaylist = false, total = 3))
+        }
+    }
+
+    @Test
+    fun `the block can take focus when it holds Add playlist, Find channels or the chips`() {
+        // (search, total, focusable with a playlist): Find channels before a search, the chips when rows show.
+        val table: List<Triple<ChannelSearch, Int, Boolean>> = listOf(
+            Triple(ChannelSearch.NotSearched, 0, true),
+            Triple(ChannelSearch.NotSearched, 3, true),
+            Triple(ChannelSearch.Found(emptyList()), 3, true),
+            Triple(ChannelSearch.Found(emptyList()), 0, false),
+            Triple(ChannelSearch.Closed(WatchWindow.TooEarly(opensAt = 0L)), 3, true),
+            Triple(ChannelSearch.Closed(WatchWindow.TooEarly(opensAt = 0L)), 0, false),
+            Triple(ChannelSearch.Closed(WatchWindow.Ended), 3, true),
+            Triple(ChannelSearch.Closed(WatchWindow.Ended), 0, false),
+            Triple(ChannelSearch.Searching, 3, false),
+            Triple(ChannelSearch.Searching, 0, false),
+            Triple(ChannelSearch.Checking, 3, false),
+            Triple(ChannelSearch.Checking, 0, false),
+        )
+        for ((search, total, focusable) in table) {
+            assertEquals("$search, $total channels", focusable, blockFocusable(search, hasPlaylist = true, total = total))
+            // No playlist: the Add playlist button, whatever the search.
+            assertTrue("$search, no playlist", blockFocusable(search, hasPlaylist = false, total = total))
+        }
     }
 }

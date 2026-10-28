@@ -2,6 +2,7 @@
 package tv.own.owntv.kevbox.sports
 
 import tv.own.owntv.core.nav.MainSection
+import tv.own.owntv.features.sports.ChannelSearch
 import tv.own.owntv.kevbox.live.LiveVideoStage
 
 /**
@@ -24,6 +25,22 @@ fun sportsReturnChannelId(playingId: Long?, lastPlayedId: Long?, shownIds: List<
  */
 fun sportsBlockLeftRowId(lastFocusedId: Long?, rowIds: List<Long>): Long? =
     lastFocusedId?.takeIf { it in rowIds } ?: rowIds.firstOrNull()
+
+/**
+ * Whether a match's Channels tab draws its channel rows (and the Watch live block its count and filter
+ * chips): a playlist, [total] channels in the list, and a search that found them, or none run yet
+ * (LiveOnSat's listed channels show under the kick-off note or the Find channels button). Not while
+ * Find channels runs.
+ */
+fun channelRowsShown(search: ChannelSearch, hasPlaylist: Boolean, total: Int): Boolean = hasPlaylist && total > 0 &&
+    when (search) {
+        is ChannelSearch.Found, is ChannelSearch.Closed, ChannelSearch.NotSearched -> true
+        ChannelSearch.Searching, ChannelSearch.Checking -> false
+    }
+
+/** Whether the Watch live block holds a button or chip: Add playlist, Find channels, or the filter chips. */
+fun blockFocusable(search: ChannelSearch, hasPlaylist: Boolean, total: Int): Boolean =
+    !hasPlaylist || search == ChannelSearch.NotSearched || channelRowsShown(search, hasPlaylist, total)
 
 /**
  * The box is Sports' only while a match page shows it. Leaving that page (Back, the league page,

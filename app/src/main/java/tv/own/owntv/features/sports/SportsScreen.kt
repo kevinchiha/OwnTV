@@ -66,6 +66,10 @@ fun SportsScreen(
     }
     val current = match
     val leagueKey = league
+    // KevBox: only the match page spends restoreFocus. Back from the hub's or a league page's full-screen trip
+    // ("On channels now") spends it here, or it stays set and pulls the next match opened to its tabs.
+    val matchShown = current != null && leagueKey == null
+    LaunchedEffect(restoreFocus, onScreen, matchShown) { if (restoreFocus && onScreen && !matchShown) onRestored() }
     if (leagueKey != null) {
         SportsLeagueScreen(
             vm = vm,

@@ -127,14 +127,20 @@ fun SportsMatchScreen(
     // KevBox: one press also empties a Sports box (kevbox/sports/SportsBox.kt clearSportsBox).
     androidx.activity.compose.BackHandler(enabled = active) { liveVm.stopPreview(); tv.own.owntv.kevbox.sports.clearSportsBox(videoStage); onBack() }
     val page by vm.matchPage.collectAsStateWithLifecycle()
+    // KevBox: the box is Sports' only while this page is composed. Leaving it any way at all (Home from the
+    // mini player included) empties a Sports box, or Back to the hub would keep a stream with no box. Only the
+    // box: the stream may be the mini player's. The shell keeps this page composed behind full screen while
+    // the box is Sports', so a full-screen trip never gets here. Above the return: a match loading is not leaving.
+    androidx.compose.runtime.DisposableEffect(videoStage) { onDispose { tv.own.owntv.kevbox.sports.clearSportsBox(videoStage) } }
     val state = page ?: return
     val m = state.match
     var tab by remember { mutableStateOf(MatchTab.CHANNELS) } // KevBox: a match opens on its channels
     var revealed by remember(m.key) { mutableStateOf(false) }
-    var focused by remember { mutableStateOf<WatchOption?>(null) }
-    // KevBox: the page's list state and one FocusRequester per channel row, by channel id (ChannelRowFocus).
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val rowFocus = remember { ChannelRowFocus() }
+    // KevBox: keyed on the match, as the goal toast can open another match on this page while it stays composed.
+    var focused by remember(m.key) { mutableStateOf<WatchOption?>(null) }
+    // KevBox: the page's list state and one FocusRequester per channel row, by channel id (ChannelRowFocus), per match.
+    val listState = remember(m.key) { androidx.compose.foundation.lazy.LazyListState() }
+    val rowFocus = remember(m.key) { ChannelRowFocus() }
     val tabFocus = remember { FocusRequester() }
     // KevBox: the right column's Watch live block: ▶ from a row enters it, ◀ leaves it for a row.
     val blockFocus = remember { FocusRequester() }
@@ -144,7 +150,7 @@ fun SportsMatchScreen(
     // KevBox: focus no longer previews. OK puts a channel in the box and plays it there, as Search does.
     // Focus follows the search: the tabs while there is no list (Find channels' button goes away while it
     // runs, and must not take focus with it), the first channel once there is one.
-    LaunchedEffect(state.search::class, state.list.shown.isNotEmpty()) {
+    LaunchedEffect(m.key, state.search::class, state.list.shown.isNotEmpty()) { // KevBox: m.key: again for another match
         kotlinx.coroutines.delay(60)
         // KevBox: not while full screen covers the page; Back's restore below places focus then. onScreen is
         // not a key: as one, this would fire on Back and race the restore.
@@ -153,9 +159,13 @@ fun SportsMatchScreen(
         // the chips that opened it, and closing the panel must land on those chips again.
         if (blockHasFocus && tab == MatchTab.CHANNELS) return@LaunchedEffect
         // Back from the player: focus the channel that was playing, not the first.
-        val target = state.list.shown.let { s -> s.firstOrNull { it.channel.id == vm.lastPlayedChannelId } ?: s.firstOrNull() }
-        // KevBox: the channel rows live in the Channels tab, so they take focus only while it is open.
-        runCatching { if (tab == MatchTab.CHANNELS && target != null) rowFocus.of(target.channel.id).requestFocus() else tabFocus.requestFocus() }
+        // KevBox: only rows the tab draws, and only while it is open (channelRowsShown): while Find channels
+        // runs, LiveOnSat's listed rows are in the list but not drawn, and focus sent to one was lost. The
+        // tabs take focus whenever a row cannot.
+        val drawn = if (tab == MatchTab.CHANNELS && channelRowsShown(state)) state.list.shown else emptyList()
+        val target = drawn.firstOrNull { it.channel.id == vm.lastPlayedChannelId } ?: drawn.firstOrNull()
+        val landed = target != null && runCatching { rowFocus.of(target.channel.id).requestFocus() }.getOrDefault(false)
+        if (!landed) runCatching { tabFocus.requestFocus() }
     }
 
     val sep = stringResource(R.string.content_epg_bits_separator)
@@ -202,7 +212,7 @@ fun SportsMatchScreen(
                 androidx.compose.runtime.withFrameNanos { }
                 landed = runCatching { rowFocus.of(id).requestFocus() }.getOrDefault(false)
                 if (landed) break
-            }
+            } else if (attempt > 0) break // KevBox: still no rows a try later: the tabs now, not after 3 s
             kotlinx.coroutines.delay(100)
         }
         if (!landed) runCatching { tabFocus.requestFocus() }
@@ -306,7 +316,9 @@ fun SportsMatchScreen(
             // the rows are the Channels tab on the left. Like the list, it ends 84 above the bottom, clear of
             // the key hints.
             Column(Modifier.weight(1f).fillMaxSize().padding(top = 96.mpx, bottom = 84.mpx)) {
-                val withVideo = state.hasPlaylist && shown.isNotEmpty() // KevBox: the block's gap depends on it
+                // KevBox: the block's gap depends on it. A box keeps its video when a filter or Find channels
+                // empties the list, since its stream plays on.
+                val withVideo = box != null || (state.hasPlaylist && shown.isNotEmpty())
                 if (withVideo) {
                     // KevBox: the boxed channel while there is one (its video plays), else the focused row's, no video.
                     val video = if (box != null) shown.firstOrNull { it.channel.id == box.id } else focused ?: shown.firstOrNull()
@@ -372,20 +384,13 @@ private class ChannelRowFocus {
  */
 private const val CHANNEL_ROWS_START = 2
 
-/**
- * KevBox: whether the Channels tab draws its channel rows (and the block its count and filter chips):
- * a playlist, channels in the list, and a search that found them, or none run yet (LiveOnSat's listed
- * channels show under the kick-off note or the Find channels button). Not while Find channels runs.
- */
-private fun channelRowsShown(state: MatchPageState): Boolean = state.hasPlaylist && state.list.total > 0 &&
-    when (state.search) {
-        is ChannelSearch.Found, is ChannelSearch.Closed, ChannelSearch.NotSearched -> true
-        ChannelSearch.Searching, ChannelSearch.Checking -> false
-    }
+/** KevBox: whether the Channels tab draws its rows, for this page (kevbox/sports/SportsBox.kt channelRowsShown). */
+private fun channelRowsShown(state: MatchPageState): Boolean =
+    tv.own.owntv.kevbox.sports.channelRowsShown(state.search, state.hasPlaylist, state.list.total)
 
-/** KevBox: whether WatchLiveBlock holds a button or chip: Add playlist, Find channels, or the filter chips. */
+/** KevBox: whether WatchLiveBlock holds a button or chip, for this page (kevbox/sports/SportsBox.kt blockFocusable). */
 private fun blockFocusable(state: MatchPageState): Boolean =
-    !state.hasPlaylist || state.search == ChannelSearch.NotSearched || channelRowsShown(state)
+    tv.own.owntv.kevbox.sports.blockFocusable(state.search, state.hasPlaylist, state.list.total)
 
 private val MatchTab.label: Int get() = when (this) {
     MatchTab.CHANNELS -> R.string.kevbox_sports_tab_channels // KevBox: the Channels tab
