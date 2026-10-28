@@ -29,6 +29,11 @@ fun SportsScreen(
     modifier: Modifier = Modifier,
     /** False while the player is full screen over the section: its Back is the player's. */
     active: Boolean = true,
+    /** KevBox: false while full screen covers the section, which the shell keeps composed behind a Sports box. */
+    onScreen: Boolean = true,
+    /** KevBox: the way back from full screen, for the match page; it calls [onRestored] once focus is placed. */
+    restoreFocus: Boolean = false,
+    onRestored: () -> Unit = {},
     vm: SportsViewModel = koinViewModel(),
     liveVm: LiveViewModel = koinViewModel(),
 ) {
@@ -43,13 +48,19 @@ fun SportsScreen(
     var lastKey by remember { mutableStateOf<String?>(null) }
     val open: (Match?) -> Unit = { m -> if (m != null) lastKey = m.key; match = m; vm.open(m) }
     val playback = koinInject<SportsPlayback>()
-    LaunchedEffect(Unit) {
-        playback.pendingMatch.value?.let { (m, ch) ->
+    // KevBox: collected, not read once: the goal toast asks for a match while this section stays composed
+    // behind full screen. returnToMatch is gone; the match page itself stays (OwnTVShell). A Sports box on
+    // screen belongs to the page being left, so it stops; behind full screen it is the stream playing, so
+    // it stays, and Back boxes the playing channel on the new match's page.
+    val videoStage = tv.own.owntv.kevbox.live.LocalLiveVideoStage.current
+    val onScreenNow by androidx.compose.runtime.rememberUpdatedState(onScreen)
+    LaunchedEffect(playback) {
+        playback.pendingMatch.collect { pending ->
+            val (m, ch) = pending ?: return@collect
             playback.pendingMatch.value = null
+            if (onScreenNow && tv.own.owntv.kevbox.sports.clearSportsBox(videoStage)) liveVm.stopPreview()
+            if (league != null) openLeague(null)
             returnTo = ch
-            open(m)
-        } ?: playback.returnToMatch?.let { m ->
-            playback.returnToMatch = null
             open(m)
         }
     }
@@ -79,8 +90,9 @@ fun SportsScreen(
         SportsMatchScreen(
             vm = vm,
             liveVm = liveVm,
-            onPlayChannel = { ch, zap -> playback.returnToMatch = current; onPlayChannel(ch, zap) },
+            onPlayChannel = onPlayChannel, // KevBox: no returnToMatch; this page stays composed behind full screen
             onOpenFilters = { filters = true },
+            // KevBox: the match page empties its Sports box before it calls this (SportsMatchScreen).
             onOpenLeague = { m -> openLeague(tv.own.owntv.core.sports.model.League.keyOf(m.sport, m.leagueSlug)) },
             onAddPlaylist = onAddPlaylist,
             onBack = {
@@ -90,6 +102,9 @@ fun SportsScreen(
                 if (ch != null) onPlayChannel(ch, playback.session.value?.options?.map { it.channel }.orEmpty())
             },
             active = active,
+            onScreen = onScreen, // KevBox: Back from full screen lands on the playing channel's row
+            restoreFocus = restoreFocus,
+            onRestored = onRestored,
             contentStart = contentStart,
             modifier = modifier,
         )

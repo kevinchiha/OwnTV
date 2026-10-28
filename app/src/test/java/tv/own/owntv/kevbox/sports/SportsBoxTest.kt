@@ -2,8 +2,13 @@
 package tv.own.owntv.kevbox.sports
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import tv.own.owntv.core.database.entity.ChannelEntity
+import tv.own.owntv.core.nav.MainSection
+import tv.own.owntv.kevbox.live.LiveVideoStage
 
 class SportsBoxTest {
 
@@ -24,4 +29,33 @@ class SportsBoxTest {
     @Test
     fun `an empty list has no row`() =
         assertNull(sportsReturnChannelId(playingId = 20L, lastPlayedId = 10L, shownIds = emptyList()))
+
+    private fun channel(id: Long) =
+        ChannelEntity(id = id, sourceId = 1, categoryId = 10, name = "Ch $id", streamUrl = "http://x/$id.ts", remoteId = "$id")
+
+    @Test
+    fun `leaving a match page empties a Sports box`() {
+        val stage = LiveVideoStage()
+        stage.putInBox(channel(5), MainSection.SPORTS)
+        assertTrue(clearSportsBox(stage))
+        assertNull(stage.boxChannel)
+        assertNull(stage.boxSection)
+    }
+
+    @Test
+    fun `a box another screen filled is left alone`() {
+        for (section in listOf(MainSection.SEARCH, MainSection.LIVE_TV)) {
+            val stage = LiveVideoStage()
+            stage.putInBox(channel(5), section)
+            assertFalse(clearSportsBox(stage))
+            assertEquals(5L, stage.boxChannel?.id)
+            assertEquals(section, stage.boxSection)
+        }
+    }
+
+    @Test
+    fun `no box or no stage has nothing to stop`() {
+        assertFalse(clearSportsBox(LiveVideoStage()))
+        assertFalse(clearSportsBox(null))
+    }
 }

@@ -1,6 +1,9 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.sports
 
+import tv.own.owntv.core.nav.MainSection
+import tv.own.owntv.kevbox.live.LiveVideoStage
+
 /**
  * The channel row that takes focus when Back from full screen returns to a match's Channels tab.
  * Back puts the playing channel in the box, so its row comes first. After CH+/CH− that channel may
@@ -11,4 +14,15 @@ fun sportsReturnChannelId(playingId: Long?, lastPlayedId: Long?, shownIds: List<
     playingId != null && playingId in shownIds -> playingId
     lastPlayedId != null && lastPlayedId in shownIds -> lastPlayedId
     else -> shownIds.firstOrNull()
+}
+
+/**
+ * The box is Sports' only while a match page shows it. Leaving that page (Back, the league page,
+ * another match) empties the box when Sports filled it, and returns true so the caller stops the
+ * preview as well. A box another screen filled is left alone.
+ */
+fun clearSportsBox(stage: LiveVideoStage?): Boolean {
+    if (stage == null || stage.boxSection != MainSection.SPORTS) return false
+    stage.clearBox()
+    return true
 }

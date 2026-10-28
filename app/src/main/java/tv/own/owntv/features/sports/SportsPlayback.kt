@@ -56,8 +56,8 @@ class SportsPlayback(
     var hubChip: Any? = null
     var hubLeague: Any? = null
 
-    /** The match page a channel was played full screen from: Back from the player lands on it again. */
-    var returnToMatch: Match? = null
+    // KevBox: returnToMatch is gone. The Sports section stays composed behind full screen with its match
+    // page (OwnTVShell), so Back from the player finds the page still there.
 
     /** The channel last played from a match page, so its row takes focus again on return. */
     var lastPlayedChannelId: Long? = null
