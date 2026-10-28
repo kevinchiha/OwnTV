@@ -74,8 +74,11 @@ class ListedChannelsTest {
 
     private val clock = Instant.parse("2026-10-28T12:00:00Z").toEpochMilli()
 
-    private fun listedChannels(channels: List<ListedChannel>, reads: ListedChannelReads): ListedChannels {
-        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(FakeServer(body(channels))).build(), BASE, "anon-key")
+    private fun listedChannels(channels: List<ListedChannel>, reads: ListedChannelReads): ListedChannels =
+        listedChannels(body(channels), reads)
+
+    private fun listedChannels(body: String, reads: ListedChannelReads): ListedChannels {
+        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(FakeServer(body)).build(), BASE, "anon-key")
         val store = MemoryStore(StoredSession("user-a", "a@example.com", "a-token", "r-token", clock + 100 * HOUR))
         val auth = KevBoxAuth(api, store) { clock }
         return ListedChannels(FootballListings(auth, api) { clock }, reads)
@@ -180,6 +183,39 @@ class ListedChannelsTest {
 
         reads.fail = true
         assertEquals(emptyList<WatchOption>(), listed.options(cologneUnion()))
+    }
+
+    @Test
+    fun `a basketball match gets its listed channel first`() = runBlocking {
+        val spectrum = channel(7, remoteId = "2001", name = "US: Spectrum SportsNet")
+        val espn = channel(8, remoteId = "2002", name = "US: ESPN")
+        val row = JSONObject()
+            .put("kickoff", "2026-10-29T02:30:00+00:00")
+            .put("competition", "NBA")
+            .put("home", "Los Angeles Lakers")
+            .put("away", "Portland Trail Blazers")
+            .put("sport", "basketball")
+            .put("channels", JSONArray().put(JSONObject().put("stream_id", "2001").put("name", "US: Spectrum SportsNet").put("listed_as", "Spectrum SportsNet")))
+        val listed = listedChannels(JSONArray().put(row).toString(), FakeReads(listOf(spectrum, espn)))
+        val lakers = Team(id = "13", name = "Los Angeles Lakers", shortName = "Lakers", abbreviation = "LAL", location = "Los Angeles")
+        val blazers = Team(id = "22", name = "Portland Trail Blazers", shortName = "Trail Blazers", abbreviation = "POR", location = "Portland")
+        val game = cologneUnion().copy(
+            sport = Sport.BASKETBALL,
+            feed = "basketball/nba",
+            leagueSlug = "nba",
+            leagueName = "NBA",
+            startMs = Instant.parse("2026-10-29T02:30:00Z").toEpochMilli(),
+            title = "Lakers v Trail Blazers",
+            competitors = listOf(
+                Competitor(lakers, home = true, winner = null, score = null),
+                Competitor(blazers, home = false, winner = null, score = null),
+            ),
+        )
+
+        val options = listed.options(game)
+        assertEquals(listOf(spectrum), options.map { it.channel })
+        val core = listOf(WatchOption(espn, WatchTier.EVENT), WatchOption(spectrum, WatchTier.LIKELY))
+        assertEquals(listOf(options[0], core[0]), ListedChannels.merge(options, core))
     }
 
     @Test

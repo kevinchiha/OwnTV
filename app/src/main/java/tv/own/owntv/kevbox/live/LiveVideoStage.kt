@@ -135,9 +135,19 @@ data class SectionShown(val clearBox: Boolean, val stopPreview: Boolean)
  * stream unless the box was Live TV's and the new screen is one of the two that share its preview
  * engine (Live TV, the TV Guide page): that was the rule before Search had a box. A Search or Sports
  * box always stops it. With no box, every screen but those two stops the preview.
+ *
+ * While the player is open nothing stops, but a Sports box is emptied on any screen but Sports. A
+ * launcher Live tile opens full screen in the same frame as the section change, so the shell never
+ * sees the player idle on the new screen. Without this the Sports box stayed filled behind the tile's
+ * channel, and its sound kept playing behind the Sports hub.
  */
 fun sectionShown(section: MainSection, playerIdle: Boolean, boxSection: MainSection?): SectionShown {
-    if (!playerIdle) return SectionShown(clearBox = false, stopPreview = false)
+    if (!playerIdle) {
+        return SectionShown(
+            clearBox = boxSection == MainSection.SPORTS && section != MainSection.SPORTS,
+            stopPreview = false,
+        )
+    }
     if (boxSection != null && boxSection == section) return SectionShown(clearBox = false, stopPreview = false)
     val liveScreen = section == MainSection.LIVE_TV || section == MainSection.EPG
     return SectionShown(

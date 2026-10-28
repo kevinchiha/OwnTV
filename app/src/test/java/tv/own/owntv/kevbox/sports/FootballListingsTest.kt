@@ -34,6 +34,7 @@ class FootballListingsTest {
         val requests: MutableList<Request> = Collections.synchronizedList(mutableListOf())
         val answers = ArrayDeque<Int>()
         var body = TWO_ROWS
+        var errorBody = ""
 
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
@@ -43,7 +44,7 @@ class FootballListingsTest {
             requests += request
             val code = answers.removeFirstOrNull() ?: 200
             if (code == NO_NETWORK) throw UnknownHostException("no network")
-            return canned(request, code, if (code == 200) body else "")
+            return canned(request, code, if (code == 200) body else errorBody)
         }
 
         private fun canned(request: Request, code: Int, text: String): Response = Response.Builder()
@@ -105,7 +106,7 @@ class FootballListingsTest {
         listings.listings()
 
         val request = server.requests.single()
-        assertEquals("kickoff,competition,home,away,channels", request.url.queryParameter("select"))
+        assertEquals("kickoff,competition,home,away,channels,sport", request.url.queryParameter("select"))
         assertEquals(
             "(kickoff.gte.2026-10-28T06:00:00Z,kickoff.lte.2026-10-30T00:00:00Z)",
             request.url.queryParameter("and"),
@@ -114,6 +115,19 @@ class FootballListingsTest {
         assertEquals("Bearer a-token", request.header("Authorization"))
         assertEquals("anon-key", request.header("apikey"))
         assertEquals("GET", request.method)
+    }
+
+    @Test
+    fun `a server without the sport column is asked again without it, and the rows read as soccer`() = runBlocking {
+        server.answers.add(400)
+        server.errorBody = """{"code":"42703","message":"column football_listing.sport does not exist"}"""
+
+        val read = listings.listings()
+
+        assertEquals(listOf("soccer", "soccer"), read.map { it.sport })
+        assertEquals(2, server.requests.size)
+        assertEquals("kickoff,competition,home,away,channels", server.requests.last().url.queryParameter("select"))
+        assertEquals("(kickoff.gte.2026-10-28T06:00:00Z,kickoff.lte.2026-10-30T00:00:00Z)", server.requests.last().url.queryParameter("and"))
     }
 
     @Test
@@ -252,12 +266,118 @@ class FootballListingsTest {
         assertEquals(COLOGNE_UNION, link(match, listOf(oneTeam, COLOGNE_UNION)))
     }
 
-    private fun match(kickoff: String, home: Team, away: Team) = Match(
+    @Test
+    fun `a row's sport reads as soccer when missing or null, and an unknown one is kept`() {
+        fun row(sport: Any?) = JSONObject()
+            .put("kickoff", "2026-10-28T19:45:00+00:00")
+            .put("competition", "Darts")
+            .put("home", "Luke Littler")
+            .put("away", "Luke Humphries")
+            .put("channels", JSONArray())
+            .apply { if (sport != null) put("sport", sport) }
+        val body = JSONArray().put(row(null)).put(row(JSONObject.NULL)).put(row("darts")).put(row("basketball"))
+            .put(row(" Basketball")).put(row("mma ")).put(row("  ")).toString()
+
+        assertEquals(
+            listOf("soccer", "soccer", "darts", "basketball", "basketball", "mma", "soccer"),
+            parseListings(body)!!.map { it.sport },
+        )
+        // The darts row links to nothing, not even a match of a sport the app knows.
+        val darts = parseListings(body)!![2]
+        val soccer = match("2026-10-28T19:45:00Z", Team("7", "Luke Littler"), Team("8", "Luke Humphries"))
+        assertNull(link(soccer, listOf(darts)))
+    }
+
+    @Test
+    fun `a basketball listing links to ESPN's teams when both are found`() {
+        val lakers = Team(id = "13", name = "Los Angeles Lakers", shortName = "Lakers", abbreviation = "LAL", location = "Los Angeles")
+        val blazers = Team(id = "22", name = "Portland Trail Blazers", shortName = "Trail Blazers", abbreviation = "POR", location = "Portland")
+        val game = match("2026-10-29T02:30:00Z", lakers, blazers, Sport.BASKETBALL, "NBA")
+        val nba = listing("2026-10-29T02:30:00Z", "Los Angeles Lakers", "Portland Trail Blazers", "NBA", "basketball")
+
+        assertEquals(nba, link(game, listOf(nba)))
+        assertEquals(nba, link(game.copy(startMs = game.startMs + 12 * MINUTE), listOf(nba)))
+        assertNull(link(game.copy(startMs = game.startMs + 20 * MINUTE), listOf(nba)))
+        // The same row tagged soccer is not this match's sport.
+        assertNull(link(game, listOf(nba.copy(sport = "soccer"))))
+        // And a basketball row never links a football match.
+        val football = match("2026-10-29T02:30:00Z", lakers, blazers)
+        assertNull(link(football, listOf(nba)))
+    }
+
+    @Test
+    fun `one basketball team found never links, and a college game never links`() {
+        val cavaliers = Team(id = "5", name = "Cleveland Cavaliers", shortName = "Cavaliers", abbreviation = "CLE", location = "Cleveland")
+        val wizards = Team(id = "27", name = "Washington Wizards", shortName = "Wizards", abbreviation = "WSH", location = "Washington")
+        val celtics = Team(id = "2", name = "Boston Celtics", shortName = "Celtics", abbreviation = "BOS", location = "Boston")
+        val virginia = Team(id = "258", name = "Virginia Cavaliers", shortName = "Virginia", abbreviation = "UVA", location = "Virginia")
+        val butler = Team(id = "2086", name = "Butler Bulldogs", shortName = "Butler", abbreviation = "BUT", location = "Butler")
+        val tip = "2026-10-28T23:00:00Z"
+        val row = listing(tip, "Cleveland Cavaliers", "Washington Wizards", "NBA", "basketball")
+
+        // ESPN's NCAA game at the same 7 pm tip finds "Cavaliers" in the NBA row.
+        assertNull(link(match(tip, virginia, butler, Sport.BASKETBALL, "NCAA Basketball", "mens-college-basketball"), listOf(row)))
+        // An NBA game with one of the two teams, at the same minute.
+        assertNull(link(match(tip, cavaliers, celtics, Sport.BASKETBALL, "NBA", "nba"), listOf(row)))
+        // Both names found still never link a college game.
+        assertNull(link(match(tip, cavaliers, wizards, Sport.BASKETBALL, "NCAA Women's Basketball", "womens-college-basketball"), listOf(row)))
+        assertEquals(row, link(match(tip, cavaliers, wizards, Sport.BASKETBALL, "NBA", "nba"), listOf(row)))
+    }
+
+    @Test
+    fun `an MMA listing links when both fighters are on the card, hours after its first prelim`() {
+        val makhachev = Team(id = "3332412", name = "Islam Makhachev", shortName = "I. Makhachev", isAthlete = true)
+        val tsarukyan = Team(id = "4029275", name = "Arman Tsarukyan", shortName = "A. Tsarukyan", isAthlete = true)
+        val other = Team(id = "9", name = "Charles Oliveira", shortName = "C. Oliveira", isAthlete = true)
+        // Core times the card from its first prelim; LiveOnSat lists the main card 3 hours later.
+        val card = match("2026-10-28T23:00:00Z", makhachev, tsarukyan, Sport.MMA, "UFC")
+        val main = listing("2026-10-29T02:00:00Z", "Islam Makhachev", "Arman Tsarukyan", "UFC 322", "mma")
+
+        assertEquals(main, link(card, listOf(main)))
+        // One of the two on the card is not enough.
+        assertNull(link(match("2026-10-28T23:00:00Z", makhachev, other, Sport.MMA, "UFC"), listOf(main)))
+        // More than 12 hours apart does not link.
+        assertNull(link(card.copy(startMs = card.startMs - 10 * HOUR), listOf(main)))
+    }
+
+    @Test
+    fun `a racing listing links an F1 session at the same time, never NASCAR or an earlier practice`() {
+        val grandPrix = listing("2026-10-25T20:00:00Z", "Mexican Grand Prix", "", "Formula 1 Grand Prix - Round 19", "racing")
+        val race = session("2026-10-25T20:00:00Z", "Formula 1", "Mexico City Grand Prix")
+        val nascar = session("2026-10-25T20:00:00Z", "NASCAR Cup Series", "Xfinity 500")
+        val practice = session("2026-10-25T18:00:00Z", "Formula 1", "Mexico City Grand Prix")
+
+        assertEquals(grandPrix, link(race, listOf(grandPrix)))
+        assertEquals(grandPrix, link(race.copy(startMs = race.startMs + 15 * MINUTE), listOf(grandPrix)))
+        assertNull(link(nascar, listOf(grandPrix)))
+        assertNull(link(practice, listOf(grandPrix)))
+    }
+
+    private fun session(start: String, series: String, event: String) = Match(
+        id = "600-4",
+        sport = Sport.RACING,
+        feed = "racing/f1",
+        leagueSlug = "f1",
+        leagueName = series,
+        startMs = Instant.parse(start).toEpochMilli(),
+        state = MatchState.PRE,
+        statusText = "",
+        title = event,
+    )
+
+    private fun match(
+        kickoff: String,
+        home: Team,
+        away: Team,
+        sport: Sport = Sport.SOCCER,
+        leagueName: String = "German Cup",
+        leagueSlug: String = "ger.dfb_pokal",
+    ) = Match(
         id = "401",
-        sport = Sport.SOCCER,
+        sport = sport,
         feed = "soccer/ger.dfb_pokal",
-        leagueSlug = "ger.dfb_pokal",
-        leagueName = "German Cup",
+        leagueSlug = leagueSlug,
+        leagueName = leagueName,
         startMs = Instant.parse(kickoff).toEpochMilli(),
         state = MatchState.PRE,
         statusText = "",
@@ -288,8 +408,13 @@ class FootballListingsTest {
         val KOLN = Team(id = "1", name = "1. FC Köln", shortName = "Köln", abbreviation = "KOE", location = "Köln")
         val UNION = Team(id = "2", name = "1. FC Union Berlin", shortName = "Union Berlin", abbreviation = "FCU", location = "Berlin")
 
-        fun listing(kickoff: String, home: String, away: String) =
-            FootballListing(Instant.parse(kickoff).toEpochMilli(), "German Cup (DFB-Pokal)", home, away, emptyList())
+        fun listing(
+            kickoff: String,
+            home: String,
+            away: String,
+            competition: String = "German Cup (DFB-Pokal)",
+            sport: String = "soccer",
+        ) = FootballListing(Instant.parse(kickoff).toEpochMilli(), competition, home, away, emptyList(), sport)
 
         val COLOGNE_UNION = listing("2026-10-28T19:45:00Z", "FC Cologne", "Union Berlin")
 

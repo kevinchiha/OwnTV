@@ -158,9 +158,18 @@ class SearchBoxTest {
     }
 
     @Test
-    fun nothingChangesWhileThePlayerIsOpen() {
+    fun searchAndLiveTvBoxesStayWhileThePlayerIsOpen() {
         val s = sectionShown(MainSection.HOME, playerIdle = false, boxSection = MainSection.SEARCH)
         assertFalse(s.clearBox)
         assertFalse(s.stopPreview)
+        assertEquals(SectionShown(clearBox = false, stopPreview = false), sectionShown(MainSection.HOME, playerIdle = false, boxSection = MainSection.LIVE_TV))
+    }
+
+    @Test
+    fun aSportsBoxEmptiesOnAnyOtherScreenWhileThePlayerIsOpen() {
+        for (to in listOf(MainSection.LIVE_TV, MainSection.HOME)) {
+            assertEquals(SectionShown(clearBox = true, stopPreview = false), sectionShown(to, playerIdle = false, boxSection = MainSection.SPORTS))
+        }
+        assertEquals(SectionShown(clearBox = false, stopPreview = false), sectionShown(MainSection.SPORTS, playerIdle = false, boxSection = MainSection.SPORTS))
     }
 }
