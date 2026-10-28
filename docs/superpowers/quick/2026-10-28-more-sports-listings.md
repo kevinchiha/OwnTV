@@ -56,3 +56,4 @@ Fork-only `kevbox/sports/FootballListings.kt` and `kevbox/live/LiveVideoStage.kt
 - baseline: gate green on kevbox-live 5af394b4 (tests, lint, divergence 0 failures).
 - Task 1+2: started at 0f0705b2 (one implementer: one Gradle project)
 - Task 1+2: landed (062fac91 sound fix, 1089663d listings). No interface bent, no file outside Files. link() keeps the match's own sport, then linkByTeams (soccer, basketball), linkByFighters (mma: both names, 12 h) or linkBySeries (racing: 15 min, competition contains leagueName, blank never links). safe_literals.txt classified the new literals. Implementer's gate: green, divergence 0 failures.
+- ocr: 4 comments (1 medium: the not-idle clear also fires for the mini player; 3 low).
