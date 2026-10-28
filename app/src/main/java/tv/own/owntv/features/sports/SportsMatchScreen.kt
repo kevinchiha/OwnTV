@@ -310,9 +310,9 @@ fun SportsMatchScreen(
                     MatchTab.TIMELINE -> items((state.summary?.timeline ?: m.events).asReversed()) { e -> TimelineRow(e, m) }
                     MatchTab.STATS -> items(state.summary?.stats.orEmpty()) { s -> StatRow(s.label, s.home, s.away) }
                     MatchTab.LINEUPS -> item { Lineups(m, state.summary) }
-                    // KevBox: the league page ends this page's preview and empties a Sports box.
+                    // KevBox: the league page empties a Sports box and ends its preview, but leaves a stream the mini player or audio mode is playing.
                     MatchTab.TABLE -> item {
-                        TablePreview(state.standings, m) { lm -> if (tv.own.owntv.kevbox.sports.clearSportsBox(videoStage)) liveVm.stopPreview(); onOpenLeague(lm) }
+                        TablePreview(state.standings, m) { lm -> if (tv.own.owntv.kevbox.sports.clearSportsBox(videoStage) && activeNow) liveVm.stopPreview(); onOpenLeague(lm) }
                     }
                     MatchTab.FORM -> item { Form(m, state.summary) }
                     MatchTab.BROADCASTS -> item { Broadcasts(m, (state.search as? ChannelSearch.Found)?.options) }
