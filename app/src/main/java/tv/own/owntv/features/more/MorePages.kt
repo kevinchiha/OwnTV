@@ -227,6 +227,8 @@ private val SettingsCards = listOf(
     SettingsGroupCard(OwnTVIcon.REC, R.string.kevbox_settings_group_watching, R.string.kevbox_settings_card_watching),
     // KevBox: no typed count (App).
     SettingsGroupCard(OwnTVIcon.INFO, R.string.settings_group_app, R.string.settings_card_app),
+    // KevBox: Sports, after the last group: its index opens the Sports page (kevbox.sports.SportsCard).
+    SettingsGroupCard(OwnTVIcon.SPORTS, R.string.sports_title, R.string.kevbox_settings_card_sports),
 )
 
 // KevBox: the Settings groups whose cards More does not show (Profile and Content, AC-7).
