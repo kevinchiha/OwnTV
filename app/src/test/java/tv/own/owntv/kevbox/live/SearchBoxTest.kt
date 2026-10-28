@@ -124,6 +124,14 @@ class SearchBoxTest {
     fun theBoxsOwnScreenKeepsIt() {
         assertEquals(SectionShown(clearBox = false, stopPreview = false), sectionShown(MainSection.SEARCH, playerIdle = true, boxSection = MainSection.SEARCH))
         assertEquals(SectionShown(clearBox = false, stopPreview = false), sectionShown(MainSection.LIVE_TV, playerIdle = true, boxSection = MainSection.LIVE_TV))
+        assertEquals(SectionShown(clearBox = false, stopPreview = false), sectionShown(MainSection.SPORTS, playerIdle = true, boxSection = MainSection.SPORTS))
+    }
+
+    @Test
+    fun leavingSportsStopsSportsChannelEvenForLiveScreens() {
+        for (to in listOf(MainSection.LIVE_TV, MainSection.EPG, MainSection.HOME)) {
+            assertEquals(SectionShown(clearBox = true, stopPreview = true), sectionShown(to, playerIdle = true, boxSection = MainSection.SPORTS))
+        }
     }
 
     @Test

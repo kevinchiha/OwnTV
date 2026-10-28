@@ -571,6 +571,7 @@ fun OwnTVShell(
         val backToGrid = keepForGrid && tv.own.owntv.kevbox.live.isBackToGrid(
             playerMode, selectedSection, zapSource, liveVm.liveOnExo.value, liveVm.catchupActive.value,
             rewound = liveVm.timeshiftOffsetSec.value != null,
+            boxSection = liveVideoStage.boxSection, // KevBox: Sports keeps the stream only for its own box
         )
         val openedChannel = liveVideoStage.boxChannel
         val playingChannel = liveVm.previewChannel.value
