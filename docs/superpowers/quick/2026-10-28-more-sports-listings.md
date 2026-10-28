@@ -64,3 +64,5 @@ Fork-only `kevbox/sports/FootballListings.kt` and `kevbox/live/LiveVideoStage.kt
   - SupabaseApi: a 400 with 42703 retries once without `,sport` (LISTING_COLUMNS + SPORT_COLUMN, same as selectPlaylists); those rows read as soccer. Test in FootballListingsTest.
   - SearchBoxTest: `nothingChangesWhileThePlayerIsOpen` renamed `searchAndLiveTvBoxesStayWhileThePlayerIsOpen`, plus a LIVE_TV box not-idle case.
   - sport word trimmed and lowercased at parse; listingFor and link share `linkerFor(sport)`, so the linked sports live in one `when` (plus the word map).
+- re-review 1: gate green (FootballListingsTest 27, SearchBoxTest 20, lint, divergence); items 1-4 fixed. New minor: stale comment at FootballListings.kt:26 → fixed by the lead (70089e61). New minor: the fallback test covers only the good path → skip: three lines that mirror selectPlaylists' tested fallback.
+- final review: done
