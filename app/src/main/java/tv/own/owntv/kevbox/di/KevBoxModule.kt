@@ -218,6 +218,14 @@ val kevboxModule = module {
         )
     }
 
+    // LiveOnSat's football listings, read from kevbox.dev for the Sports page's Find channels.
+    single { tv.own.owntv.kevbox.sports.FootballListings(get(), get(), now = System::currentTimeMillis) }
+    single<tv.own.owntv.kevbox.sports.ListedChannelReads> {
+        tv.own.owntv.kevbox.sports.RoomListedChannelReads(get(), get(), get(), get(), get(), get())
+    }
+    // The listed channels SportsViewModel and SportsPlayback put first in Find channels' list.
+    single { tv.own.owntv.kevbox.sports.ListedChannels(get(), get()) }
+
     single { GuideFeeds(get(), get(), get(), get(), get(), scope = get()) }
     // One show finder for both Search's TV guide tab and the guide's own search.
     single { tv.own.owntv.kevbox.live.ProgrammeTitles(get()) }

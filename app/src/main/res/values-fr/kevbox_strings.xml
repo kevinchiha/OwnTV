@@ -53,4 +53,6 @@
     <string name="kevbox_preview_sample_programme_4">Dessins animés</string>
     <string name="kevbox_preview_sample_programme_5">Top des hits</string>
     <string name="kevbox_preview_sample_programme_6">Vie sauvage</string>
+    <!-- Sports › Watch live: LiveOnSat -->
+    <string name="kevbox_sports_listed_by_liveonsat">Listé par LiveOnSat</string>
 </resources>

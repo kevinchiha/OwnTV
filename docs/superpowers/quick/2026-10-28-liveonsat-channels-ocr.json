@@ -1,0 +1,214 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 3 finding(s) across 9 selected item(s).",
+  "summary": {
+    "files_reviewed": 9,
+    "comments": 3,
+    "total_tokens": 731312,
+    "input_tokens": 716587,
+    "output_tokens": 14725,
+    "cache_read_tokens": 620138,
+    "cache_write_tokens": 96379,
+    "elapsed": "1m49s"
+  },
+  "tool_calls": {
+    "total": 35,
+    "by_tool": {
+      "code_comment": 1,
+      "code_search": 23,
+      "file_find": 2,
+      "file_read": 7,
+      "file_read_diff": 2
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt",
+      "content": "A `stream_id` from kevbox.dev only means something inside the member's kevbox playlist, but this lookup runs across all of the profile's live sources. Provider stream ids are small integers that are unique only within one source, so a second playlist can easily have the same id on an unrelated channel. Results are sorted by source order and `first()` is taken, so that wrong channel can win and be shown first as \"Listed by LiveOnSat\". It also beats the correct exact-name match in the kevbox source. Fix: restrict the stream-id match to the kevbox source (or key `byRemoteId` on `sourceId` + `remoteId`), and keep the name fallback for the other sources.",
+      "existing_code": "            val byRemoteId = found.filter { it.remoteId != null }.groupBy { it.remoteId }\n            val byName = found.groupBy { it.name }\n            listed.mapNotNull { c -\u003e\n                c.streamId.takeIf { it.isNotEmpty() }?.let { byRemoteId[it]?.first() }",
+      "start_line": 53,
+      "end_line": 56,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/sports/FootballListings.kt",
+      "content": "The ranking compares kickoff gap first and the number of teams found second. That means a listing where only one team matches at a 0-minute gap beats a listing where both teams match at a 1–5 minute gap. Several fixtures in a league round often share a kickoff time, and team tokens overlap (e.g. \"United\", \"City\"). In that case the wrong fixture's channels are linked and shown first. Rank by teams found first, then by gap.",
+      "suggestion_code": "        .minWithOrNull(compareByDescending\u003cTriple\u003cFootballListing, Long, Int\u003e\u003e { it.third }.thenBy { it.second })",
+      "existing_code": "        .minWithOrNull(compareBy\u003cTriple\u003cFootballListing, Long, Int\u003e\u003e { it.second }.thenByDescending { it.third })",
+      "start_line": 133,
+      "end_line": 133,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/sports/FootballListings.kt",
+      "content": "The network read runs while `lock` is held and has no timeout of its own. The callers (`SportsViewModel` and `SportsPlayback.channelsFor`) await `options(match)` before they emit Core's list. So a slow or hanging kevbox.dev request delays the whole Find channels result until OkHttp times out, and every other caller waits on the same lock. That conflicts with the goal that Find channels never breaks on this feature. Wrap the read in `withTimeoutOrNull(...)`; a null result can go down the existing failure path.",
+      "existing_code": "        val read = read(user, at)",
+      "start_line": 68,
+      "end_line": 68,
+      "category": "performance",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Football listings data layer and Supabase integration",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/sports/FootballListings.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt"
+      ]
+    },
+    {
+      "label": "Sports feature UI and playback using listed channels",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/sports/SportsMatchScreen.kt",
+        "app/src/main/java/tv/own/owntv/features/sports/SportsPlayback.kt",
+        "app/src/main/java/tv/own/owntv/features/sports/SportsViewModel.kt"
+      ]
+    },
+    {
+      "label": "KevBox string resources (localized)",
+      "files": [
+        "app/src/main/res/values-fr/kevbox_strings.xml",
+        "app/src/main/res/values/kevbox_strings.xml"
+      ]
+    }
+  ],
+  "session_id": "41fb3f3a-0bf1-41e4-b7fc-eddc0bab866c",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "41fb3f3a-0bf1-41e4-b7fc-eddc0bab866c",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "quick/liveonsat-channels",
+      "resolved_base": "f22683b998f1f01a21644d0e203c716c498026f8",
+      "resolved_head": "f95eb71e098628634aec5d446ab7a522258ee7fa",
+      "exact_range": "f22683b998f1f01a21644d0e203c716c498026f8..f95eb71e098628634aec5d446ab7a522258ee7fa",
+      "source_artifact_sha256": "5e58486b24fcfea0482fdee4ad6848a6e7862cb5377822b9b903160f862039ac"
+    },
+    "execution": {
+      "ocr_version": "v1.13.3",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "7bdde30da0c66ee5643876474d879e4d72b8803bf0501749f82291f5b9b2b87a",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "0d94a0c2b70c5523e9efb296239300874ce36d629622a74dd942dae5af48e316"
+        },
+        {
+          "item_id": "722baffb2bb7005d69ec58d6f1a260f6808290fec7eb9b743571f719973ade5d",
+          "path": "app/src/main/java/tv/own/owntv/features/sports/SportsViewModel.kt",
+          "fingerprint": "83fab17ac0e46f1fa6711c77d527503a1c1dd6bbd9e1f22ef2f53947446a5e7c"
+        },
+        {
+          "item_id": "92bb5b2391f1bd6fa5dace2c595a6093723a03c76ac904c64cec27b0dd9a7f24",
+          "path": "app/src/main/java/tv/own/owntv/features/sports/SportsMatchScreen.kt",
+          "fingerprint": "46727ab153905c5645767013c675f843c1115135beb9fa87ab6b33352cdc177c"
+        },
+        {
+          "item_id": "93fd75cbb2b80b911bdf67cd099ae54e3360824e0094b3c58cff2ef55224e904",
+          "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+          "fingerprint": "282f7f64391a8d3d22268a422c4e474aa6a16a71a5cbecc6627df006e1596f5a"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "ee530f4f1a37f3bd1180910248edb1b363a6f46717dba8459b2de10c6098037c"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "07e26f0c537dfb802e72410b530f23577e791e9f14268d19958e1b3e3dc29652"
+        },
+        {
+          "item_id": "cadf3de419ef67daabfa34319cecbefc4692b702da65192e928bbb5377cbcfa8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt",
+          "fingerprint": "c5d47d12a3a3c52e7fedce45b78e6c9231b6365ba93cf4643b5e1c4afc46449c"
+        },
+        {
+          "item_id": "db454478d4f7064a86e2fa93ce4f6c100eb2e5916224461c4ad197dceb27836e",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/sports/FootballListings.kt",
+          "fingerprint": "13e73f9180b959e04c358133891c7af36e0e0b0de69acffd012392659be689b6"
+        },
+        {
+          "item_id": "f1bef1065c4f40b6a75bc5c975a8b8d7857d96fc7eb9943d666b807495cce82b",
+          "path": "app/src/main/java/tv/own/owntv/features/sports/SportsPlayback.kt",
+          "fingerprint": "8ef7c41b98382b3eed6b08fd8cc0a8c4075e22f0e35fe7aa1a0448fe9b07121d"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "0d94a0c2b70c5523e9efb296239300874ce36d629622a74dd942dae5af48e316"
+        },
+        {
+          "item_id": "722baffb2bb7005d69ec58d6f1a260f6808290fec7eb9b743571f719973ade5d",
+          "path": "app/src/main/java/tv/own/owntv/features/sports/SportsViewModel.kt",
+          "fingerprint": "83fab17ac0e46f1fa6711c77d527503a1c1dd6bbd9e1f22ef2f53947446a5e7c"
+        },
+        {
+          "item_id": "92bb5b2391f1bd6fa5dace2c595a6093723a03c76ac904c64cec27b0dd9a7f24",
+          "path": "app/src/main/java/tv/own/owntv/features/sports/SportsMatchScreen.kt",
+          "fingerprint": "46727ab153905c5645767013c675f843c1115135beb9fa87ab6b33352cdc177c"
+        },
+        {
+          "item_id": "93fd75cbb2b80b911bdf67cd099ae54e3360824e0094b3c58cff2ef55224e904",
+          "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+          "fingerprint": "282f7f64391a8d3d22268a422c4e474aa6a16a71a5cbecc6627df006e1596f5a"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "ee530f4f1a37f3bd1180910248edb1b363a6f46717dba8459b2de10c6098037c"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "07e26f0c537dfb802e72410b530f23577e791e9f14268d19958e1b3e3dc29652"
+        },
+        {
+          "item_id": "cadf3de419ef67daabfa34319cecbefc4692b702da65192e928bbb5377cbcfa8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt",
+          "fingerprint": "c5d47d12a3a3c52e7fedce45b78e6c9231b6365ba93cf4643b5e1c4afc46449c"
+        },
+        {
+          "item_id": "db454478d4f7064a86e2fa93ce4f6c100eb2e5916224461c4ad197dceb27836e",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/sports/FootballListings.kt",
+          "fingerprint": "13e73f9180b959e04c358133891c7af36e0e0b0de69acffd012392659be689b6"
+        },
+        {
+          "item_id": "f1bef1065c4f40b6a75bc5c975a8b8d7857d96fc7eb9943d666b807495cce82b",
+          "path": "app/src/main/java/tv/own/owntv/features/sports/SportsPlayback.kt",
+          "fingerprint": "8ef7c41b98382b3eed6b08fd8cc0a8c4075e22f0e35fe7aa1a0448fe9b07121d"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 108984
+  }
+}

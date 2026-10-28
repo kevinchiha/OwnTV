@@ -112,6 +112,8 @@ class SportsViewModel(
     private val reminders: ReminderManager,
     private val playback: SportsPlayback,
     sourceDao: SourceDao,
+    // KevBox: LiveOnSat's listed channels, first in Find channels' list.
+    private val listedChannels: tv.own.owntv.kevbox.sports.ListedChannels,
 ) : ViewModel() {
 
     private val config = settings.activeSportsConfig.distinctUntilChanged()
@@ -214,11 +216,31 @@ class SportsViewModel(
             if (w != WatchWindow.Open) return@transformLatest emit(ChannelSearch.Closed(w as WatchWindow))
             val found = watchReader.found(m) { SportsMemory.rememberedFor(c, it) }
             when {
-                found != null -> emit(ChannelSearch.Found(found))
+                found != null -> {
+                    // KevBox: Core's answer shows at once; LiveOnSat's listed channels join it, first,
+                    // when the listings read brings any. With none, this is Core's one emission.
+                    emit(ChannelSearch.Found(found))
+                    val listed = listedChannels.options(m)
+                    if (listed.isNotEmpty()) emit(ChannelSearch.Found(tv.own.owntv.kevbox.sports.ListedChannels.merge(listed, found)))
+                }
                 !asked -> emit(ChannelSearch.NotSearched)
                 else -> {
                     emit(ChannelSearch.Searching)
-                    emit(ChannelSearch.Found(watchReader.watchFor(listOf(m)) { SportsMemory.rememberedFor(c, it) }[m.key].orEmpty()))
+                    // KevBox: the listings read runs alongside Core's search, and Core's answer shows as
+                    // soon as the search ends. LiveOnSat's listed channels join it, first, when they
+                    // arrive (at once if already in). With none, this is Core's one emission.
+                    kotlinx.coroutines.coroutineScope {
+                        val listed = kotlinx.coroutines.CompletableDeferred<List<WatchOption>>()
+                        launch { listed.complete(listedChannels.options(m)) }
+                        val core = watchReader.watchFor(listOf(m)) { SportsMemory.rememberedFor(c, it) }[m.key].orEmpty()
+                        if (listed.isCompleted) {
+                            emit(ChannelSearch.Found(tv.own.owntv.kevbox.sports.ListedChannels.merge(listed.await(), core)))
+                        } else {
+                            emit(ChannelSearch.Found(core))
+                            val late = listed.await()
+                            if (late.isNotEmpty()) emit(ChannelSearch.Found(tv.own.owntv.kevbox.sports.ListedChannels.merge(late, core)))
+                        }
+                    }
                 }
             }
         }.flowOn(Dispatchers.Default)
@@ -233,7 +255,10 @@ class SportsViewModel(
                 standings = leagueKey?.let { b.standings[it] },
                 config = c,
                 search = s,
-                list = WatchList.of(opts, filter, preferred, alsoList = preferred.toSet()),
+                // KevBox: LiveOnSat's listed channels stay first after Core's sort, among the channels the
+                // filter passes and among the ones it rejects; the rest keep Core's order.
+                list = WatchList.of(opts, filter, preferred, alsoList = preferred.toSet())
+                    .let { it.copy(shown = tv.own.owntv.kevbox.sports.ListedChannels.listedFirst(it.shown, filter::accepts)) },
                 filter = filter,
                 playlists = lists,
                 preferredLanguages = preferred,

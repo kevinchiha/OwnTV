@@ -4,7 +4,9 @@ package tv.own.owntv.kevbox.supabase
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -44,6 +46,12 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
+    // The football listings only add to Find channels and the goal toast's switch, so their read
+    // gives up after a few seconds in all (connect, send and read together) instead of 15 s per step.
+    private val listingClient = client.newBuilder()
+        .callTimeout(LISTING_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+
     private val root = baseUrl.trim().trimEnd('/').takeIf { it.isNotEmpty() }?.toHttpUrlOrNull()
 
     suspend fun passwordGrant(email: String, password: String): ApiResponse {
@@ -65,6 +73,22 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
             return send(PLAYLIST_PATH, mapOf("select" to PLAYLIST_COLUMNS, "order" to "name.asc"), accessToken) { get() }
         }
         return response
+    }
+
+    /**
+     * The football matches LiveOnSat lists with kickoff between [fromIso] and [toIso], each with the
+     * provider channels kevbox.dev matched to it, earliest first. Both bounds are ISO-8601 UTC
+     * instants ending in `Z`, as the query goes out unencoded. The whole call times out after 4 s,
+     * which answers NoNetwork like any other timeout.
+     */
+    suspend fun selectFootballListings(accessToken: String, fromIso: String, toIso: String): ApiResponse {
+        // One `and` filter: the query is a map, so two `kickoff` keys cannot both go out.
+        val query = mapOf(
+            "select" to LISTING_COLUMNS,
+            "and" to "(kickoff.gte.$fromIso,kickoff.lte.$toIso)",
+            "order" to "kickoff.asc",
+        )
+        return send(LISTING_PATH, query, accessToken, listingClient) { get() }
     }
 
     suspend fun accessVerdict(accessToken: String): ApiResponse =
@@ -155,11 +179,14 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         path: String,
         query: Map<String, String>,
         accessToken: String?,
+        via: OkHttpClient = client,
         method: Request.Builder.() -> Request.Builder,
     ): ApiResponse {
         val base = root ?: return UNREACHABLE
         val url = base.newBuilder().addPathSegments(path).apply {
-            // Every query value is a constant of this file, so it goes out as written (commas kept).
+            // Every query value is a constant of this file, or the football listings' `and` filter
+            // around two ISO-8601 UTC timestamps ending in `Z` (no `+` to encode), so it goes out as
+            // written (commas kept).
             query.forEach { (name, value) -> addEncodedQueryParameter(name, value) }
         }.build()
         val request = Request.Builder().url(url)
@@ -167,29 +194,43 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
             .apply { if (accessToken != null) header(AUTH_HEADER, "Bearer $accessToken") }
             .method()
             .build()
+        val call = via.newCall(request)
         return withContext(Dispatchers.IO) {
-            try {
-                client.newCall(request).execute().use { response ->
-                    ApiResponse.Http(response.code, response.body.string())
-                }
-            } catch (_: SSLException) {
-                UNREACHABLE
-            } catch (_: IOException) {
-                // Connection refused, unknown host, timeout, reset: all mean no usable network.
-                ApiResponse.NoNetwork
+            // The blocking execute() runs inside a cancellable continuation whose cancel handler
+            // cancels the call. OkHttp ignores thread interrupts during a socket read, but a
+            // cancelled call closes its socket, so a cancelled caller (a search dropped for a newer
+            // one) does not wait for the request to finish. The cancelled call's IOException is
+            // dropped: the caller gets a CancellationException, never NoNetwork.
+            suspendCancellableCoroutine { cont ->
+                cont.invokeOnCancellation { call.cancel() }
+                cont.resume(exchange(call))
             }
         }
+    }
+
+    private fun exchange(call: okhttp3.Call): ApiResponse = try {
+        call.execute().use { response ->
+            ApiResponse.Http(response.code, response.body.string())
+        }
+    } catch (_: SSLException) {
+        UNREACHABLE
+    } catch (_: IOException) {
+        // Connection refused, unknown host, timeout, reset: all mean no usable network.
+        ApiResponse.NoNetwork
     }
 
     private companion object {
         /** No HTTP exchange happened, and no network outage explains it. Callers read it as failed. */
         val UNREACHABLE = ApiResponse.Http(0, "")
         const val TIMEOUT_SECONDS = 15L
+        const val LISTING_TIMEOUT_SECONDS = 4L
         const val TOKEN_PATH = "auth/v1/token"
         const val LOGOUT_PATH = "auth/v1/logout"
         const val PLAYLIST_PATH = "rest/v1/member_playlist"
         const val PLAYLIST_COLUMNS = "client_number,name,server_url,username,password"
         const val PROXY_COLUMNS = ",proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password"
+        const val LISTING_PATH = "rest/v1/football_listing"
+        const val LISTING_COLUMNS = "kickoff,competition,home,away,channels"
         const val HTTP_BAD_REQUEST = 400
         const val UNDEFINED_COLUMN = "42703"
         const val VERDICT_PATH = "rest/v1/rpc/get_access_verdict"
