@@ -1,0 +1,128 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 0 finding(s) across 4 selected item(s).",
+  "summary": {
+    "files_reviewed": 4,
+    "comments": 0,
+    "total_tokens": 222560,
+    "input_tokens": 215413,
+    "output_tokens": 7147,
+    "cache_read_tokens": 182918,
+    "cache_write_tokens": 32471,
+    "elapsed": "1m19s"
+  },
+  "tool_calls": {
+    "total": 13,
+    "by_tool": {
+      "code_search": 9,
+      "file_find": 1,
+      "file_read": 3
+    },
+    "failure": 1,
+    "failure_by_tool": {
+      "code_search": 1
+    },
+    "failure_details": [
+      {
+        "tool_call_number": 6,
+        "tool_name": "code_search",
+        "file_path": "app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt,app/src/main/java/tv/own/owntv/kevbox/sports/SoonBySport.kt,app/src/main/res/values-fr/kevbox_strings.xml,app/src/main/res/values/kevbox_strings.xml",
+        "arguments": "{\"search_text\":\"requestFocus(androidx.compose.ui.focus.FocusDirection|requestFocus(FocusDirection|requestScrollToItem\",\"use_perl_regexp\":true}",
+        "error": "git grep failed: exit status 128: fatal: -e option, 'requestFocus(androidx.compose.ui.focus.FocusDirection|requestFocus(FocusDirection|requestScrollToItem': missing closing parenthesis"
+      }
+    ]
+  },
+  "comments": [],
+  "groups": [
+    {
+      "label": "Sports hub 'soon by sport' section with strings",
+      "files": [
+        "app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/sports/SoonBySport.kt",
+        "app/src/main/res/values-fr/kevbox_strings.xml",
+        "app/src/main/res/values/kevbox_strings.xml"
+      ]
+    }
+  ],
+  "session_id": "ca028a20-398a-44b0-bfc7-d46858196bcb",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "ca028a20-398a-44b0-bfc7-d46858196bcb",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "quick/sports-soon-rows",
+      "resolved_base": "71bc26218dea2fb740e2f70bc467c64742a2c147",
+      "resolved_head": "090c7881351bf56781e9ce718b90cf37147a2984",
+      "exact_range": "71bc26218dea2fb740e2f70bc467c64742a2c147..090c7881351bf56781e9ce718b90cf37147a2984",
+      "source_artifact_sha256": "3880a4aa6f936886c27adaa4cf8b90dbb38b5e184e8e7c7bf327a50c4e787325"
+    },
+    "execution": {
+      "ocr_version": "v1.13.3",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "7bdde30da0c66ee5643876474d879e4d72b8803bf0501749f82291f5b9b2b87a",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "4b187b5ca5d7d29ab079f38a76fc85014d9326add6e5e5896915434c65ea161a",
+          "path": "app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt",
+          "fingerprint": "ce02b7547dd3013bd587b0df4f3dbb22954ea32dd6894ca284c8930841f3d305"
+        },
+        {
+          "item_id": "822129e0918c5dfe29553a1b4cf12e25ca015b9183c33725742da66aa9ca0879",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/sports/SoonBySport.kt",
+          "fingerprint": "1fa7c0aa4f705d2fa02923f2f0d23ec8129f82a02fedcd770f00f44b2e67567a"
+        },
+        {
+          "item_id": "93fd75cbb2b80b911bdf67cd099ae54e3360824e0094b3c58cff2ef55224e904",
+          "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+          "fingerprint": "77e7023d3377b33a4860e5a7b91d131cb9ce6d5dfba0938b0c943b93b93cdd4b"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "c774390700281ccb1a7c4f16d2277261cb0daad765ce067554401dcf257f12f5"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "4b187b5ca5d7d29ab079f38a76fc85014d9326add6e5e5896915434c65ea161a",
+          "path": "app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt",
+          "fingerprint": "ce02b7547dd3013bd587b0df4f3dbb22954ea32dd6894ca284c8930841f3d305"
+        },
+        {
+          "item_id": "822129e0918c5dfe29553a1b4cf12e25ca015b9183c33725742da66aa9ca0879",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/sports/SoonBySport.kt",
+          "fingerprint": "1fa7c0aa4f705d2fa02923f2f0d23ec8129f82a02fedcd770f00f44b2e67567a"
+        },
+        {
+          "item_id": "93fd75cbb2b80b911bdf67cd099ae54e3360824e0094b3c58cff2ef55224e904",
+          "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+          "fingerprint": "77e7023d3377b33a4860e5a7b91d131cb9ce6d5dfba0938b0c943b93b93cdd4b"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "c774390700281ccb1a7c4f16d2277261cb0daad765ce067554401dcf257f12f5"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 79442
+  }
+}

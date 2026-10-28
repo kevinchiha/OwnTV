@@ -57,3 +57,6 @@ tests, a KevBox string (en + fr), and a new UPSTREAM-SYNC row.
 - baseline: gate green on kevbox-live 71bc2621 (the merge just gated).
 - Task 1: started at 0e339a76
 - Task 1: landed (81c00233). No interface bent. SoonRows holds one LazyListState per sport and reveals a card (column to its row, row to the card); it relies on the soon rows staying the column's last items. The hub's restore now uses requestFocus(FocusDirection.Enter), which returns a Boolean (runCatching never failed, so the old loop stopped after one try); this also covers Live now cards. Implementer's gate green.
+- gate on 81c00233: green (my run: tests, lint, divergence 0 failures); debug APK on kevbox_a14.
+- device check: rows read "Starting soon · ⚽ Football", "· 🏀 Basketball", "· 🎾 Tennis" in chip order; Sport on your channels now gone; Back from the 8th tennis card (Mensik v Mannarino) lands on that card with the row and column scrolled to it. Found: D-pad Down into the bottom row (Tennis) leaves its cards cut off at the screen bottom, under the key hints; the column scrolls only until the card's top is on screen (/tmp/los/r2.png).
+- ocr: 0 findings.
