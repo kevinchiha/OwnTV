@@ -127,14 +127,20 @@ fun SportsMatchScreen(
     // KevBox: one press also empties a Sports box (kevbox/sports/SportsBox.kt clearSportsBox).
     androidx.activity.compose.BackHandler(enabled = active) { liveVm.stopPreview(); tv.own.owntv.kevbox.sports.clearSportsBox(videoStage); onBack() }
     val page by vm.matchPage.collectAsStateWithLifecycle()
-    // KevBox: the box is Sports' only while this page is composed. Leaving it any way at all (Home from the
-    // mini player included) empties a Sports box, or Back to the hub would keep a stream with no box. Only the
-    // box: the stream may be the mini player's. The shell keeps this page composed behind full screen while
-    // the box is Sports', so a full-screen trip never gets here. Above the return: a match loading is not leaving.
-    androidx.compose.runtime.DisposableEffect(videoStage) { onDispose { tv.own.owntv.kevbox.sports.clearSportsBox(videoStage) } }
+    // KevBox: the box is Sports' only while this page is composed. Leaving it with the mini player or audio
+    // playing (not active; Home from the mini player) empties a Sports box here, or Back to the hub would keep
+    // a stream with no box. Only the box: the stream is theirs. The shell keeps this page composed behind full
+    // screen while the box is Sports', so a full-screen trip never gets here. Above the return: a match loading
+    // is not leaving. With the player idle, Back and the league page empty the box themselves, and the rail or
+    // a shortcut leaves it to the shell's section rule (kevbox/live/LiveVideoStage.kt sectionShown), which
+    // stops the stream and empties the box from the player mode as it is then. Emptying it here first made that
+    // rule keep the stream with no box on the way to Live TV or the Guide; a stop here could kill a channel
+    // opened full screen in the same frame (a launcher tile), as activeNow is the last composed value.
+    val activeNow by androidx.compose.runtime.rememberUpdatedState(active)
+    androidx.compose.runtime.DisposableEffect(videoStage) { onDispose { if (!activeNow) tv.own.owntv.kevbox.sports.clearSportsBox(videoStage) } }
     val state = page ?: return
     val m = state.match
-    var tab by remember { mutableStateOf(MatchTab.CHANNELS) } // KevBox: a match opens on its channels
+    var tab by remember(m.key) { mutableStateOf(MatchTab.CHANNELS) } // KevBox: a match (each one) opens on its channels
     var revealed by remember(m.key) { mutableStateOf(false) }
     // KevBox: keyed on the match, as the goal toast can open another match on this page while it stays composed.
     var focused by remember(m.key) { mutableStateOf<WatchOption?>(null) }
@@ -197,13 +203,16 @@ fun SportsMatchScreen(
     // KevBox: Back from full screen lands on the playing channel's row (after CH+/CH− the new one), else the
     // row OK was pressed on, else the first (kevbox/sports/SportsBox.kt sportsReturnChannelId); the tabs when
     // the list has none. The row is scrolled into view first, retrying while the page settles.
-    val shownNow by androidx.compose.runtime.rememberUpdatedState(shown)
-    LaunchedEffect(restoreFocus, onScreen) {
+    // KevBox: only rows the tab draws (channelRowsShown, as the focus effect above): while Find channels runs
+    // the listed rows are not drawn, and the tabs take focus at once instead of after 3 s of retries.
+    val drawnNow by androidx.compose.runtime.rememberUpdatedState(if (channelRowsShown(state)) shown else emptyList())
+    // KevBox: m.key: the goal toast can open another match while this runs, with its own list state and rows.
+    LaunchedEffect(m.key, restoreFocus, onScreen) {
         if (!restoreFocus || !onScreen) return@LaunchedEffect
         tab = MatchTab.CHANNELS
         var landed = false
         for (attempt in 0 until 30) {
-            val ids = shownNow.map { it.channel.id }
+            val ids = drawnNow.map { it.channel.id }
             val id = tv.own.owntv.kevbox.sports.sportsReturnChannelId(liveVm.previewChannel.value?.id, vm.lastPlayedChannelId, ids)
             if (id != null) {
                 if (listState.layoutInfo.visibleItemsInfo.none { it.key == id }) {
