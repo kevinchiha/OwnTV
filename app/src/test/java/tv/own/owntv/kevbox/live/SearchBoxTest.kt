@@ -158,10 +158,11 @@ class SearchBoxTest {
     }
 
     @Test
-    fun nothingChangesWhileThePlayerIsOpen() {
+    fun searchAndLiveTvBoxesStayWhileThePlayerIsOpen() {
         val s = sectionShown(MainSection.HOME, playerIdle = false, boxSection = MainSection.SEARCH)
         assertFalse(s.clearBox)
         assertFalse(s.stopPreview)
+        assertEquals(SectionShown(clearBox = false, stopPreview = false), sectionShown(MainSection.HOME, playerIdle = false, boxSection = MainSection.LIVE_TV))
     }
 
     @Test

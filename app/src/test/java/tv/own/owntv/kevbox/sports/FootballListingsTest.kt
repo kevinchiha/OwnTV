@@ -34,6 +34,7 @@ class FootballListingsTest {
         val requests: MutableList<Request> = Collections.synchronizedList(mutableListOf())
         val answers = ArrayDeque<Int>()
         var body = TWO_ROWS
+        var errorBody = ""
 
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
@@ -43,7 +44,7 @@ class FootballListingsTest {
             requests += request
             val code = answers.removeFirstOrNull() ?: 200
             if (code == NO_NETWORK) throw UnknownHostException("no network")
-            return canned(request, code, if (code == 200) body else "")
+            return canned(request, code, if (code == 200) body else errorBody)
         }
 
         private fun canned(request: Request, code: Int, text: String): Response = Response.Builder()
@@ -114,6 +115,19 @@ class FootballListingsTest {
         assertEquals("Bearer a-token", request.header("Authorization"))
         assertEquals("anon-key", request.header("apikey"))
         assertEquals("GET", request.method)
+    }
+
+    @Test
+    fun `a server without the sport column is asked again without it, and the rows read as soccer`() = runBlocking {
+        server.answers.add(400)
+        server.errorBody = """{"code":"42703","message":"column football_listing.sport does not exist"}"""
+
+        val read = listings.listings()
+
+        assertEquals(listOf("soccer", "soccer"), read.map { it.sport })
+        assertEquals(2, server.requests.size)
+        assertEquals("kickoff,competition,home,away,channels", server.requests.last().url.queryParameter("select"))
+        assertEquals("(kickoff.gte.2026-10-28T06:00:00Z,kickoff.lte.2026-10-30T00:00:00Z)", server.requests.last().url.queryParameter("and"))
     }
 
     @Test
@@ -261,9 +275,13 @@ class FootballListingsTest {
             .put("away", "Luke Humphries")
             .put("channels", JSONArray())
             .apply { if (sport != null) put("sport", sport) }
-        val body = JSONArray().put(row(null)).put(row(JSONObject.NULL)).put(row("darts")).put(row("basketball")).toString()
+        val body = JSONArray().put(row(null)).put(row(JSONObject.NULL)).put(row("darts")).put(row("basketball"))
+            .put(row(" Basketball")).put(row("mma ")).put(row("  ")).toString()
 
-        assertEquals(listOf("soccer", "soccer", "darts", "basketball"), parseListings(body)!!.map { it.sport })
+        assertEquals(
+            listOf("soccer", "soccer", "darts", "basketball", "basketball", "mma", "soccer"),
+            parseListings(body)!!.map { it.sport },
+        )
         // The darts row links to nothing, not even a match of a sport the app knows.
         val darts = parseListings(body)!![2]
         val soccer = match("2026-10-28T19:45:00Z", Team("7", "Luke Littler"), Team("8", "Luke Humphries"))
@@ -271,7 +289,7 @@ class FootballListingsTest {
     }
 
     @Test
-    fun `a basketball listing links to ESPN's teams by the football rule`() {
+    fun `a basketball listing links to ESPN's teams when both are found`() {
         val lakers = Team(id = "13", name = "Los Angeles Lakers", shortName = "Lakers", abbreviation = "LAL", location = "Los Angeles")
         val blazers = Team(id = "22", name = "Portland Trail Blazers", shortName = "Trail Blazers", abbreviation = "POR", location = "Portland")
         val game = match("2026-10-29T02:30:00Z", lakers, blazers, Sport.BASKETBALL, "NBA")
@@ -285,6 +303,25 @@ class FootballListingsTest {
         // And a basketball row never links a football match.
         val football = match("2026-10-29T02:30:00Z", lakers, blazers)
         assertNull(link(football, listOf(nba)))
+    }
+
+    @Test
+    fun `one basketball team found never links, and a college game never links`() {
+        val cavaliers = Team(id = "5", name = "Cleveland Cavaliers", shortName = "Cavaliers", abbreviation = "CLE", location = "Cleveland")
+        val wizards = Team(id = "27", name = "Washington Wizards", shortName = "Wizards", abbreviation = "WSH", location = "Washington")
+        val celtics = Team(id = "2", name = "Boston Celtics", shortName = "Celtics", abbreviation = "BOS", location = "Boston")
+        val virginia = Team(id = "258", name = "Virginia Cavaliers", shortName = "Virginia", abbreviation = "UVA", location = "Virginia")
+        val butler = Team(id = "2086", name = "Butler Bulldogs", shortName = "Butler", abbreviation = "BUT", location = "Butler")
+        val tip = "2026-10-28T23:00:00Z"
+        val row = listing(tip, "Cleveland Cavaliers", "Washington Wizards", "NBA", "basketball")
+
+        // ESPN's NCAA game at the same 7 pm tip finds "Cavaliers" in the NBA row.
+        assertNull(link(match(tip, virginia, butler, Sport.BASKETBALL, "NCAA Basketball", "mens-college-basketball"), listOf(row)))
+        // An NBA game with one of the two teams, at the same minute.
+        assertNull(link(match(tip, cavaliers, celtics, Sport.BASKETBALL, "NBA", "nba"), listOf(row)))
+        // Both names found still never link a college game.
+        assertNull(link(match(tip, cavaliers, wizards, Sport.BASKETBALL, "NCAA Women's Basketball", "womens-college-basketball"), listOf(row)))
+        assertEquals(row, link(match(tip, cavaliers, wizards, Sport.BASKETBALL, "NBA", "nba"), listOf(row)))
     }
 
     @Test
@@ -328,11 +365,18 @@ class FootballListingsTest {
         title = event,
     )
 
-    private fun match(kickoff: String, home: Team, away: Team, sport: Sport = Sport.SOCCER, leagueName: String = "German Cup") = Match(
+    private fun match(
+        kickoff: String,
+        home: Team,
+        away: Team,
+        sport: Sport = Sport.SOCCER,
+        leagueName: String = "German Cup",
+        leagueSlug: String = "ger.dfb_pokal",
+    ) = Match(
         id = "401",
         sport = sport,
         feed = "soccer/ger.dfb_pokal",
-        leagueSlug = "ger.dfb_pokal",
+        leagueSlug = leagueSlug,
         leagueName = leagueName,
         startMs = Instant.parse(kickoff).toEpochMilli(),
         state = MatchState.PRE,

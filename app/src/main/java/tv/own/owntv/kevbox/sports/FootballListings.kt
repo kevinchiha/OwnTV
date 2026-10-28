@@ -65,7 +65,7 @@ class FootballListings(
 
     /** The listing that is [match], or null when [match]'s sport is not listed or no listing links to it. */
     suspend fun listingFor(match: Match): FootballListing? {
-        if (match.sport !in LISTED_SPORTS.values) return null
+        if (linkerFor(match.sport) == null) return null
         return link(match, listings())
     }
 
@@ -134,28 +134,45 @@ private const val ONE_TEAM_WINDOW_MS = 5 * 60_000L
  */
 private const val MMA_WINDOW_MS = 12 * 60 * 60_000L
 
+/** In Core's league slugs for NCAA basketball ("mens-college-basketball", "womens-college-basketball"). */
+private const val COLLEGE_SLUG = "college"
+
 /**
  * The listing that is [match], among the listings of its own sport. Football and basketball link by
  * teams ([linkByTeams]), MMA by both fighters ([linkByFighters]), motor sport by time and series
  * ([linkBySeries]). Any other sport links to nothing.
  */
 internal fun link(match: Match, listings: List<FootballListing>): FootballListing? {
-    val same = listings.filter { LISTED_SPORTS[it.sport] == match.sport }
-    return when (match.sport) {
-        Sport.SOCCER, Sport.BASKETBALL -> linkByTeams(match, same)
-        Sport.MMA -> linkByFighters(match, same)
-        Sport.RACING -> linkBySeries(match, same)
-        else -> null
-    }
+    val linker = linkerFor(match.sport) ?: return null
+    return linker(match, listings.filter { LISTED_SPORTS[it.sport] == match.sport })
+}
+
+/** How a match of [sport] finds its listing; null for a sport no listing links to. */
+private fun linkerFor(sport: Sport): ((Match, List<FootballListing>) -> FootballListing?)? = when (sport) {
+    Sport.SOCCER -> { match, listings -> linkByTeams(match, listings, oneTeamWindowMs = ONE_TEAM_WINDOW_MS) }
+    Sport.BASKETBALL -> ::linkBasketball
+    Sport.MMA -> ::linkByFighters
+    Sport.RACING -> ::linkBySeries
+    else -> null
+}
+
+/**
+ * Both teams found, never one: an NCAA "Virginia Cavaliers" or "Houston" finds the NBA's Cavaliers or
+ * Rockets in a row at the same 7 pm tip. College games never link at all: too many college names
+ * are NBA names too (Memphis, Miami, Houston).
+ */
+private fun linkBasketball(match: Match, listings: List<FootballListing>): FootballListing? {
+    if (match.leagueSlug.contains(COLLEGE_SLUG)) return null
+    return linkByTeams(match, listings, oneTeamWindowMs = null)
 }
 
 /**
  * Kickoff within 15 minutes and both teams named in the listing's `home v away` text, or one team
- * when the kickoffs are within 5 minutes. Teams compare by Core's [TeamNames] tokens, so "FC Cologne"
- * finds ESPN's "1. FC Köln". A listing with both teams found beats one with one team; among equals,
- * the closest kickoff wins.
+ * when the kickoffs are within [oneTeamWindowMs] (never when it is null). Teams compare by Core's
+ * [TeamNames] tokens, so "FC Cologne" finds ESPN's "1. FC Köln". A listing with both teams found
+ * beats one with one team; among equals, the closest kickoff wins.
  */
-private fun linkByTeams(match: Match, listings: List<FootballListing>): FootballListing? {
+private fun linkByTeams(match: Match, listings: List<FootballListing>, oneTeamWindowMs: Long?): FootballListing? {
     val home = match.home?.team?.let(TeamNames::keyOf) ?: return null
     val away = match.away?.team?.let(TeamNames::keyOf) ?: return null
     return listings.asSequence()
@@ -164,7 +181,7 @@ private fun linkByTeams(match: Match, listings: List<FootballListing>): Football
         .mapNotNull { (listing, gap) ->
             val tokens = TeamNames.tokens("${listing.home} v ${listing.away}").toSet()
             val found = listOf(home, away).count { it.foundIn(tokens) }
-            val linked = found == 2 || (found == 1 && gap <= ONE_TEAM_WINDOW_MS)
+            val linked = found == 2 || (found == 1 && oneTeamWindowMs != null && gap <= oneTeamWindowMs)
             if (linked) Triple(listing, gap, found) else null
         }
         .minWithOrNull(compareByDescending<Triple<FootballListing, Long, Int>> { it.third }.thenBy { it.second })
@@ -226,7 +243,7 @@ private fun parseListing(row: JSONObject): FootballListing? = try {
                 )
             }
         },
-        sport = row.text("sport").ifEmpty { SOCCER_TEXT },
+        sport = row.text("sport").trim().lowercase().ifEmpty { SOCCER_TEXT },
     )
 } catch (_: Exception) {
     null

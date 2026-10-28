@@ -84,11 +84,17 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     suspend fun selectFootballListings(accessToken: String, fromIso: String, toIso: String): ApiResponse {
         // One `and` filter: the query is a map, so two `kickoff` keys cannot both go out.
         val query = mapOf(
-            "select" to LISTING_COLUMNS,
+            "select" to LISTING_COLUMNS + SPORT_COLUMN,
             "and" to "(kickoff.gte.$fromIso,kickoff.lte.$toIso)",
             "order" to "kickoff.asc",
         )
-        return send(LISTING_PATH, query, accessToken, listingClient) { get() }
+        val response = send(LISTING_PATH, query, accessToken, listingClient) { get() }
+        // A server without migration 0019 refuses the sport column (PostgREST 400, code 42703): ask
+        // again without it, so the football listings still arrive and every row reads as soccer.
+        if (response is ApiResponse.Http && response.code == HTTP_BAD_REQUEST && response.body.contains(UNDEFINED_COLUMN)) {
+            return send(LISTING_PATH, query + ("select" to LISTING_COLUMNS), accessToken, listingClient) { get() }
+        }
+        return response
     }
 
     suspend fun accessVerdict(accessToken: String): ApiResponse =
@@ -230,7 +236,8 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val PLAYLIST_COLUMNS = "client_number,name,server_url,username,password"
         const val PROXY_COLUMNS = ",proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password"
         const val LISTING_PATH = "rest/v1/football_listing"
-        const val LISTING_COLUMNS = "kickoff,competition,home,away,channels,sport"
+        const val LISTING_COLUMNS = "kickoff,competition,home,away,channels"
+        const val SPORT_COLUMN = ",sport"
         const val HTTP_BAD_REQUEST = 400
         const val UNDEFINED_COLUMN = "42703"
         const val VERDICT_PATH = "rest/v1/rpc/get_access_verdict"
