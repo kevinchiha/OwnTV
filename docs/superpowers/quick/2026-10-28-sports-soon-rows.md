@@ -69,3 +69,6 @@ tests, a KevBox string (en + fr), and a new UPSTREAM-SYNC row.
   4. reveal checks the counted index against the drawn item keys (soonRowScroll): row drawn, leave the column; counted index drawn under another key, stop; else scroll. The row key comes from soonRowKey(sport), shared with the hub.
   5. soonRows.groups is written in a SideEffect; @Stable dropped, with a comment on why nothing needs it.
   6. Tests: onFilter on a plain LazyListState (first call, same value, changed value); the order test spells out its sports; a counting test with a "none" item before the rows, plus the stop case and the whole-row rectangle.
+- device recheck on 3d32aae4 (kevbox_a14): Down into the Tennis row scrolls the column so the whole row sits above the key hints; Down into Football and Basketball does not move the column.
+- re-review 1: items 1, 3-6 fixed; item 2 partly (a key pressed before anything in the fresh hub has focus may not reach the Box). Markers and 13 grep proofs fine; no regressions found. Left: that ~330 ms window after Back (reason: rare, harmless beyond one refocus; the suggested focus-based stop risks breaking the restore it guards).
+- final review: done
