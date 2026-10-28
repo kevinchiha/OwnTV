@@ -1143,6 +1143,7 @@
 1	log	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	KevBoxListed
 1	regex	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	\\s+
 1	log	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	listed channels failed: ${e.javaClass.simpleName}
+1	technical	app/src/main/java/tv/own/owntv/kevbox/sports/TodayDatedSportsSource.kt	America/New_York
 3	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt	\0
 2	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	\0
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	(kickoff.gte.$fromIso,kickoff.lte.$toIso)
