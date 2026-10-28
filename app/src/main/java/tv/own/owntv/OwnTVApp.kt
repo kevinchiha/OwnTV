@@ -129,6 +129,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         GlobalContext.get().get<tv.own.owntv.kevbox.epg.GuideFeeds>().start()
         // KevBox: Settings › Playlists › Refresh playlist sets Core's channel-list timer (every 4 days unless changed).
         GlobalContext.get().get<tv.own.owntv.kevbox.refresh.PlaylistRefreshSetting>().start()
+        // KevBox: Sports starts every profile on Any commentary language unless it picked its own.
+        GlobalContext.get().get<tv.own.owntv.kevbox.sports.SportsDefaults>().start()
         // KevBox: an in-app update installs with its profile, so it starts compiled (UpdateProfileAttacher).
         GlobalContext.get().get<tv.own.owntv.kevbox.release.UpdateProfileAttacher>().start()
         // KevBox: the usage check-in (every 6 hours while signed in) starts without holding up start-up.
