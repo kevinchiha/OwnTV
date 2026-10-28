@@ -63,6 +63,7 @@ import tv.own.owntv.core.sports.WatchOption
 import tv.own.owntv.core.sports.model.Match
 import tv.own.owntv.core.sports.model.MatchState
 import tv.own.owntv.core.sports.model.Sport
+import tv.own.owntv.kevbox.sports.wholeAboveHints // KevBox: a focused Starting soon row shows whole
 import tv.own.owntv.ui.components.ChannelLogoTile
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.OwnTVPopup
@@ -120,13 +121,17 @@ fun SportsHubScreen(
     // KevBox: the column's and each Starting soon row's scroll state, so Back can bring an off-screen card into view.
     val hubList = androidx.compose.foundation.lazy.rememberLazyListState()
     val soonRows = remember { tv.own.owntv.kevbox.sports.SoonRows() }
+    // KevBox: set by a key pressed on the hub, so the restore below stops instead of taking focus back.
+    var keyDuringRestore by remember { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(restoreKey) {
         val key = restoreKey ?: return@LaunchedEffect
+        keyDuringRestore = false
         for (attempt in 0 until 10) {
             androidx.compose.runtime.withFrameNanos { }
+            if (keyDuringRestore) break
             // KevBox: retry until focus lands; a card not drawn yet gets its row scrolled to it first.
             if (runCatching { focusOf(key).requestFocus(androidx.compose.ui.focus.FocusDirection.Enter) }.getOrDefault(false)) break
-            soonRows.reveal(key, hubList)
+            if (attempt < 9) soonRows.reveal(key, hubList)
         }
     }
     val config = state.config
@@ -172,7 +177,8 @@ fun SportsHubScreen(
         .sortedWith(compareBy<Match>({ config.rankOf(it.sport, it.feed).first }, { config.rankOf(it.sport, it.feed).second }, { it.startMs })) // KevBox: 12 per sport, not 12 in all
     val onNow = state.onNow.values.flatten().take(6)
     val followedSports = remember(config) { vm.followedSports(config) }
-    val soonGroups = tv.own.owntv.kevbox.sports.soonBySport(soon, followedSports).also { soonRows.groups = it } // KevBox: one Starting soon row per sport
+    val soonGroups = tv.own.owntv.kevbox.sports.soonBySport(soon, followedSports) // KevBox: one Starting soon row per sport
+    androidx.compose.runtime.SideEffect { soonRows.groups = soonGroups } // KevBox: for reveal, written after composition, not during it
 
     val featuredFocus = remember { FocusRequester() }
     val chipFocus = remember { FocusRequester() }
@@ -181,7 +187,10 @@ fun SportsHubScreen(
         onEntryHook?.invoke { runCatching { entry.requestFocus() }.getOrDefault(false) }
         onDispose { onEntryHook?.invoke(null) }
     }
-    Box(modifier.fillMaxSize().onFocusChanged { if (it.hasFocus) onChildFocused() }) {
+    Box(
+        modifier.fillMaxSize().onFocusChanged { if (it.hasFocus) onChildFocused() }
+            .onPreviewKeyEvent { if (it.type == KeyEventType.KeyDown) keyDuringRestore = true; false }, // KevBox: the user moved, stop the restore
+    ) {
         LazyColumn(
             state = hubList, // KevBox: Back scrolls to a Starting soon row
             modifier = Modifier.fillMaxSize().focusGroup(),
@@ -291,11 +300,15 @@ fun SportsHubScreen(
                 }
             }
 
-            // KevBox: one Starting soon row per sport, in chip order; these stay the column's last items (SoonRows.reveal).
+            // KevBox: one Starting soon row per sport, in chip order; these stay the column's last items (SoonRows.reveal counts on it and checks the keys).
             soonGroups.forEach { (sport, sportSoon) ->
-                item(key = "soon-${sport.name}") {
+                item(key = tv.own.owntv.kevbox.sports.soonRowKey(sport)) {
                     val context = LocalContext.current
-                    Column {
+                    // KevBox: a focused row scrolls the column until it shows whole, above the key hints (110.mpx, the column's bottom padding).
+                    val whole = remember { tv.own.owntv.kevbox.sports.WholeRow() }
+                    val scope = androidx.compose.runtime.rememberCoroutineScope()
+                    val hintRoom = with(androidx.compose.ui.platform.LocalDensity.current) { 110.mpx.toPx() }
+                    Column(Modifier.wholeAboveHints(whole, scope, hintRoom)) {
                         RowHeader(contentStart, stringResource(R.string.kevbox_sports_starting_soon_sport, "${sportEmoji(sport)} ${sportLabel(sport)}"), null)
                         LazyRow(
                             state = soonRows.of(sport),
