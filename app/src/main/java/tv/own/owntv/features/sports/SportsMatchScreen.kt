@@ -75,7 +75,8 @@ import java.util.Locale
  * The match page's tabs. ESPN's summary carries no meetings, so in Head to head's place is
  * Form: each side's last five games.
  */
-private enum class MatchTab { TIMELINE, STATS, LINEUPS, TABLE, FORM, BROADCASTS }
+// KevBox: Channels first, the Watch live list as a tab of its own (the right column keeps the preview).
+private enum class MatchTab { CHANNELS, TIMELINE, STATS, LINEUPS, TABLE, FORM, BROADCASTS }
 
 /** The tier colours of the reasons: guide green, event blue, your pick gold, likely muted. */
 internal val TierGuide = Color(0xFF9FE07E)
@@ -88,6 +89,7 @@ internal val TierPick = Color(0xFFE7C56A)
  * when asked); then the preview (Live TV's own engine), the filter chips, every channel showing it with
  * the reason, and how many the filters hide. ▲ ▼ in the list preview each channel, OK plays it full
  * screen, Hold OK remembers it for the competition, ◀ opens the filter panel.
+ * KevBox: the Watch live list is the Channels tab (the first, open by default); the right column keeps the preview.
  */
 @Composable
 fun SportsMatchScreen(
@@ -112,7 +114,7 @@ fun SportsMatchScreen(
     val page by vm.matchPage.collectAsStateWithLifecycle()
     val state = page ?: return
     val m = state.match
-    var tab by remember { mutableStateOf(MatchTab.TIMELINE) }
+    var tab by remember { mutableStateOf(MatchTab.CHANNELS) } // KevBox: a match opens on its channels
     var revealed by remember(m.key) { mutableStateOf(false) }
     var focused by remember { mutableStateOf<WatchOption?>(null) }
     val firstRow = remember { FocusRequester() }
@@ -130,7 +132,8 @@ fun SportsMatchScreen(
     // runs, and must not take focus with it), the first channel once there is one.
     LaunchedEffect(state.search::class, state.list.shown.isNotEmpty()) {
         kotlinx.coroutines.delay(60)
-        runCatching { if (state.list.shown.isNotEmpty()) firstRow.requestFocus() else tabFocus.requestFocus() }
+        // KevBox: the channel rows live in the Channels tab, so they take focus only while it is open.
+        runCatching { if (tab == MatchTab.CHANNELS && state.list.shown.isNotEmpty()) firstRow.requestFocus() else tabFocus.requestFocus() }
     }
 
     val sep = stringResource(R.string.content_epg_bits_separator)
@@ -178,7 +181,7 @@ fun SportsMatchScreen(
                         tabs.forEach { t ->
                             StageTab(
                                 label = stringResource(t.label), count = "", selected = tab == t, onClick = { tab = t },
-                                modifier = if (t == MatchTab.TIMELINE) Modifier.focusRequester(tabFocus) else Modifier,
+                                modifier = if (t == MatchTab.CHANNELS) Modifier.focusRequester(tabFocus) else Modifier, // KevBox: the first tab
                             )
                         }
                         Spacer(Modifier.weight(1f))
@@ -190,6 +193,11 @@ fun SportsMatchScreen(
                     }
                 }
                 when (tab) {
+                    // KevBox: the Watch live list, moved here from the right column.
+                    MatchTab.CHANNELS -> channelsTab(
+                        state, m, focusTarget, firstRow, onFocused = { focused = it }, play = play, vm = vm,
+                        onOpenFilters = onOpenFilters, onAddPlaylist = onAddPlaylist,
+                    )
                     MatchTab.TIMELINE -> items((state.summary?.timeline ?: m.events).asReversed()) { e -> TimelineRow(e, m) }
                     MatchTab.STATS -> items(state.summary?.stats.orEmpty()) { s -> StatRow(s.label, s.home, s.away) }
                     MatchTab.LINEUPS -> item { Lineups(m, state.summary) }
@@ -200,74 +208,25 @@ fun SportsMatchScreen(
             }
             }
 
-            // --- Right: Watch live ----------------------------------------------------------------
-            // Starts below the top-right status cluster (playlist pill and clock), which floats over every page.
-            Column(Modifier.weight(1f).fillMaxSize().padding(top = 96.mpx).focusGroup()) {
-                if (!state.hasPlaylist) {
-                    NoPlaylistNote(onAddPlaylist)
-                    return@Column
-                }
-                when (val s = state.search) {
-                    is ChannelSearch.Found -> Unit
-                    // KevBox: before a search runs, LiveOnSat's listed channels (state.list) show under the note or button.
-                    is ChannelSearch.Closed -> { ClosedNote(s.window); if (state.list.total == 0) return@Column }
-                    else -> {
-                        FindChannels(busy = s == ChannelSearch.Searching || s == ChannelSearch.Checking, searching = s == ChannelSearch.Searching, onFind = vm::findChannels)
-                        if (state.list.total == 0 || s != ChannelSearch.NotSearched) return@Column // KevBox: listed channels below
-                    }
-                }
-                if (state.list.total == 0) {
-                    Text(stringResource(R.string.sports_watch_live), style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(stringResource(R.string.sports_not_on_channels), style = stageText(19, 400), color = StageColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 9.mpx))
-                    return@Column
-                }
-                val video = focused ?: shown.firstOrNull()
-                GuideVideo(
-                    channel = video?.channel,
-                    channelLine = video?.channel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(sep) },
-                    // KevBox: a channel LiveOnSat lists carries ListedChannels.MARK as its guide title, not a programme, so it gets no caption.
-                    nowTitle = video?.takeUnless { tv.own.owntv.kevbox.sports.ListedChannels.isListed(it) }?.guideTitle,
-                    previewEngine = liveVm.previewEngine,
-                    showVideo = previewOn && focused != null,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(Modifier.fillMaxWidth().padding(top = 18.mpx), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        pluralStringResource(R.plurals.sports_watch_live_count, state.list.total, state.list.total),
-                        style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            // --- Right: the preview ------------------------------------------------------------------
+            // KevBox: the right column keeps only the preview of the focused channel; the Watch live list
+            // (notes, Find channels, filters, rows) is the Channels tab on the left.
+            Column(Modifier.weight(1f).fillMaxSize().padding(top = 96.mpx)) {
+                if (state.hasPlaylist && shown.isNotEmpty()) {
+                    val video = focused ?: shown.firstOrNull()
+                    GuideVideo(
+                        channel = video?.channel,
+                        channelLine = video?.channel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(sep) },
+                        // KevBox: a channel LiveOnSat lists carries ListedChannels.MARK as its guide title, not a programme, so it gets no caption.
+                        nowTitle = video?.takeUnless { tv.own.owntv.kevbox.sports.ListedChannels.isListed(it) }?.guideTitle,
+                        previewEngine = liveVm.previewEngine,
+                        showVideo = previewOn && focused != null,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    state.preferredLanguages.firstOrNull()?.let { lang ->
-                        Text(stringResource(R.string.sports_language_first, languageName(lang)), style = stageText(18, 400), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                FilterChips(state.filter, onOpenFilters)
-                // Ends above the key hints at the bottom of the screen, which would otherwise cover the last rows.
-                LazyColumn(Modifier.weight(1f).padding(top = 6.mpx, bottom = 84.mpx).focusRestorer().focusGroup()) {
-                    items(shown, key = { it.channel.id }) { o ->
-                        ChannelRow(
-                            o, m,
-                            onClick = { play(o) },
-                            onHold = { vm.rememberChannel(m, o.channel) },
-                            modifier = Modifier
-                                .then(if (o === focusTarget) Modifier.focusRequester(firstRow) else Modifier)
-                                .onFocusChanged { if (it.isFocused) focused = o },
-                        )
-                    }
-                    if (state.list.hidden > 0) {
-                        item {
-                            val names = state.list.hiddenLanguages.map { if (it == WatchFilter.UNKNOWN) stringResource(R.string.sports_unknown) else languageName(it) }
-                            Text(
-                                pluralStringResource(R.plurals.sports_hidden, state.list.hidden, state.list.hidden) +
-                                    (if (names.isEmpty()) "" else " (${names.joinToString(", ")})"),
-                                style = stageText(17, 400), color = StageColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 18.mpx, top = 9.mpx),
-                            )
-                        }
-                    }
                 }
             }
         }
-        if (state.hasPlaylist && shown.isNotEmpty()) {
+        if (tab == MatchTab.CHANNELS && state.hasPlaylist && shown.isNotEmpty()) { // KevBox: the list's keys, on its tab
             StageKeyHints(
                 listOf(
                     stringResource(R.string.common_ok) to stringResource(R.string.sports_watch_full_screen),
@@ -282,12 +241,89 @@ fun SportsMatchScreen(
 }
 
 private val MatchTab.label: Int get() = when (this) {
+    MatchTab.CHANNELS -> R.string.kevbox_sports_tab_channels // KevBox
     MatchTab.TIMELINE -> R.string.sports_tab_timeline
     MatchTab.STATS -> R.string.sports_tab_stats
     MatchTab.LINEUPS -> R.string.sports_tab_lineups
     MatchTab.TABLE -> R.string.sports_tab_table
     MatchTab.FORM -> R.string.sports_table_form
     MatchTab.BROADCASTS -> R.string.sports_tab_broadcasts
+}
+
+// KevBox: the Channels tab: what the right column's Watch live list showed (the playlist note, Find
+// channels or its window note, the count and filter chips, every channel with its reason, how many the
+// filters hide), as rows of the page's own list. ▲ ▼ preview each channel in the box on the right.
+private fun androidx.compose.foundation.lazy.LazyListScope.channelsTab(
+    state: MatchPageState,
+    m: Match,
+    focusTarget: WatchOption?,
+    firstRow: FocusRequester,
+    onFocused: (WatchOption) -> Unit,
+    play: (WatchOption) -> Unit,
+    vm: SportsViewModel,
+    onOpenFilters: () -> Unit,
+    onAddPlaylist: () -> Unit,
+) {
+    if (!state.hasPlaylist) {
+        item { Column(Modifier.padding(top = 21.mpx)) { NoPlaylistNote(onAddPlaylist) } }
+        return
+    }
+    when (val s = state.search) {
+        is ChannelSearch.Found -> Unit
+        // Before a search runs, LiveOnSat's listed channels (state.list) show under the note or button.
+        is ChannelSearch.Closed -> {
+            item { Column(Modifier.padding(top = 21.mpx)) { ClosedNote(s.window) } }
+            if (state.list.total == 0) return
+        }
+        else -> {
+            item { Column(Modifier.padding(top = 21.mpx)) { FindChannels(busy = s == ChannelSearch.Searching || s == ChannelSearch.Checking, searching = s == ChannelSearch.Searching, onFind = vm::findChannels) } }
+            if (state.list.total == 0 || s != ChannelSearch.NotSearched) return
+        }
+    }
+    if (state.list.total == 0) {
+        item {
+            Column(Modifier.padding(top = 21.mpx)) {
+                Text(stringResource(R.string.sports_watch_live), style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(R.string.sports_not_on_channels), style = stageText(19, 400), color = StageColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 9.mpx))
+            }
+        }
+        return
+    }
+    item {
+        Column(Modifier.padding(top = 21.mpx)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    pluralStringResource(R.plurals.sports_watch_live_count, state.list.total, state.list.total),
+                    style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                state.preferredLanguages.firstOrNull()?.let { lang ->
+                    Text(stringResource(R.string.sports_language_first, languageName(lang)), style = stageText(18, 400), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            FilterChips(state.filter, onOpenFilters)
+        }
+    }
+    items(state.list.shown, key = { it.channel.id }) { o ->
+        ChannelRow(
+            o, m,
+            onClick = { play(o) },
+            onHold = { vm.rememberChannel(m, o.channel) },
+            modifier = Modifier
+                .then(if (o === focusTarget) Modifier.focusRequester(firstRow) else Modifier)
+                .onFocusChanged { if (it.isFocused) onFocused(o) },
+        )
+    }
+    if (state.list.hidden > 0) {
+        item {
+            val names = state.list.hiddenLanguages.map { if (it == WatchFilter.UNKNOWN) stringResource(R.string.sports_unknown) else languageName(it) }
+            Text(
+                pluralStringResource(R.plurals.sports_hidden, state.list.hidden, state.list.hidden) +
+                    (if (names.isEmpty()) "" else " (${names.joinToString(", ")})"),
+                style = stageText(17, 400), color = StageColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 18.mpx, top = 9.mpx),
+            )
+        }
+    }
 }
 
 /**
