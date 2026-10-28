@@ -91,3 +91,4 @@ hunks in `SportsMatchScreen.kt`, `SportsScreen.kt` and `OwnTVShell.kt`, with UPS
 ## Build log
 - plan check: 10 problems. Fixes: box set by the match page, not the shell; back-to-grid needs a Sports box; restore falls back to lastPlayedChannelId; list state and per-row requesters move to Task 2; onScreen guard is an early return, not a key; returnToMatch dropped; Back is one press; the goal toast's channel branch sets pendingMatch; no local fun in the shell; proof rows and the explicit Down/Left fallbacks. All went into the plan.
 - baseline: gate green on kevbox-live b8961664.
+- Task 1: landed (92a02ebb). `isBackToGrid` now ends with a required `boxSection: MainSection?`; the shell's exitPlayerWith already passes `liveVideoStage.boxSection` (KevBox-commented, the UPSTREAM-SYNC grep `kevbox.live.isBackToGrid(` still matches), so Task 2 needs no shell change for AC-1. `sportsReturnChannelId` is in kevbox/sports/SportsBox.kt; add Task 2's helpers there.
