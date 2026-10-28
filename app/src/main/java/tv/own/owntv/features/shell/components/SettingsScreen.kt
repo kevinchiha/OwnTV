@@ -172,7 +172,8 @@ fun SettingsScreen(
     // A cross-script language change recreates the Activity so Android can apply the new script's
     // shaping and font fallback. Keep the open settings sub-screen across that configuration change
     // instead of dropping back to the Settings root/sidebar.
-    var tab by rememberSaveable { mutableStateOf(SettingsTab.ROOT) }
+    var tab by rememberSaveable { mutableStateOf(if (tv.own.owntv.kevbox.sports.SportsCard.opens(start)) SettingsTab.SPORTS else SettingsTab.ROOT) } // KevBox: More's Sports card
+    var kevboxSportsCard by rememberSaveable { mutableStateOf(tv.own.owntv.kevbox.sports.SportsCard.opens(start)) } // KevBox: Back from its page goes to More
     // Deep-link from the Guide's "Add EPG" button: jump straight to EPG Sources in add mode.
     var consumeEpgAdd by remember { mutableStateOf(false) }
     var showZoom by remember { mutableStateOf(false) }
@@ -249,8 +250,9 @@ fun SettingsScreen(
     // These belong to the two-pane Settings root, but stay remembered while a detail screen replaces
     // it. Otherwise Back briefly rebuilds Quick at row zero before restoring the real group/row.
     // Start on the card More opened, not Quick: waiting for the start effect drew Quick for a few frames first.
-    var selectedGroup by rememberSaveable { mutableIntStateOf(start?.group ?: 0) }
-    var displayedGroup by rememberSaveable { mutableIntStateOf(start?.group ?: 0) }
+    // KevBox: SportsCard.group drops the Sports card's index, which names no group.
+    var selectedGroup by rememberSaveable { mutableIntStateOf(tv.own.owntv.kevbox.sports.SportsCard.group(start) ?: 0) }
+    var displayedGroup by rememberSaveable { mutableIntStateOf(tv.own.owntv.kevbox.sports.SportsCard.group(start) ?: 0) }
     var savedScrollPx by remember { mutableIntStateOf(0) }
     val saveScroll = { savedScrollPx = pageScroll.value }
     // The rows column: fresh entry and a lost focus land here, on the page's first row.
@@ -260,8 +262,10 @@ fun SettingsScreen(
     LaunchedEffect(searchAutoEdit) { if (searchAutoEdit) { kotlinx.coroutines.delay(1000); searchAutoEdit = false } }
     LaunchedEffect(start) {
         if (start == null) return@LaunchedEffect
-        tab = SettingsTab.ROOT
-        start.group?.let { selectedGroup = it; displayedGroup = it }
+        // KevBox: the Sports card opens the Sports page; every other card opens its group.
+        kevboxSportsCard = tv.own.owntv.kevbox.sports.SportsCard.opens(start)
+        tab = if (kevboxSportsCard) SettingsTab.SPORTS else SettingsTab.ROOT
+        tv.own.owntv.kevbox.sports.SportsCard.group(start)?.let { selectedGroup = it; displayedGroup = it }
         if (start.search) {
             searchMode = true
             searchFromMore = true
@@ -427,7 +431,8 @@ fun SettingsScreen(
             SettingsTab.GLASS_EFFECT -> { GlassEffectSettingsScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
             SettingsTab.SUBTITLE_STYLE -> tv.own.owntv.features.settings.SubtitleStylePage(onBack = { tab = SettingsTab.ROOT }, modifier = modifier)
             SettingsTab.BROWSING -> tv.own.owntv.features.settings.BrowsingListsSettingsScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier)
-            SettingsTab.SPORTS -> tv.own.owntv.features.sports.SportsSettingsScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier)
+            // KevBox: opened from More's Sports card, Back returns to More.
+            SettingsTab.SPORTS -> tv.own.owntv.features.sports.SportsSettingsScreen(onBack = { tab = SettingsTab.ROOT; if (kevboxSportsCard) { kevboxSportsCard = false; onBack?.invoke() } }, modifier = modifier)
             SettingsTab.FONTS -> tv.own.owntv.features.settings.FontSettingsScreen(
                 current = fontCustomization, onSet = onSetFontCustomization, familyLabel = { fontFamilyLabel(it) },
                 onBack = { tab = SettingsTab.ROOT }, modifier = modifier,
@@ -745,14 +750,7 @@ fun SettingsScreen(
         // and are More rows now; Clear history moved onto the History screen it acts on; the download
         // folder moved to the Downloads screen. With all four gone the group had nothing left in it.
         RootGroup("group_app", stringResource(R.string.settings_app_group), OwnTVIcon.INFO, stringResource(R.string.settings_group_summary_app)),
-        // Sports Hub: one row in App, opening the page with every Sports setting. Not a group of its
-        // own: More › Settings opens groups by position (SettingsGroup), and its 12 cards fill the page.
-        RootRow(
-            tabRowKey(SettingsTab.SPORTS), TileTone.PRIMARY, OwnTVIcon.SPORTS,
-            title = stringResource(R.string.sports_title), desc = stringResource(R.string.sports_leagues),
-            focus = rowFocus.getValue(SettingsTab.SPORTS),
-            onClick = { open(SettingsTab.SPORTS) },
-        ),
+        // KevBox: no Sports row in App: Sports has its own card in More › Settings (SportsCard).
         RootRow(
             tabRowKey(SettingsTab.LANGUAGE), TileTone.PRIMARY, OwnTVIcon.LANGUAGE,
             heading = stringResource(R.string.settings_group_app),
@@ -1081,7 +1079,8 @@ fun SettingsScreen(
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_logging"), stringResource(R.string.settings_detailed_playback_logging), stringResource(R.string.settings_search_keywords_detailed_logging), OwnTVIcon.INFO, TileTone.SECONDARY) { jumpVideo("vp_logging", false) },
             // KevBox: no Proxy entry; the proxy is set in kevbox.dev.
             SettingsSearchEntry(stringResource(R.string.settings_breadcrumb, stringResource(R.string.settings_group_app), stringResource(R.string.settings_group_network)), stringResource(R.string.settings_dns), stringResource(R.string.settings_search_keywords_dns), OwnTVIcon.DNS, TileTone.SECONDARY) { open(SettingsTab.DNS) },
-            SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.sports_title), stringResource(R.string.sports_leagues), OwnTVIcon.SPORTS, TileTone.PRIMARY) { open(SettingsTab.SPORTS) },
+            // KevBox: Sports is its own card, not part of App.
+            SettingsSearchEntry(stringResource(R.string.common_nav_settings), stringResource(R.string.sports_title), stringResource(R.string.sports_leagues), OwnTVIcon.SPORTS, TileTone.PRIMARY) { open(SettingsTab.SPORTS) },
             // Settings inside a sub-screen, by their own names (kept out of line: this function is at the JVM size limit).
             *subScreenSearchEntries { t -> open(t) }.toTypedArray(),
             SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.settings_app_startup), stringResource(R.string.settings_search_keywords_startup), OwnTVIcon.POWER, TileTone.SECONDARY,

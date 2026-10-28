@@ -137,4 +137,5 @@
     <string name="kevbox_preview_sample_programme_6">Wildlife</string>
     <!-- Sports › a match › Watch live, and the player's other-channels panel: the reason under a channel LiveOnSat lists for the match. -->
     <string name="kevbox_sports_listed_by_liveonsat">Listed by LiveOnSat</string>
+    <string name="kevbox_settings_card_sports">Leagues, teams, alerts, channels</string>
 </resources>

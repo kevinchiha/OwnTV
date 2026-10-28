@@ -55,4 +55,5 @@
     <string name="kevbox_preview_sample_programme_6">Vie sauvage</string>
     <!-- Sports › Watch live: LiveOnSat -->
     <string name="kevbox_sports_listed_by_liveonsat">Listé par LiveOnSat</string>
+    <string name="kevbox_settings_card_sports">Ligues, équipes, alertes, chaînes</string>
 </resources>
