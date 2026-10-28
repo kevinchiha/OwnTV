@@ -30,6 +30,22 @@ class SportsBoxTest {
     fun `an empty list has no row`() =
         assertNull(sportsReturnChannelId(playingId = 20L, lastPlayedId = 10L, shownIds = emptyList()))
 
+    @Test
+    fun `Left from the block goes back to the row that last had focus`() =
+        assertEquals(20L, sportsBlockLeftRowId(lastFocusedId = 20L, rowIds = listOf(10L, 20L, 30L)))
+
+    @Test
+    fun `Left goes to the first row once the last one has left the list`() {
+        assertEquals(30L, sportsBlockLeftRowId(lastFocusedId = 20L, rowIds = listOf(30L, 10L)))
+        assertEquals(30L, sportsBlockLeftRowId(lastFocusedId = null, rowIds = listOf(30L, 10L)))
+    }
+
+    @Test
+    fun `Left has no row when the tab shows none`() {
+        assertNull(sportsBlockLeftRowId(lastFocusedId = 20L, rowIds = emptyList()))
+        assertNull(sportsBlockLeftRowId(lastFocusedId = null, rowIds = emptyList()))
+    }
+
     private fun channel(id: Long) =
         ChannelEntity(id = id, sourceId = 1, categoryId = 10, name = "Ch $id", streamUrl = "http://x/$id.ts", remoteId = "$id")
 
