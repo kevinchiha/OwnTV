@@ -23,7 +23,7 @@ data class ListedChannel(val streamId: String, val name: String, val listedAs: S
 /**
  * One match LiveOnSat lists, with the provider channels that show it, in LiveOnSat's order. [sport] is
  * the server's own word for it ("soccer", "basketball", "mma", "racing"), kept as text so a sport the
- * server adds later still reads here; it links to nothing until [LISTED_SPORTS] knows it.
+ * server adds later still reads here; it links to nothing until [LISTED_SPORTS] and `linkerFor` know it.
  */
 data class FootballListing(
     val kickoffMs: Long,
