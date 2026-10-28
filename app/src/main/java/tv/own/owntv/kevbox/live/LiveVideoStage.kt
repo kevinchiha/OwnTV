@@ -109,7 +109,9 @@ internal fun lerpRect(from: Rect, to: Rect, t: Float): Rect = Rect(
  * with Live TV's grid or Search on screen, the channel on ExoPlayer at the live edge (no catch-up
  * archive, no rewind). Only then does Back keep the stream and shrink the video into the box; every
  * other exit stops it. Search joined on 2026-10-14 (Kevin): OK there previews, OK again goes full
- * screen, Back comes back to the results.
+ * screen, Back comes back to the results. Sports joined on 2026-10-28, but only when the box is Sports'
+ * ([boxSection]): the hub's "On channels now" rows open full screen with no box drawn, and keeping the
+ * stream there would leave it playing behind the hub.
  */
 internal fun isBackToGrid(
     playerMode: PlayerMode,
@@ -118,9 +120,11 @@ internal fun isBackToGrid(
     liveOnExo: Boolean,
     catchupActive: Boolean,
     rewound: Boolean,
+    boxSection: MainSection?,
 ): Boolean = playerMode == PlayerMode.FULLSCREEN &&
-    (section == MainSection.LIVE_TV || section == MainSection.SEARCH) && zapSource == MainSection.LIVE_TV &&
-    liveOnExo && !catchupActive && !rewound
+    (section == MainSection.LIVE_TV || section == MainSection.SEARCH ||
+        (section == MainSection.SPORTS && boxSection == MainSection.SPORTS)) &&
+    zapSource == MainSection.LIVE_TV && liveOnExo && !catchupActive && !rewound
 
 /** What showing a section does to the box and the preview stream, from [sectionShown]. */
 data class SectionShown(val clearBox: Boolean, val stopPreview: Boolean)
@@ -129,8 +133,8 @@ data class SectionShown(val clearBox: Boolean, val stopPreview: Boolean)
  * The shell shows [section] with the player [playerIdle] or not, and the box filled by [boxSection]
  * (null for an empty box). The box's own screen keeps it. Any other screen empties it, and stops the
  * stream unless the box was Live TV's and the new screen is one of the two that share its preview
- * engine (Live TV, the TV Guide page): that was the rule before Search had a box. With no box, every
- * screen but those two stops the preview.
+ * engine (Live TV, the TV Guide page): that was the rule before Search had a box. A Search or Sports
+ * box always stops it. With no box, every screen but those two stops the preview.
  */
 fun sectionShown(section: MainSection, playerIdle: Boolean, boxSection: MainSection?): SectionShown {
     if (!playerIdle) return SectionShown(clearBox = false, stopPreview = false)
@@ -138,7 +142,7 @@ fun sectionShown(section: MainSection, playerIdle: Boolean, boxSection: MainSect
     val liveScreen = section == MainSection.LIVE_TV || section == MainSection.EPG
     return SectionShown(
         clearBox = boxSection != null,
-        stopPreview = !liveScreen || boxSection == MainSection.SEARCH,
+        stopPreview = !liveScreen || boxSection == MainSection.SEARCH || boxSection == MainSection.SPORTS,
     )
 }
 

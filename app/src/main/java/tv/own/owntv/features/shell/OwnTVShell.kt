@@ -571,6 +571,7 @@ fun OwnTVShell(
         val backToGrid = keepForGrid && tv.own.owntv.kevbox.live.isBackToGrid(
             playerMode, selectedSection, zapSource, liveVm.liveOnExo.value, liveVm.catchupActive.value,
             rewound = liveVm.timeshiftOffsetSec.value != null,
+            boxSection = liveVideoStage.boxSection, // KevBox: Sports keeps the stream only for its own box
         )
         val openedChannel = liveVideoStage.boxChannel
         val playingChannel = liveVm.previewChannel.value
@@ -1161,7 +1162,10 @@ fun OwnTVShell(
       // and out of D-pad focus search. Upstream drops it, and Back then rebuilt the whole grid before the
       // video could shrink into its box: about a second on Kevin's TV (2026-10-13). Search does the same,
       // so Back lands on the same results, query and row (2026-10-14).
-      if (browseShown || selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.SEARCH) {
+      // KevBox: Sports too, while its match page owns the box (2026-10-28): the bridge finds the box there and
+      // Find channels is not reset. The hub's own full-screen rows have no box and rebuild as before.
+      if (browseShown || selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.SEARCH ||
+          (selectedSection == MainSection.SPORTS && liveVideoStage.boxSection == MainSection.SPORTS)) {
         Column(
             modifier = Modifier.fillMaxSize()
                 .then(if (browseShown) Modifier else tv.own.owntv.kevbox.ui.KeptHidden)
@@ -1493,6 +1497,9 @@ fun OwnTVShell(
                             onChildFocused = { focusedLayer = ShellLayer.CONTENT },
                             onEntryHook = { sportsEntry = it },
                             active = playerMode == PlayerMode.NONE,
+                            onScreen = playerMode != PlayerMode.FULLSCREEN, // KevBox: kept composed behind it, as Search
+                            restoreFocus = restoreFocus,
+                            onRestored = { restoreFocus = false },
                             contentStart = if (navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED) 64.mpx else 150.mpx,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -1803,6 +1810,8 @@ fun OwnTVShell(
                             onSelectSection(MainSection.SPORTS)
                         } else if (liveVm.ensurePlayingByIdAsync(best.channel.id, options.map { it.channel })) {
                             sportsPlayback.start(m, options)
+                            // KevBox: Back from full screen then lands on this match's page (SportsScreen collects it).
+                            if (selectedSection == MainSection.SPORTS) sportsPlayback.pendingMatch.value = m to null
                         }
                     }
                 }

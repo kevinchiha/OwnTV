@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll // KevBox: the Watch live block under the video scrolls when it runs long
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties // KevBox: ▶ ◀ ▲ ▼ between the channel rows, the tabs and the Watch live block
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
@@ -70,6 +72,7 @@ import tv.own.owntv.ui.theme.mpx
 import tv.own.owntv.ui.theme.stageAccent
 import tv.own.owntv.ui.theme.stageText
 import java.util.Locale
+import kotlinx.coroutines.launch // KevBox: ◀ out of the Watch live block scrolls the list to its row first
 
 /**
  * The match page's tabs. ESPN's summary carries no meetings, so in Head to head's place is
@@ -90,6 +93,10 @@ internal val TierPick = Color(0xFFE7C56A)
  * the reason, and how many the filters hide. ▲ ▼ in the list preview each channel, OK plays it full
  * screen, Hold OK remembers it for the competition, ◀ opens the filter panel.
  * KevBox: the Watch live list is the Channels tab (the first, open by default); the right column keeps the preview.
+ * KevBox: ▲ ▼ only move. OK puts the channel in the video box and previews it, OK on the boxed channel
+ * plays it full screen, and Back from there shrinks it into the box again (Kevin, 2026-10-28).
+ * KevBox: on the Channels tab the Watch live block (notes, Find channels, count, filter chips) sits in
+ * the right column under the video; the left column keeps the tabs and the channel rows (2026-10-28).
  */
 @Composable
 fun SportsMatchScreen(
@@ -104,44 +111,144 @@ fun SportsMatchScreen(
     modifier: Modifier = Modifier,
     /** False while the player is full screen over the page. */
     active: Boolean = true,
+    /** KevBox: false while full screen covers this page, which stays composed behind it. */
+    onScreen: Boolean = true,
+    /** KevBox: the way back from full screen; focus goes to the playing channel's row, then [onRestored]. */
+    restoreFocus: Boolean = false,
+    onRestored: () -> Unit = {},
 ) {
+    // KevBox: the shared video box (kevbox/live/LiveVideoStage.kt). Sports reads it only when Sports filled it.
+    val videoStage = tv.own.owntv.kevbox.live.LocalLiveVideoStage.current
     // Back is registered before the data: while the page loads, Back must still mean "back to the hub",
     // not fall through to the shell (which would leave the section empty with focus on the rail).
     // Back also ends the preview. Leaving any other way must not: full screen re-tunes the same engines,
     // and a stop on the way out (as this page did) killed the stream it had just started.
     // Off while the player is full screen over this page: Back then belongs to the player, which returns here.
-    androidx.activity.compose.BackHandler(enabled = active) { liveVm.stopPreview(); onBack() }
+    // KevBox: one press also empties a Sports box (kevbox/sports/SportsBox.kt clearSportsBox).
+    androidx.activity.compose.BackHandler(enabled = active) { liveVm.stopPreview(); tv.own.owntv.kevbox.sports.clearSportsBox(videoStage); onBack() }
     val page by vm.matchPage.collectAsStateWithLifecycle()
+    // KevBox: the box is Sports' only while this page is composed. Leaving it with the mini player or audio
+    // playing (not active; Home from the mini player) empties a Sports box here, or Back to the hub would keep
+    // a stream with no box. Only the box: the stream is theirs. The shell keeps this page composed behind full
+    // screen while the box is Sports', so a full-screen trip never gets here. Above the return: a match loading
+    // is not leaving. With the player idle, Back and the league page empty the box themselves, and the rail or
+    // a shortcut leaves it to the shell's section rule (kevbox/live/LiveVideoStage.kt sectionShown), which
+    // stops the stream and empties the box from the player mode as it is then. Emptying it here first made that
+    // rule keep the stream with no box on the way to Live TV or the Guide; a stop here could kill a channel
+    // opened full screen in the same frame (a launcher tile), as activeNow is the last composed value.
+    val activeNow by androidx.compose.runtime.rememberUpdatedState(active)
+    androidx.compose.runtime.DisposableEffect(videoStage) { onDispose { if (!activeNow) tv.own.owntv.kevbox.sports.clearSportsBox(videoStage) } }
     val state = page ?: return
     val m = state.match
-    var tab by remember { mutableStateOf(MatchTab.CHANNELS) } // KevBox: a match opens on its channels
+    var tab by remember(m.key) { mutableStateOf(MatchTab.CHANNELS) } // KevBox: a match (each one) opens on its channels
     var revealed by remember(m.key) { mutableStateOf(false) }
-    var focused by remember { mutableStateOf<WatchOption?>(null) }
-    val firstRow = remember { FocusRequester() }
+    // KevBox: keyed on the match, as the goal toast can open another match on this page while it stays composed.
+    var focused by remember(m.key) { mutableStateOf<WatchOption?>(null) }
+    // KevBox: the page's list state and one FocusRequester per channel row, by channel id (ChannelRowFocus), per match.
+    val listState = remember(m.key) { androidx.compose.foundation.lazy.LazyListState() }
+    val rowFocus = remember(m.key) { ChannelRowFocus() }
     val tabFocus = remember { FocusRequester() }
+    // KevBox: the right column's Watch live block: ▶ from a row enters it, ◀ leaves it for a row.
+    val blockFocus = remember { FocusRequester() }
+    var blockHasFocus by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    // The focused channel plays in the box above after the focus settles, exactly as in Live TV.
-    val previewOn by liveVm.livePreviewEnabled.collectAsStateWithLifecycle()
-    LaunchedEffect(focused?.channel?.id, previewOn) {
-        val ch = focused?.channel ?: return@LaunchedEffect
-        if (!previewOn) return@LaunchedEffect
-        kotlinx.coroutines.delay(700)
-        liveVm.playPreview(ch)
-    }
+    // KevBox: focus no longer previews. OK puts a channel in the box and plays it there, as Search does.
     // Focus follows the search: the tabs while there is no list (Find channels' button goes away while it
     // runs, and must not take focus with it), the first channel once there is one.
-    LaunchedEffect(state.search::class, state.list.shown.isNotEmpty()) {
+    LaunchedEffect(m.key, state.search::class, state.list.shown.isNotEmpty()) { // KevBox: m.key: again for another match
         kotlinx.coroutines.delay(60)
-        // KevBox: the channel rows live in the Channels tab, so they take focus only while it is open.
-        runCatching { if (tab == MatchTab.CHANNELS && state.list.shown.isNotEmpty()) firstRow.requestFocus() else tabFocus.requestFocus() }
+        // KevBox: not while full screen covers the page; Back's restore below places focus then. onScreen is
+        // not a key: as one, this would fire on Back and race the restore.
+        if (!onScreen) return@LaunchedEffect
+        // KevBox: focus in the Watch live block stays there. The filter panel changes the list under
+        // the chips that opened it, and closing the panel must land on those chips again.
+        if (blockHasFocus && tab == MatchTab.CHANNELS) return@LaunchedEffect
+        // Back from the player: focus the channel that was playing, not the first.
+        // KevBox: only rows the tab draws, and only while it is open (channelRowsShown): while Find channels
+        // runs, LiveOnSat's listed rows are in the list but not drawn, and focus sent to one was lost. The
+        // tabs take focus whenever a row cannot.
+        val drawn = if (tab == MatchTab.CHANNELS && channelRowsShown(state)) state.list.shown else emptyList()
+        val target = drawn.firstOrNull { it.channel.id == vm.lastPlayedChannelId } ?: drawn.firstOrNull()
+        val landed = target != null && runCatching { rowFocus.of(target.channel.id).requestFocus() }.getOrDefault(false)
+        if (!landed) runCatching { tabFocus.requestFocus() }
     }
 
     val sep = stringResource(R.string.content_epg_bits_separator)
     val shown = state.list.shown
     val zap = shown.map { it.channel }
-    val play: (WatchOption) -> Unit = { o -> vm.playedFrom(m, shown, o.channel); onPlayChannel(o.channel, zap) }
-    // Back from the player: focus the channel that was playing, not the first.
-    val focusTarget = shown.firstOrNull { it.channel.id == vm.lastPlayedChannelId } ?: shown.firstOrNull()
+    // KevBox: the channel in the box, when Sports put it there; it outlasts full screen on the video stage.
+    val box = videoStage?.boxChannel?.takeIf { videoStage.boxSection == tv.own.owntv.core.nav.MainSection.SPORTS }
+    // KevBox: as in Search, no box to preview in while the mini player owns the picture, so one OK watches.
+    val previewAvailable = active && videoStage != null
+    // KevBox: OK as in Search (kevbox/live/SearchBox.kt searchOk). The first OK puts the channel in the box
+    // and previews it; OK on the boxed channel plays it full screen, the preview handing over without a
+    // reload. A preview is not a play: playedFrom (last played, the sports session) waits for WATCH.
+    val play: (WatchOption) -> Unit = { o ->
+        val ch = o.channel
+        when (tv.own.owntv.kevbox.live.searchOk(ch.id, box?.id, previewAvailable)) {
+            tv.own.owntv.kevbox.live.SearchOk.PREVIEW -> {
+                videoStage?.putInBox(ch, tv.own.owntv.core.nav.MainSection.SPORTS)
+                liveVm.onChannelFocused(ch)
+                liveVm.playPreview(ch)
+            }
+            tv.own.owntv.kevbox.live.SearchOk.WATCH -> {
+                vm.playedFrom(m, shown, ch)
+                // KevBox: the match page boxes it, not the shell, whose onPlayChannel the hub shares.
+                videoStage?.putInBox(ch, tv.own.owntv.core.nav.MainSection.SPORTS)
+                onPlayChannel(ch, zap)
+            }
+        }
+    }
+    // KevBox: Back from full screen lands on the playing channel's row (after CH+/CH− the new one), else the
+    // row OK was pressed on, else the first (kevbox/sports/SportsBox.kt sportsReturnChannelId); the tabs when
+    // the list has none. The row is scrolled into view first, retrying while the page settles.
+    // KevBox: only rows the tab draws (channelRowsShown, as the focus effect above): while Find channels runs
+    // the listed rows are not drawn, and the tabs take focus at once instead of after 3 s of retries.
+    val drawnNow by androidx.compose.runtime.rememberUpdatedState(if (channelRowsShown(state)) shown else emptyList())
+    // KevBox: m.key: the goal toast can open another match while this runs, with its own list state and rows.
+    LaunchedEffect(m.key, restoreFocus, onScreen) {
+        if (!restoreFocus || !onScreen) return@LaunchedEffect
+        tab = MatchTab.CHANNELS
+        var landed = false
+        for (attempt in 0 until 30) {
+            val ids = drawnNow.map { it.channel.id }
+            val id = tv.own.owntv.kevbox.sports.sportsReturnChannelId(liveVm.previewChannel.value?.id, vm.lastPlayedChannelId, ids)
+            if (id != null) {
+                if (listState.layoutInfo.visibleItemsInfo.none { it.key == id }) {
+                    runCatching { listState.scrollToItem(CHANNEL_ROWS_START + ids.indexOf(id)) } // KevBox: rows follow the tabs
+                }
+                androidx.compose.runtime.withFrameNanos { }
+                landed = runCatching { rowFocus.of(id).requestFocus() }.getOrDefault(false)
+                if (landed) break
+            } else if (attempt > 0) break // KevBox: still no rows a try later: the tabs now, not after 3 s
+            kotlinx.coroutines.delay(100)
+        }
+        if (!landed) runCatching { tabFocus.requestFocus() }
+        onRestored()
+    }
+    // KevBox: the ids of the rows the Channels tab draws (channelRowsShown), the targets of ◀ out of the block.
+    val rowIds = if (tab == MatchTab.CHANNELS && channelRowsShown(state)) shown.map { it.channel.id } else emptyList()
+    // KevBox: ▼ from the tabs crosses to the block (Find channels, the chips, Add playlist) when the tab has
+    // no rows to go down to. Plain focus search does not reliably cross columns.
+    val downToBlock = tab == MatchTab.CHANNELS && rowIds.isEmpty() && blockFocusable(state)
+    // KevBox: ◀ out of the block goes back to the row that last had focus, else the first row, else the
+    // Channels tab (kevbox/sports/SportsBox.kt sportsBlockLeftRowId). A row scrolled out of the list has no
+    // node to focus yet, so the list scrolls to it first.
+    val leaveBlock: androidx.compose.ui.focus.FocusEnterExitScope.() -> Unit = {
+        if (requestedFocusDirection == androidx.compose.ui.focus.FocusDirection.Left) {
+            val id = tv.own.owntv.kevbox.sports.sportsBlockLeftRowId(focused?.channel?.id, rowIds)
+            val moved = runCatching { (if (id != null) rowFocus.of(id) else tabFocus).requestFocus() }.getOrDefault(false)
+            if (!moved && id != null) {
+                cancelFocusChange()
+                scope.launch {
+                    runCatching { listState.scrollToItem(CHANNEL_ROWS_START + rowIds.indexOf(id)) }
+                    androidx.compose.runtime.withFrameNanos { }
+                    runCatching { rowFocus.of(id).requestFocus() }
+                }
+            }
+        }
+    }
 
     Box(modifier.fillMaxSize()) {
         // Up and Down stay on this page: a held ▲ must never run out of the page.
@@ -163,7 +270,8 @@ fun SportsMatchScreen(
                         )
                     }
                 }
-            LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(bottom = 84.mpx).focusGroup(), contentPadding = PaddingValues(bottom = 24.mpx)) {
+            // KevBox: state = listState, so Back from full screen can scroll to the playing channel's row.
+            LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(bottom = 84.mpx).focusGroup(), state = listState, contentPadding = PaddingValues(bottom = 24.mpx)) {
                 item {
                     ScoreHeader(m, state.summary, hidden = state.config.spoilerFree && !revealed, onReveal = { revealed = true })
                 }
@@ -181,7 +289,8 @@ fun SportsMatchScreen(
                         tabs.forEach { t ->
                             StageTab(
                                 label = stringResource(t.label), count = "", selected = tab == t, onClick = { tab = t },
-                                modifier = if (t == MatchTab.CHANNELS) Modifier.focusRequester(tabFocus) else Modifier, // KevBox: the first tab
+                                modifier = (if (t == MatchTab.CHANNELS) Modifier.focusRequester(tabFocus) else Modifier) // KevBox: the first tab
+                                    .focusProperties { if (downToBlock) down = blockFocus }, // KevBox: ▼ to the block when there are no rows
                             )
                         }
                         Spacer(Modifier.weight(1f))
@@ -193,15 +302,18 @@ fun SportsMatchScreen(
                     }
                 }
                 when (tab) {
-                    // KevBox: the Watch live list, moved here from the right column.
+                    // KevBox: the channel rows; the block above them is WatchLiveBlock in the right column.
                     MatchTab.CHANNELS -> channelsTab(
-                        state, m, focusTarget, firstRow, onFocused = { focused = it }, play = play, vm = vm,
-                        onOpenFilters = onOpenFilters, onAddPlaylist = onAddPlaylist,
+                        state, m, rowFocus, onFocused = { focused = it }, play = play, vm = vm, // KevBox: a requester per row
+                        blockFocus = blockFocus, tabFocus = tabFocus,
                     )
                     MatchTab.TIMELINE -> items((state.summary?.timeline ?: m.events).asReversed()) { e -> TimelineRow(e, m) }
                     MatchTab.STATS -> items(state.summary?.stats.orEmpty()) { s -> StatRow(s.label, s.home, s.away) }
                     MatchTab.LINEUPS -> item { Lineups(m, state.summary) }
-                    MatchTab.TABLE -> item { TablePreview(state.standings, m, onOpenLeague) }
+                    // KevBox: the league page empties a Sports box and ends its preview, but leaves a stream the mini player or audio mode is playing.
+                    MatchTab.TABLE -> item {
+                        TablePreview(state.standings, m) { lm -> if (tv.own.owntv.kevbox.sports.clearSportsBox(videoStage) && activeNow) liveVm.stopPreview(); onOpenLeague(lm) }
+                    }
                     MatchTab.FORM -> item { Form(m, state.summary) }
                     MatchTab.BROADCASTS -> item { Broadcasts(m, (state.search as? ChannelSearch.Found)?.options) }
                 }
@@ -209,28 +321,53 @@ fun SportsMatchScreen(
             }
 
             // --- Right: the preview ------------------------------------------------------------------
-            // KevBox: the right column keeps only the preview of the focused channel; the Watch live list
-            // (notes, Find channels, filters, rows) is the Channels tab on the left.
-            Column(Modifier.weight(1f).fillMaxSize().padding(top = 96.mpx)) {
-                if (state.hasPlaylist && shown.isNotEmpty()) {
-                    val video = focused ?: shown.firstOrNull()
+            // KevBox: the video box, then on the Channels tab the Watch live block under it (WatchLiveBlock);
+            // the rows are the Channels tab on the left. Like the list, it ends 84 above the bottom, clear of
+            // the key hints.
+            Column(Modifier.weight(1f).fillMaxSize().padding(top = 96.mpx, bottom = 84.mpx)) {
+                // KevBox: the block's gap depends on it. A box keeps its video when a filter or Find channels
+                // empties the list, since its stream plays on.
+                val withVideo = box != null || (state.hasPlaylist && shown.isNotEmpty())
+                if (withVideo) {
+                    // KevBox: the boxed channel while there is one (its video plays), else the focused row's, no video.
+                    val video = if (box != null) shown.firstOrNull { it.channel.id == box.id } else focused ?: shown.firstOrNull()
+                    val videoChannel = box ?: video?.channel
                     GuideVideo(
-                        channel = video?.channel,
-                        channelLine = video?.channel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(sep) },
+                        channel = videoChannel,
+                        channelLine = videoChannel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(sep) },
                         // KevBox: a channel LiveOnSat lists carries ListedChannels.MARK as its guide title, not a programme, so it gets no caption.
                         nowTitle = video?.takeUnless { tv.own.owntv.kevbox.sports.ListedChannels.isListed(it) }?.guideTitle,
                         previewEngine = liveVm.previewEngine,
-                        showVideo = previewOn && focused != null,
+                        showVideo = active && box != null, // KevBox: only the box plays, as in Search
                         modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                // KevBox: the block shows on the Channels tab even with no rows (no playlist, Find channels,
+                // nothing found). Under the video it keeps the columns' 39 gap, clear of the video's shadow;
+                // with no video it starts level with the score box. It scrolls when it runs past the hints.
+                if (tab == MatchTab.CHANNELS) {
+                    WatchLiveBlock(
+                        state, onFind = vm::findChannels, onOpenFilters = onOpenFilters, onAddPlaylist = onAddPlaylist,
+                        modifier = Modifier
+                            .padding(top = if (withVideo) 39.mpx else 0.mpx)
+                            .weight(1f, fill = false)
+                            .focusRequester(blockFocus)
+                            .onFocusChanged { blockHasFocus = it.hasFocus }
+                            .focusProperties { onExit = leaveBlock }
+                            .focusGroup()
+                            .verticalScroll(androidx.compose.foundation.rememberScrollState()),
                     )
                 }
             }
         }
         if (tab == MatchTab.CHANNELS && state.hasPlaylist && shown.isNotEmpty()) { // KevBox: the list's keys, on its tab
+            // KevBox: OK previews, or watches the channel already in the box, as in Search.
+            val okOn = (focused ?: shown.firstOrNull())?.channel
+            val okPreviews = okOn != null && tv.own.owntv.kevbox.live.searchOk(okOn.id, box?.id, previewAvailable) == tv.own.owntv.kevbox.live.SearchOk.PREVIEW
             StageKeyHints(
                 listOf(
-                    stringResource(R.string.common_ok) to stringResource(R.string.sports_watch_full_screen),
-                    "▲▼" to stringResource(R.string.sports_preview_another),
+                    stringResource(R.string.common_ok) to stringResource(if (okPreviews) R.string.kevbox_key_preview else R.string.content_key_watch),
+                    "▲▼" to stringResource(R.string.content_key_channels), // KevBox: moving no longer previews
                     stringResource(R.string.content_key_hold_ok) to stringResource(R.string.sports_always_use, leagueName(m)),
                 ),
                 Modifier.align(Alignment.BottomEnd).padding(end = 60.mpx, bottom = 27.mpx),
@@ -239,6 +376,30 @@ fun SportsMatchScreen(
         }
     }
 }
+
+/**
+ * KevBox: one FocusRequester per row of the Channels tab, by channel id. Back from full screen focuses
+ * the playing channel's row through it, and so can any other way back to a row (Left from the right
+ * column). A row that is not composed has an unattached requester: callers wrap requestFocus in runCatching.
+ */
+private class ChannelRowFocus {
+    private val rows = HashMap<Long, FocusRequester>()
+    fun of(channelId: Long): FocusRequester = rows.getOrPut(channelId) { FocusRequester() }
+}
+
+/**
+ * KevBox: the page list's index of the Channels tab's first channel row: after the score header and the
+ * tabs row. The block that sat between them is WatchLiveBlock in the right column now.
+ */
+private const val CHANNEL_ROWS_START = 2
+
+/** KevBox: whether the Channels tab draws its rows, for this page (kevbox/sports/SportsBox.kt channelRowsShown). */
+private fun channelRowsShown(state: MatchPageState): Boolean =
+    tv.own.owntv.kevbox.sports.channelRowsShown(state.search, state.hasPlaylist, state.list.total)
+
+/** KevBox: whether WatchLiveBlock holds a button or chip, for this page (kevbox/sports/SportsBox.kt blockFocusable). */
+private fun blockFocusable(state: MatchPageState): Boolean =
+    tv.own.owntv.kevbox.sports.blockFocusable(state.search, state.hasPlaylist, state.list.total)
 
 private val MatchTab.label: Int get() = when (this) {
     MatchTab.CHANNELS -> R.string.kevbox_sports_tab_channels // KevBox: the Channels tab
@@ -250,66 +411,31 @@ private val MatchTab.label: Int get() = when (this) {
     MatchTab.BROADCASTS -> R.string.sports_tab_broadcasts
 }
 
-// KevBox: the Channels tab: what the right column's Watch live list showed (the playlist note, Find
-// channels or its window note, the count and filter chips, every channel with its reason, how many the
-// filters hide), as rows of the page's own list. ▲ ▼ preview each channel in the box on the right.
+// KevBox: the Channels tab: every channel with its reason and how many the filters hide, as rows of the
+// page's own list. OK previews a channel in the box on the right. The block that sat above the rows (the
+// playlist note, Find channels or its window note, the count and filter chips) is WatchLiveBlock, in the
+// right column under the video.
 private fun androidx.compose.foundation.lazy.LazyListScope.channelsTab(
     state: MatchPageState,
     m: Match,
-    focusTarget: WatchOption?,
-    firstRow: FocusRequester,
+    rowFocus: ChannelRowFocus,
     onFocused: (WatchOption) -> Unit,
     play: (WatchOption) -> Unit,
     vm: SportsViewModel,
-    onOpenFilters: () -> Unit,
-    onAddPlaylist: () -> Unit,
+    blockFocus: FocusRequester,
+    tabFocus: FocusRequester,
 ) {
-    if (!state.hasPlaylist) {
-        item { Column(Modifier.padding(top = 21.mpx)) { NoPlaylistNote(onAddPlaylist) } }
-        return
-    }
-    when (val s = state.search) {
-        is ChannelSearch.Found -> Unit
-        // Before a search runs, LiveOnSat's listed channels (state.list) show under the note or button.
-        is ChannelSearch.Closed -> {
-            item { Column(Modifier.padding(top = 21.mpx)) { ClosedNote(s.window) } }
-            if (state.list.total == 0) return
-        }
-        else -> {
-            item { Column(Modifier.padding(top = 21.mpx)) { FindChannels(busy = s == ChannelSearch.Searching || s == ChannelSearch.Checking, searching = s == ChannelSearch.Searching, onFind = vm::findChannels) } }
-            if (state.list.total == 0 || s != ChannelSearch.NotSearched) return
-        }
-    }
-    if (state.list.total == 0) {
-        item {
-            Column(Modifier.padding(top = 21.mpx)) {
-                Text(stringResource(R.string.sports_watch_live), style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(stringResource(R.string.sports_not_on_channels), style = stageText(19, 400), color = StageColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 9.mpx))
-            }
-        }
-        return
-    }
-    item {
-        Column(Modifier.padding(top = 21.mpx)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    pluralStringResource(R.plurals.sports_watch_live_count, state.list.total, state.list.total),
-                    style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                )
-                state.preferredLanguages.firstOrNull()?.let { lang ->
-                    Text(stringResource(R.string.sports_language_first, languageName(lang)), style = stageText(18, 400), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            FilterChips(state.filter, onOpenFilters)
-        }
-    }
+    if (!channelRowsShown(state)) return
+    val firstId = state.list.shown.firstOrNull()?.channel?.id
     items(state.list.shown, key = { it.channel.id }) { o ->
         ChannelRow(
             o, m,
             onClick = { play(o) },
             onHold = { vm.rememberChannel(m, o.channel) },
             modifier = Modifier
-                .then(if (o === focusTarget) Modifier.focusRequester(firstRow) else Modifier)
+                .focusRequester(rowFocus.of(o.channel.id)) // KevBox: every row, so focus can come back to any
+                // KevBox: ▶ enters the Watch live block on the right; ▲ from the first row goes to the Channels tab.
+                .focusProperties { right = blockFocus; if (o.channel.id == firstId) up = tabFocus }
                 .onFocusChanged { if (it.isFocused) onFocused(o) },
         )
     }
@@ -322,6 +448,48 @@ private fun androidx.compose.foundation.lazy.LazyListScope.channelsTab(
                 style = stageText(17, 400), color = StageColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 18.mpx, top = 9.mpx),
             )
+        }
+    }
+}
+
+/**
+ * KevBox: the Channels tab's Watch live block, in the right column under the video (Kevin, 2026-10-28).
+ * The same text and order it had above the rows: the playlist note; the kick-off note or Find channels;
+ * the empty message; the count with the preferred language, and the filter chips. Groups sit 24 apart,
+ * more than the 9 and 12 inside each one, so each title reads with its own lines.
+ */
+@Composable
+private fun WatchLiveBlock(state: MatchPageState, onFind: () -> Unit, onOpenFilters: () -> Unit, onAddPlaylist: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.mpx)) {
+        if (!state.hasPlaylist) {
+            NoPlaylistNote(onAddPlaylist)
+        } else {
+            when (val s = state.search) {
+                is ChannelSearch.Found -> Unit
+                // Before a search runs, LiveOnSat's listed channels (state.list) show under the note or button.
+                is ChannelSearch.Closed -> ClosedNote(s.window)
+                else -> FindChannels(busy = s == ChannelSearch.Searching || s == ChannelSearch.Checking, searching = s == ChannelSearch.Searching, onFind = onFind)
+            }
+            if (state.search is ChannelSearch.Found && state.list.total == 0) {
+                Column {
+                    Text(stringResource(R.string.sports_watch_live), style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.sports_not_on_channels), style = stageText(19, 400), color = StageColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 9.mpx))
+                }
+            }
+            if (channelRowsShown(state)) {
+                Column {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            pluralStringResource(R.plurals.sports_watch_live_count, state.list.total, state.list.total),
+                            style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                        )
+                        state.preferredLanguages.firstOrNull()?.let { lang ->
+                            Text(stringResource(R.string.sports_language_first, languageName(lang)), style = stageText(18, 400), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    FilterChips(state.filter, onOpenFilters)
+                }
+            }
         }
     }
 }
@@ -574,7 +742,8 @@ private fun TablePreview(table: StandingsTable?, m: Match, onOpenLeague: (Match)
 @Composable
 private fun FilterChips(filter: WatchFilter, onOpen: () -> Unit) {
     val langs = (filter.languages - WatchFilter.UNKNOWN).map { languageName(it) }
-    Row(Modifier.padding(top = 12.mpx).focusGroup(), horizontalArrangement = Arrangement.spacedBy(9.mpx)) {
+    // KevBox: a FlowRow, so in the narrower right column the last chips wrap to a second line instead of clipping.
+    androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 12.mpx).focusGroup(), horizontalArrangement = Arrangement.spacedBy(9.mpx), verticalArrangement = Arrangement.spacedBy(9.mpx)) {
         SportsChip(if (langs.isEmpty()) stringResource(R.string.sports_any) else langs.joinToString(", "), on = langs.isNotEmpty(), icon = OwnTVIcon.LANGUAGE, onClick = onOpen)
         SportsChip(if (filter.countries.isEmpty()) stringResource(R.string.sports_any_country) else filter.countries.joinToString(", "), on = filter.countries.isNotEmpty(), icon = OwnTVIcon.NETWORK, onClick = onOpen)
         if (filter.minQuality != tv.own.owntv.core.sports.MinQuality.ANY) SportsChip(qualityLabel(filter.minQuality), on = true, icon = OwnTVIcon.VIDEO, onClick = onOpen)

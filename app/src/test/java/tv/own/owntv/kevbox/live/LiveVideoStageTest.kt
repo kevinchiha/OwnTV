@@ -362,40 +362,64 @@ class LiveVideoStageTest {
 
     @Test
     fun backToGridWhenAllHold() = assertTrue(
-        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false),
+        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = MainSection.LIVE_TV),
     )
 
     @Test
     fun notBackToGridFromTheMiniPlayerOrAudioMode() {
         for (mode in listOf(PlayerMode.NONE, PlayerMode.MINI, PlayerMode.AUDIO)) {
-            assertFalse(isBackToGrid(mode, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false))
+            assertFalse(isBackToGrid(mode, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = MainSection.LIVE_TV))
         }
     }
 
     @Test
     fun backToSearchWhenAllHold() = assertTrue(
-        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SEARCH, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false),
+        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SEARCH, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = MainSection.SEARCH),
     )
 
     @Test
-    fun notBackToGridOutsideLiveTvAndSearch() {
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.HOME, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false))
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.EPG, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false))
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.MOVIES, liveOnExo = true, catchupActive = false, rewound = false))
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, null, liveOnExo = true, catchupActive = false, rewound = false))
+    fun notBackToGridOutsideLiveTvSearchAndSports() {
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.HOME, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = null))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.EPG, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = null))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.MOVIES, liveOnExo = true, catchupActive = false, rewound = false, boxSection = MainSection.LIVE_TV))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, null, liveOnExo = true, catchupActive = false, rewound = false, boxSection = MainSection.LIVE_TV))
+        // A Sports box does not make another screen a box screen.
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.HOME, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = MainSection.SPORTS))
+    }
+
+    @Test
+    fun backToSportsWhenTheBoxIsSports() = assertTrue(
+        isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SPORTS, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = MainSection.SPORTS),
+    )
+
+    @Test
+    fun notBackToSportsWithoutASportsBox() {
+        for (box in listOf(null, MainSection.LIVE_TV, MainSection.SEARCH)) {
+            assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SPORTS, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = box))
+        }
+    }
+
+    @Test
+    fun notBackToSportsWhenAnotherConditionFails() {
+        val box = MainSection.SPORTS
+        assertFalse(isBackToGrid(PlayerMode.MINI, MainSection.SPORTS, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = false, boxSection = box))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SPORTS, MainSection.MOVIES, liveOnExo = true, catchupActive = false, rewound = false, boxSection = box))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SPORTS, MainSection.LIVE_TV, liveOnExo = false, catchupActive = false, rewound = false, boxSection = box))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SPORTS, MainSection.LIVE_TV, liveOnExo = true, catchupActive = true, rewound = false, boxSection = box))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.SPORTS, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = true, boxSection = box))
     }
 
     @Test
     fun notBackToGridOnMpv() =
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = false, catchupActive = false, rewound = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = false, catchupActive = false, rewound = false, boxSection = MainSection.LIVE_TV))
 
     @Test
     fun notBackToGridDuringCatchup() =
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = true, rewound = false))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = true, rewound = false, boxSection = MainSection.LIVE_TV))
 
     @Test
     fun notBackToGridWhenRewound() =
-        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = true))
+        assertFalse(isBackToGrid(PlayerMode.FULLSCREEN, MainSection.LIVE_TV, MainSection.LIVE_TV, liveOnExo = true, catchupActive = false, rewound = true, boxSection = MainSection.LIVE_TV))
 
     @Test
     fun lerpRectEndsAndMiddle() {
