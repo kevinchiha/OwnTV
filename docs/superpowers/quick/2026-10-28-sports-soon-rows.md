@@ -54,3 +54,5 @@ tests, a KevBox string (en + fr), and a new UPSTREAM-SYNC row.
 
 ## Build log
 - plan check: 3 problems (gate needs a commit first; AC-6 restore needs scrolling to the card's row and position; the AC-10 switch had no file). All fixed in the plan.
+- baseline: gate green on kevbox-live 71bc2621 (the merge just gated).
+- Task 1: started at 0e339a76
