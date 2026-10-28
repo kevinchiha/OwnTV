@@ -20,13 +20,29 @@ import tv.own.owntv.kevbox.supabase.SupabaseApi
 /** One provider channel kevbox.dev matched to a LiveOnSat entry; [listedAs] is LiveOnSat's own name for it. */
 data class ListedChannel(val streamId: String, val name: String, val listedAs: String)
 
-/** One football match LiveOnSat lists, with the provider channels that show it, in LiveOnSat's order. */
+/**
+ * One match LiveOnSat lists, with the provider channels that show it, in LiveOnSat's order. [sport] is
+ * the server's own word for it ("soccer", "basketball", "mma", "racing"), kept as text so a sport the
+ * server adds later still reads here; it links to nothing until [LISTED_SPORTS] knows it.
+ */
 data class FootballListing(
     val kickoffMs: Long,
     val competition: String,
     val home: String,
     val away: String,
     val channels: List<ListedChannel>,
+    val sport: String = SOCCER_TEXT,
+)
+
+/** A row with no sport is football: rows written before the server tagged them. */
+private const val SOCCER_TEXT = "soccer"
+
+/** The server's sport words this app links, and the Core sport each one is. */
+private val LISTED_SPORTS = mapOf(
+    SOCCER_TEXT to Sport.SOCCER,
+    "basketball" to Sport.BASKETBALL,
+    "mma" to Sport.MMA,
+    "racing" to Sport.RACING,
 )
 
 /**
@@ -47,9 +63,9 @@ class FootballListings(
     private var fetchedAtMs = 0L
     private var failedAtMs: Long? = null
 
-    /** The listing that is [match], or null when [match] is not football or no listing links to it. */
+    /** The listing that is [match], or null when [match]'s sport is not listed or no listing links to it. */
     suspend fun listingFor(match: Match): FootballListing? {
-        if (match.sport != Sport.SOCCER) return null
+        if (match.sport !in LISTED_SPORTS.values) return null
         return link(match, listings())
     }
 
@@ -113,13 +129,33 @@ private const val LINK_WINDOW_MS = 15 * 60_000L
 private const val ONE_TEAM_WINDOW_MS = 5 * 60_000L
 
 /**
- * The listing that is [match]: kickoff within 15 minutes and both teams named in its `home v away`
- * text, or one team when the kickoffs are within 5 minutes. Teams compare by Core's [TeamNames]
- * tokens, so "FC Cologne" finds ESPN's "1. FC Köln". A listing with both teams found beats one with
- * one team; among equals, the closest kickoff wins.
+ * An MMA listing within this of the card's start can link. Core times a card from its first prelim
+ * fight, LiveOnSat from the main card, hours later.
+ */
+private const val MMA_WINDOW_MS = 12 * 60 * 60_000L
+
+/**
+ * The listing that is [match], among the listings of its own sport. Football and basketball link by
+ * teams ([linkByTeams]), MMA by both fighters ([linkByFighters]), motor sport by time and series
+ * ([linkBySeries]). Any other sport links to nothing.
  */
 internal fun link(match: Match, listings: List<FootballListing>): FootballListing? {
-    if (match.sport != Sport.SOCCER) return null
+    val same = listings.filter { LISTED_SPORTS[it.sport] == match.sport }
+    return when (match.sport) {
+        Sport.SOCCER, Sport.BASKETBALL -> linkByTeams(match, same)
+        Sport.MMA -> linkByFighters(match, same)
+        Sport.RACING -> linkBySeries(match, same)
+        else -> null
+    }
+}
+
+/**
+ * Kickoff within 15 minutes and both teams named in the listing's `home v away` text, or one team
+ * when the kickoffs are within 5 minutes. Teams compare by Core's [TeamNames] tokens, so "FC Cologne"
+ * finds ESPN's "1. FC Köln". A listing with both teams found beats one with one team; among equals,
+ * the closest kickoff wins.
+ */
+private fun linkByTeams(match: Match, listings: List<FootballListing>): FootballListing? {
     val home = match.home?.team?.let(TeamNames::keyOf) ?: return null
     val away = match.away?.team?.let(TeamNames::keyOf) ?: return null
     return listings.asSequence()
@@ -133,6 +169,35 @@ internal fun link(match: Match, listings: List<FootballListing>): FootballListin
         }
         .minWithOrNull(compareByDescending<Triple<FootballListing, Long, Int>> { it.third }.thenBy { it.second })
         ?.first
+}
+
+/**
+ * Both fighters named in the listing's `home v away` text, within 12 hours of the card's start. The
+ * fighters are the card's first two competitors, its main event. The closest start wins.
+ */
+private fun linkByFighters(match: Match, listings: List<FootballListing>): FootballListing? {
+    val first = match.home?.team?.let(TeamNames::keyOf) ?: return null
+    val second = match.away?.team?.let(TeamNames::keyOf) ?: return null
+    return listings
+        .filter { abs(it.kickoffMs - match.startMs) <= MMA_WINDOW_MS }
+        .filter {
+            val tokens = TeamNames.tokens("${it.home} v ${it.away}").toSet()
+            first.foundIn(tokens) && second.foundIn(tokens)
+        }
+        .minByOrNull { abs(it.kickoffMs - match.startMs) }
+}
+
+/**
+ * Start within 15 minutes and the listing's competition naming the session's series ("Formula 1
+ * Grand Prix - Round 19" names "Formula 1"), ignoring case. By series, not event name: LiveOnSat's
+ * "Mexican Grand Prix" can be ESPN's "Mexico City Grand Prix". The closest start wins.
+ */
+private fun linkBySeries(match: Match, listings: List<FootballListing>): FootballListing? {
+    val series = match.leagueName.trim().takeIf { it.isNotEmpty() } ?: return null
+    return listings
+        .filter { abs(it.kickoffMs - match.startMs) <= LINK_WINDOW_MS }
+        .filter { it.competition.contains(series, ignoreCase = true) }
+        .minByOrNull { abs(it.kickoffMs - match.startMs) }
 }
 
 /** football_listing rows as PostgREST sends them; null when [body] is not a JSON array. Bad rows are skipped. */
@@ -161,6 +226,7 @@ private fun parseListing(row: JSONObject): FootballListing? = try {
                 )
             }
         },
+        sport = row.text("sport").ifEmpty { SOCCER_TEXT },
     )
 } catch (_: Exception) {
     null

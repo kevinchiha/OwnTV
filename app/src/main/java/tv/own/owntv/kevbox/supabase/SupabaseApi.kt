@@ -76,10 +76,10 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     }
 
     /**
-     * The football matches LiveOnSat lists with kickoff between [fromIso] and [toIso], each with the
-     * provider channels kevbox.dev matched to it, earliest first. Both bounds are ISO-8601 UTC
-     * instants ending in `Z`, as the query goes out unencoded. The whole call times out after 4 s,
-     * which answers NoNetwork like any other timeout.
+     * The matches LiveOnSat lists (football, basketball, MMA, motor sport) with kickoff between
+     * [fromIso] and [toIso], each with its sport and the provider channels kevbox.dev matched to it,
+     * earliest first. Both bounds are ISO-8601 UTC instants ending in `Z`, as the query goes out
+     * unencoded. The whole call times out after 4 s, which answers NoNetwork like any other timeout.
      */
     suspend fun selectFootballListings(accessToken: String, fromIso: String, toIso: String): ApiResponse {
         // One `and` filter: the query is a map, so two `kickoff` keys cannot both go out.
@@ -230,7 +230,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val PLAYLIST_COLUMNS = "client_number,name,server_url,username,password"
         const val PROXY_COLUMNS = ",proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password"
         const val LISTING_PATH = "rest/v1/football_listing"
-        const val LISTING_COLUMNS = "kickoff,competition,home,away,channels"
+        const val LISTING_COLUMNS = "kickoff,competition,home,away,channels,sport"
         const val HTTP_BAD_REQUEST = 400
         const val UNDEFINED_COLUMN = "42703"
         const val VERDICT_PATH = "rest/v1/rpc/get_access_verdict"
