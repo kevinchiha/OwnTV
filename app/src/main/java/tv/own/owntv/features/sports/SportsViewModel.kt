@@ -51,9 +51,9 @@ import tv.own.owntv.core.sports.model.StandingsTable
 import tv.own.owntv.core.sports.model.Sport
 import java.util.Locale
 
-/** Where a match page's Find channels stands (channels are searched only when asked). */
+/** Where a match page's channel search stands. KevBox: [NotSearched] only means no playlist now. */
 sealed interface ChannelSearch {
-    /** The match is being fetched afresh to judge Find channels' window. */
+    /** The match is being fetched afresh to judge the channel search's window. */
     data object Checking : ChannelSearch
     data class Closed(val window: WatchWindow) : ChannelSearch
     data object NotSearched : ChannelSearch
@@ -112,7 +112,7 @@ class SportsViewModel(
     private val reminders: ReminderManager,
     private val playback: SportsPlayback,
     sourceDao: SourceDao,
-    // KevBox: LiveOnSat's listed channels, first in Find channels' list.
+    // KevBox: LiveOnSat's listed channels, first in the channel search's list.
     private val listedChannels: tv.own.owntv.kevbox.sports.ListedChannels,
 ) : ViewModel() {
 
@@ -179,23 +179,19 @@ class SportsViewModel(
     /** The filter while a match page is open; null = the profile's defaults (Settings → Sports). */
     private val pageFilter = MutableStateFlow<WatchFilter?>(null)
 
-    /** Set by Find channels on the open match page; reset when another match opens. */
-    private val findAsked = MutableStateFlow(false)
-
-    /** Find channels: search this match's channels (only this match, only now). */
-    fun findChannels() { findAsked.value = true }
-
     /**
      * The open match, kept fresh while shown: its details and table come from the stored board
-     * (`Demand.MatchPage` / `Demand.LeaguePage` fetch only what is live or missing). Channels are not
-     * searched until Find channels; a search already made under the current guide shows at once.
+     * (`Demand.MatchPage` / `Demand.LeaguePage` fetch only what is live or missing). A search already
+     * made under the current guide shows at once.
+     * KevBox: otherwise this match's channels are searched as soon as the page opens, inside the search
+     * window; there is no Find channels button to press (Kevin, 2026-10-28).
      */
     val matchPage: StateFlow<MatchPageState?> = openMatch.flatMapLatest { m ->
         if (m == null) return@flatMapLatest flowOf(null)
         val leagueKey = League.keyOf(m.sport, m.leagueSlug).takeIf { SportsCatalog.league(it) != null }
         val boards = if (leagueKey == null) repository.observe(Demand.MatchPage(m))
         else combine(repository.observe(Demand.MatchPage(m)), repository.observe(Demand.LeaguePage(leagueKey))) { a, _ -> a }
-        // Find channels' window is judged on the match fetched now, not the stored copy: a match can run
+        // The search window is judged on the match fetched now, not the stored copy: a match can run
         // long, and a kick-off can move. Re-judged each minute while the page is open.
         val window = flow {
             emit(null)
@@ -207,10 +203,7 @@ class SportsViewModel(
                 delay(60_000L)
             }
         }.distinctUntilChanged()
-        val search = combine(config, hasPlaylist, findAsked, window) { c, has, asked, w -> listOf(c, has, asked, w) }.transformLatest { (cv, hv, av, w) ->
-            val c = cv as SportsConfig
-            val has = hv as Boolean
-            val asked = av as Boolean
+        val search = combine(config, hasPlaylist, window) { c, has, w -> Triple(c, has, w) }.transformLatest { (c, has, w) ->
             if (!has) return@transformLatest emit(ChannelSearch.NotSearched)
             if (w == null) return@transformLatest emit(ChannelSearch.Checking)
             if (w != WatchWindow.Open) return@transformLatest emit(ChannelSearch.Closed(w as WatchWindow))
@@ -223,7 +216,6 @@ class SportsViewModel(
                     val listed = listedChannels.options(m)
                     if (listed.isNotEmpty()) emit(ChannelSearch.Found(tv.own.owntv.kevbox.sports.ListedChannels.merge(listed, found)))
                 }
-                !asked -> emit(ChannelSearch.NotSearched)
                 else -> {
                     emit(ChannelSearch.Searching)
                     // KevBox: the listings read runs alongside Core's search, and Core's answer shows as
@@ -244,8 +236,8 @@ class SportsViewModel(
                 }
             }
         }.flowOn(Dispatchers.Default)
-        // KevBox: LiveOnSat's list needs no guide, so it shows before Find channels can run (too early)
-        // or before it is pressed, read again every 5 minutes; Core's guide search keeps its window.
+        // KevBox: LiveOnSat's list needs no guide, so it shows before the channel search can run (too
+        // early), read again every 5 minutes; Core's guide search keeps its window.
         val searchAndListed = search.transformLatest { s ->
             emit(s to emptyList<WatchOption>())
             while (tv.own.owntv.kevbox.sports.ListedChannels.showsListedBefore(s)) {
@@ -293,7 +285,6 @@ class SportsViewModel(
 
     fun open(match: Match?) {
         pageFilter.value = null
-        findAsked.value = false
         openMatch.value = match
     }
 
@@ -378,7 +369,7 @@ class SportsViewModel(
         return config.orderSports(SportsCatalog.sports.filter { s -> keys.any { SportsCatalog.league(it)?.sport == s } })
     }
 
-    /** [match]'s channels if Find channels already ran for it (the hub's Remind me needs one); never searches. */
+    /** [match]'s channels if a channel search already ran for it (the hub's Remind me needs one); never searches. */
     suspend fun channelsFound(match: Match): List<WatchOption> {
         val c = config.first()
         val options = watchReader.found(match) { SportsMemory.rememberedFor(c, it) } ?: return emptyList()

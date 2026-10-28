@@ -88,14 +88,14 @@ internal val TierPick = Color(0xFFE7C56A)
 
 /**
  * A match. Left: the crumb, the score header, the tabs and their content, all
- * from the stored board. Right: *Watch live* — Find channels first (a search of this one match, only
- * when asked); then the preview (Live TV's own engine), the filter chips, every channel showing it with
- * the reason, and how many the filters hide. ▲ ▼ in the list preview each channel, OK plays it full
+ * from the stored board. Right: *Watch live* — this one match's channels, searched as the page opens
+ * (KevBox: no Find channels button since 2026-10-28); then the preview (Live TV's own engine), the
+ * filter chips, every channel showing it with the reason, and how many the filters hide. ▲ ▼ in the list preview each channel, OK plays it full
  * screen, Hold OK remembers it for the competition, ◀ opens the filter panel.
  * KevBox: the Watch live list is the Channels tab (the first, open by default); the right column keeps the preview.
  * KevBox: ▲ ▼ only move. OK puts the channel in the video box and previews it, OK on the boxed channel
  * plays it full screen, and Back from there shrinks it into the box again (Kevin, 2026-10-28).
- * KevBox: on the Channels tab the Watch live block (notes, Find channels, count, filter chips) sits in
+ * KevBox: on the Channels tab the Watch live block (notes, search progress, count, filter chips) sits in
  * the right column under the video; the left column keeps the tabs and the channel rows (2026-10-28).
  */
 @Composable
@@ -154,8 +154,7 @@ fun SportsMatchScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     // KevBox: focus no longer previews. OK puts a channel in the box and plays it there, as Search does.
-    // Focus follows the search: the tabs while there is no list (Find channels' button goes away while it
-    // runs, and must not take focus with it), the first channel once there is one.
+    // Focus follows the search: the tabs while there is no list, the first channel once there is one.
     LaunchedEffect(m.key, state.search::class, state.list.shown.isNotEmpty()) { // KevBox: m.key: again for another match
         kotlinx.coroutines.delay(60)
         // KevBox: not while full screen covers the page; Back's restore below places focus then. onScreen is
@@ -165,7 +164,7 @@ fun SportsMatchScreen(
         // the chips that opened it, and closing the panel must land on those chips again.
         if (blockHasFocus && tab == MatchTab.CHANNELS) return@LaunchedEffect
         // Back from the player: focus the channel that was playing, not the first.
-        // KevBox: only rows the tab draws, and only while it is open (channelRowsShown): while Find channels
+        // KevBox: only rows the tab draws, and only while it is open (channelRowsShown): while the search
         // runs, LiveOnSat's listed rows are in the list but not drawn, and focus sent to one was lost. The
         // tabs take focus whenever a row cannot.
         val drawn = if (tab == MatchTab.CHANNELS && channelRowsShown(state)) state.list.shown else emptyList()
@@ -203,7 +202,7 @@ fun SportsMatchScreen(
     // KevBox: Back from full screen lands on the playing channel's row (after CH+/CH− the new one), else the
     // row OK was pressed on, else the first (kevbox/sports/SportsBox.kt sportsReturnChannelId); the tabs when
     // the list has none. The row is scrolled into view first, retrying while the page settles.
-    // KevBox: only rows the tab draws (channelRowsShown, as the focus effect above): while Find channels runs
+    // KevBox: only rows the tab draws (channelRowsShown, as the focus effect above): while the search runs
     // the listed rows are not drawn, and the tabs take focus at once instead of after 3 s of retries.
     val drawnNow by androidx.compose.runtime.rememberUpdatedState(if (channelRowsShown(state)) shown else emptyList())
     // KevBox: m.key: the goal toast can open another match while this runs, with its own list state and rows.
@@ -229,7 +228,7 @@ fun SportsMatchScreen(
     }
     // KevBox: the ids of the rows the Channels tab draws (channelRowsShown), the targets of ◀ out of the block.
     val rowIds = if (tab == MatchTab.CHANNELS && channelRowsShown(state)) shown.map { it.channel.id } else emptyList()
-    // KevBox: ▼ from the tabs crosses to the block (Find channels, the chips, Add playlist) when the tab has
+    // KevBox: ▼ from the tabs crosses to the block (the chips, Add playlist) when the tab has
     // no rows to go down to. Plain focus search does not reliably cross columns.
     val downToBlock = tab == MatchTab.CHANNELS && rowIds.isEmpty() && blockFocusable(state)
     // KevBox: ◀ out of the block goes back to the row that last had focus, else the first row, else the
@@ -325,7 +324,7 @@ fun SportsMatchScreen(
             // the rows are the Channels tab on the left. Like the list, it ends 84 above the bottom, clear of
             // the key hints.
             Column(Modifier.weight(1f).fillMaxSize().padding(top = 96.mpx, bottom = 84.mpx)) {
-                // KevBox: the block's gap depends on it. A box keeps its video when a filter or Find channels
+                // KevBox: the block's gap depends on it. A box keeps its video when a filter or the search
                 // empties the list, since its stream plays on.
                 val withVideo = box != null || (state.hasPlaylist && shown.isNotEmpty())
                 if (withVideo) {
@@ -342,12 +341,12 @@ fun SportsMatchScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                // KevBox: the block shows on the Channels tab even with no rows (no playlist, Find channels,
+                // KevBox: the block shows on the Channels tab even with no rows (no playlist, searching,
                 // nothing found). Under the video it keeps the columns' 39 gap, clear of the video's shadow;
                 // with no video it starts level with the score box. It scrolls when it runs past the hints.
                 if (tab == MatchTab.CHANNELS) {
                     WatchLiveBlock(
-                        state, onFind = vm::findChannels, onOpenFilters = onOpenFilters, onAddPlaylist = onAddPlaylist,
+                        state, onOpenFilters = onOpenFilters, onAddPlaylist = onAddPlaylist,
                         modifier = Modifier
                             .padding(top = if (withVideo) 39.mpx else 0.mpx)
                             .weight(1f, fill = false)
@@ -413,7 +412,7 @@ private val MatchTab.label: Int get() = when (this) {
 
 // KevBox: the Channels tab: every channel with its reason and how many the filters hide, as rows of the
 // page's own list. OK previews a channel in the box on the right. The block that sat above the rows (the
-// playlist note, Find channels or its window note, the count and filter chips) is WatchLiveBlock, in the
+// playlist note, the search progress or its window note, the count and filter chips) is WatchLiveBlock, in the
 // right column under the video.
 private fun androidx.compose.foundation.lazy.LazyListScope.channelsTab(
     state: MatchPageState,
@@ -454,21 +453,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.channelsTab(
 
 /**
  * KevBox: the Channels tab's Watch live block, in the right column under the video (Kevin, 2026-10-28).
- * The same text and order it had above the rows: the playlist note; the kick-off note or Find channels;
+ * The same text and order it had above the rows: the playlist note; the kick-off note or the search progress;
  * the empty message; the count with the preferred language, and the filter chips. Groups sit 24 apart,
  * more than the 9 and 12 inside each one, so each title reads with its own lines.
  */
 @Composable
-private fun WatchLiveBlock(state: MatchPageState, onFind: () -> Unit, onOpenFilters: () -> Unit, onAddPlaylist: () -> Unit, modifier: Modifier = Modifier) {
+private fun WatchLiveBlock(state: MatchPageState, onOpenFilters: () -> Unit, onAddPlaylist: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.mpx)) {
         if (!state.hasPlaylist) {
             NoPlaylistNote(onAddPlaylist)
         } else {
             when (val s = state.search) {
                 is ChannelSearch.Found -> Unit
-                // Before a search runs, LiveOnSat's listed channels (state.list) show under the note or button.
+                // Before a search runs, LiveOnSat's listed channels (state.list) show under the note.
                 is ChannelSearch.Closed -> ClosedNote(s.window)
-                else -> FindChannels(busy = s == ChannelSearch.Searching || s == ChannelSearch.Checking, searching = s == ChannelSearch.Searching, onFind = onFind)
+                // KevBox: NotSearched only comes without a playlist, handled above.
+                ChannelSearch.Checking, ChannelSearch.Searching, ChannelSearch.NotSearched -> SearchingChannels(searching = s == ChannelSearch.Searching)
             }
             if (state.search is ChannelSearch.Found && state.list.total == 0) {
                 Column {
@@ -495,7 +495,7 @@ private fun WatchLiveBlock(state: MatchPageState, onFind: () -> Unit, onOpenFilt
 }
 
 /**
- * Who shows the match: the channels Find channels found in the user's own guide —
+ * Who shows the match: the channels the search found in the user's own guide —
  * one per row, under their country, countries and names in order, any without a country last — then
  * the broadcasters ESPN lists, United States services only. The page's list scrolls, so this does too.
  */
@@ -807,26 +807,26 @@ internal fun ChannelRow(o: WatchOption, m: Match, onClick: () -> Unit, onHold: (
     }
 }
 
-/** *Watch live* before a search: what Find channels does, and the button — or, while it runs, "Searching your channels…". */
+/**
+ * *Watch live* while the channel search gets ready (a spinner) or runs ("Searching your channels…").
+ * KevBox: no Find channels button; the page searches as soon as it opens (Kevin, 2026-10-28).
+ */
 @Composable
-private fun FindChannels(busy: Boolean, searching: Boolean, onFind: () -> Unit) {
+private fun SearchingChannels(searching: Boolean) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.mpx)) {
         Text(stringResource(R.string.sports_watch_live), style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (busy && !searching) {
-            tv.own.owntv.ui.components.OwnTVSpinner(sizeDp = 18)
-        } else if (searching) {
+        if (searching) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.mpx), verticalAlignment = Alignment.CenterVertically) {
                 tv.own.owntv.ui.components.OwnTVSpinner(sizeDp = 18)
                 Text(stringResource(R.string.sports_finding_channels), style = stageText(19, 600), color = StageColors.Body, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         } else {
-            Text(stringResource(R.string.sports_find_channels_description), style = stageText(18, 400), color = StageColors.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            StageButton(stringResource(R.string.sports_find_channels), onClick = onFind, icon = OwnTVIcon.SEARCH, height = 56.mpx, textSize = 19)
+            tv.own.owntv.ui.components.OwnTVSpinner(sizeDp = 18)
         }
     }
 }
 
-/** Find channels outside its window: when it opens, or that the match is over. */
+/** The channel search outside its window: when it opens, or that the match is over. */
 @Composable
 private fun ClosedNote(window: tv.own.owntv.core.sports.WatchWindow) {
     val locale = LocalConfiguration.current.locales[0]

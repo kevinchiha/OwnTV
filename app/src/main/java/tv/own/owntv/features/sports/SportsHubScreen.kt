@@ -146,7 +146,7 @@ fun SportsHubScreen(
     androidx.compose.runtime.LaunchedEffect(chips, leagues) { soonRows.onFilter(chips to leagues) } // KevBox: new chips, rows back to their first card
     var showAllSports by rememberSaveable { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<Match?>(null) }
-    // The menu's Remind me needs a channel: one Find channels already found for that match, if any.
+    // The menu's Remind me needs a channel: one a channel search already found for that match, if any.
     var menuChannels by remember { mutableStateOf<List<WatchOption>>(emptyList()) }
     androidx.compose.runtime.LaunchedEffect(menuFor) { menuChannels = menuFor?.let { vm.channelsFound(it) }.orEmpty() }
 

@@ -97,10 +97,11 @@ class SportsBoxTest {
     }
 
     @Test
-    fun `the block can take focus when it holds Add playlist, Find channels or the chips`() {
-        // (search, total, focusable with a playlist): Find channels before a search, the chips when rows show.
+    fun `the block can take focus when it holds Add playlist or the chips`() {
+        // (search, total, focusable with a playlist): the chips when rows show. No Find channels button any
+        // more (the search runs when the page opens), so an empty list leaves nothing to focus.
         val table: List<Triple<ChannelSearch, Int, Boolean>> = listOf(
-            Triple(ChannelSearch.NotSearched, 0, true),
+            Triple(ChannelSearch.NotSearched, 0, false),
             Triple(ChannelSearch.NotSearched, 3, true),
             Triple(ChannelSearch.Found(emptyList()), 3, true),
             Triple(ChannelSearch.Found(emptyList()), 0, false),

@@ -46,7 +46,7 @@ class ListedChannels(
      * by its provider stream id first, but only when its name is the listing's name too (ignoring
      * case and runs of spaces: another playlist can reuse the id for some other channel), and by its
      * exact name second. A listing with no name has nothing to agree with, so its stream id counts
-     * on its own. Empty when nothing links, and on any failure, so Find channels never breaks on it.
+     * on its own. Empty when nothing links, and on any failure, so the channel search never breaks on it.
      */
     suspend fun options(match: Match): List<WatchOption> = try {
         val listed = listings.listingFor(match)?.channels.orEmpty()
@@ -90,9 +90,10 @@ class ListedChannels(
         fun isListed(o: WatchOption): Boolean = o.guideTitle == MARK
 
         /**
-         * True while the match page waits on a search that has not run: Find channels is still too
-         * early (more than 30 minutes before kick-off), or open but not pressed. LiveOnSat's list does
-         * not depend on the guide, so the page shows it then; Core's guide search keeps its window.
+         * True while the match page waits on a search that has not run: it is still too early (more
+         * than 30 minutes before kick-off). NotSearched counts too, though it only comes without a
+         * playlist now. LiveOnSat's list does not depend on the guide, so the page shows it then;
+         * Core's guide search keeps its window.
          */
         fun showsListedBefore(search: ChannelSearch): Boolean =
             search == ChannelSearch.NotSearched ||

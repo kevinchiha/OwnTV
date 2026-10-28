@@ -18,10 +18,10 @@ fun sportsReturnChannelId(playingId: Long?, lastPlayedId: Long?, shownIds: List<
 }
 
 /**
- * The channel row that Left from the right column's Watch live block (the filter chips, Find
- * channels) goes back to: the row that last had focus while it is still listed, else the first row.
- * That row leaves the list when Find channels finishes or the filter changes. Null when the tab shows
- * no rows, and the caller then focuses the Channels tab.
+ * The channel row that Left from the right column's Watch live block (the filter chips) goes back
+ * to: the row that last had focus while it is still listed, else the first row. That row leaves the
+ * list when the channel search finishes or the filter changes. Null when the tab shows no rows, and
+ * the caller then focuses the Channels tab.
  */
 fun sportsBlockLeftRowId(lastFocusedId: Long?, rowIds: List<Long>): Long? =
     lastFocusedId?.takeIf { it in rowIds } ?: rowIds.firstOrNull()
@@ -29,8 +29,7 @@ fun sportsBlockLeftRowId(lastFocusedId: Long?, rowIds: List<Long>): Long? =
 /**
  * Whether a match's Channels tab draws its channel rows (and the Watch live block its count and filter
  * chips): a playlist, [total] channels in the list, and a search that found them, or none run yet
- * (LiveOnSat's listed channels show under the kick-off note or the Find channels button). Not while
- * Find channels runs.
+ * (LiveOnSat's listed channels show under the kick-off note). Not while the channel search runs.
  */
 fun channelRowsShown(search: ChannelSearch, hasPlaylist: Boolean, total: Int): Boolean = hasPlaylist && total > 0 &&
     when (search) {
@@ -38,9 +37,12 @@ fun channelRowsShown(search: ChannelSearch, hasPlaylist: Boolean, total: Int): B
         ChannelSearch.Searching, ChannelSearch.Checking -> false
     }
 
-/** Whether the Watch live block holds a button or chip: Add playlist, Find channels, or the filter chips. */
+/**
+ * Whether the Watch live block holds a button or chip: Add playlist, or the filter chips. KevBox: no
+ * Find channels button since 2026-10-28; the match page searches as soon as it opens (Kevin).
+ */
 fun blockFocusable(search: ChannelSearch, hasPlaylist: Boolean, total: Int): Boolean =
-    !hasPlaylist || search == ChannelSearch.NotSearched || channelRowsShown(search, hasPlaylist, total)
+    !hasPlaylist || channelRowsShown(search, hasPlaylist, total)
 
 /**
  * The box is Sports' only while a match page shows it. Leaving that page (Back, the league page,
