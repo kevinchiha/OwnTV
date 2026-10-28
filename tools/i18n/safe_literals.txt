@@ -752,6 +752,7 @@
 1	empty	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	${scoreText(m.sport, home.score)} – ${scoreText(m.sport, away.score)}
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	${sportEmoji(s)} ${sportLabel(s)}
+1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	${sportEmoji(sport)} ${sportLabel(sport)}
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	+${followedSports.size - SPORT_CHIPS}
 2	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	UNCHECKED_CAST
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	chips
@@ -762,7 +763,6 @@
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	live
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	none
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	onNow
-1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	soon
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	–
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsHubScreen.kt	– : –
 2	empty	app/src/main/java/tv/own/owntv/features/sports/SportsLeagueScreen.kt	\0
@@ -1150,6 +1150,7 @@
 1	log	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	KevBoxListed
 1	regex	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	\\s+
 1	log	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	listed channels failed: ${e.javaClass.simpleName}
+1	technical	app/src/main/java/tv/own/owntv/kevbox/sports/SoonBySport.kt	soon-${sport.name}
 1	technical	app/src/main/java/tv/own/owntv/kevbox/sports/TodayDatedSportsSource.kt	America/New_York
 3	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt	\0
 2	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	\0
