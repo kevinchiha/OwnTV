@@ -60,3 +60,5 @@ tests, a KevBox string (en + fr), and a new UPSTREAM-SYNC row.
 - gate on 81c00233: green (my run: tests, lint, divergence 0 failures); debug APK on kevbox_a14.
 - device check: rows read "Starting soon · ⚽ Football", "· 🏀 Basketball", "· 🎾 Tennis" in chip order; Sport on your channels now gone; Back from the 8th tennis card (Mensik v Mannarino) lands on that card with the row and column scrolled to it. Found: D-pad Down into the bottom row (Tennis) leaves its cards cut off at the screen bottom, under the key hints; the column scrolls only until the card's top is on screen (/tmp/los/r2.png).
 - ocr: 0 findings.
+- review: all ACs met; no critical or important. minor: restore loop can take focus back from a key pressed during its 10 frames (:123-131); reveal runs after the last try (:129); "soon rows are last" is only a comment (SoonBySport.kt:39,:74); groups written during composition on a @Stable class (:175); onFilter untested; two tests re-derive their expected values.
+- triage: the cut-off bottom row (device check) → fix as important. Review minors 1-6 → fix, all small.
