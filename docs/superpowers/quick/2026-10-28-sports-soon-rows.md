@@ -62,3 +62,10 @@ tests, a KevBox string (en + fr), and a new UPSTREAM-SYNC row.
 - ocr: 0 findings.
 - review: all ACs met; no critical or important. minor: restore loop can take focus back from a key pressed during its 10 frames (:123-131); reveal runs after the last try (:129); "soon rows are last" is only a comment (SoonBySport.kt:39,:74); groups written during composition on a @Stable class (:175); onFilter untested; two tests re-derive their expected values.
 - triage: the cut-off bottom row (device check) → fix as important. Review minors 1-6 → fix, all small.
+- fix round 1: 3d32aae4. Gate green (tests, lint, divergence 0 failures).
+  1. Cut-off bottom row: each soon row asks the column, when focus enters it, to show the whole row plus 110.mpx under it (WholeRow / wholeAboveHints, a BringIntoViewRequester), so the column scrolls until the cards sit above the key hints. Only soon rows get it; the other rows and the rows' sideways scrolling keep the default.
+  2. A key pressed on the hub (KeyDown, onPreviewKeyEvent on the Box) sets keyDuringRestore; the restore loop stops at its next frame.
+  3. The loop reveals only when attempt < 9.
+  4. reveal checks the counted index against the drawn item keys (soonRowScroll): row drawn, leave the column; counted index drawn under another key, stop; else scroll. The row key comes from soonRowKey(sport), shared with the hub.
+  5. soonRows.groups is written in a SideEffect; @Stable dropped, with a comment on why nothing needs it.
+  6. Tests: onFilter on a plain LazyListState (first call, same value, changed value); the order test spells out its sports; a counting test with a "none" item before the rows, plus the stop case and the whole-row rectangle.
