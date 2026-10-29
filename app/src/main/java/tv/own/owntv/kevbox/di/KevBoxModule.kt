@@ -241,6 +241,30 @@ val kevboxModule = module {
     single<ManagedSourceStore> { PrefsManagedSourceStore(androidContext().prefs(PrefsManagedSourceStore.PREFS_NAME)) }
     single { PlaylistReconciler(get(), get()) }
     single { tv.own.owntv.kevbox.release.UpdateProfileAttacher(androidContext(), get(), get(), scope = get()) }
+    // Silent self-update on Android 12+: the prefs file the result receiver opens too, the scheduler
+    // OwnTVApp starts, and the one updater both WorkManager jobs run.
+    single { tv.own.owntv.kevbox.release.SilentUpdatePrefs.open(androidContext()) }
+    single {
+        val app = androidContext() as android.app.Application
+        tv.own.owntv.kevbox.release.SilentUpdateScheduler(app, workManager = { androidx.work.WorkManager.getInstance(app) })
+    }
+    single {
+        val scheduler = get<tv.own.owntv.kevbox.release.SilentUpdateScheduler>()
+        val auth = get<KevBoxAuth>()
+        val session = get<tv.own.owntv.player.PlaybackSession>()
+        tv.own.owntv.kevbox.release.SilentUpdater(
+            context = androidContext(),
+            client = get(),
+            prefs = get(),
+            signedInEmail = { auth.email.value },
+            activityStarted = scheduler.activityStarted,
+            playing = { session.active.value },
+            lastPressMs = get<tv.own.owntv.kevbox.usage.LastPress>()::at,
+            now = System::currentTimeMillis,
+            // Blank means GitHub's latest release; only a debug build can point it elsewhere.
+            feedUrl = BuildConfig.KEVBOX_UPDATE_FEED,
+        )
+    }
 
     single {
         val sourceDao = get<SourceDao>()

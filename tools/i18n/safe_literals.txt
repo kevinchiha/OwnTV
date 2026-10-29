@@ -1066,6 +1066,10 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	tag_name
 2	protocol	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	v
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	x86_64
+1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateWorker.kt	KevBoxSilentUpdate
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateWorker.kt	kevbox-silent-update
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateWorker.kt	kevbox-silent-update-soon
+1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateWorker.kt	silent update: schedule failed ${e.javaClass.simpleName}
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	Accept
 1	compiler	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	DEPRECATION
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	Date
