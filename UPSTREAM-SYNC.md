@@ -150,9 +150,9 @@ keep one file per row, with its full path.
 | File | Proof the change survived |
 | --- | --- |
 | `app/build.gradle.kts` | `grep -n 'tv.kevbox.live' app/build.gradle.kts && grep -n 'id("io.sentry.android.gradle") version "6.23.0"' app/build.gradle.kts && grep -n 'io.sentry:sentry-android-ndk:8.60.0' app/build.gradle.kts && grep -n 'kevbox.sentryDsnDebug' app/build.gradle.kts && grep -n 'ignoredBuildTypes.set(setOf("debug"))' app/build.gradle.kts && grep -n 'kevbox.updateFeed' app/build.gradle.kts && grep -n '"KEVBOX_UPDATE_FEED", javaString("")' app/build.gradle.kts` (the KevBox package name; Sentry plugin, SDK, `SENTRY_DSN` and the `sentry { }` block, 0.3; the silent updater's `KEVBOX_UPDATE_FEED`, blank in release) |
-| `app/src/main/AndroidManifest.xml` | `grep -n 'io.sentry.auto-init' app/src/main/AndroidManifest.xml && grep -n 'SentryTestReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:permission="android.permission.DUMP"' app/src/main/AndroidManifest.xml && grep -n 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' app/src/main/AndroidManifest.xml && grep -n 'SilentUpdateReceiver' app/src/main/AndroidManifest.xml` (Sentry starts by hand after CrashRecorder; the shell-only Sentry test receiver, 0.3; the silent self-update permission and its result receiver) |
+| `app/src/main/AndroidManifest.xml` | `grep -n 'io.sentry.auto-init' app/src/main/AndroidManifest.xml && grep -n 'SentryTestReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:permission="android.permission.DUMP"' app/src/main/AndroidManifest.xml && grep -n 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' app/src/main/AndroidManifest.xml && grep -n 'SilentUpdateReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.home.HomeRowsBootReceiver"' app/src/main/AndroidManifest.xml` (Sentry starts by hand after CrashRecorder; the shell-only Sentry test receiver, 0.3; the silent self-update permission and its result receiver; the home screen rows' receiver for boot and `INITIALIZE_PROGRAMS`, declared after `SilentUpdateReceiver`) |
 | `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'kevbox.ui.QuietAccessibility.install(this)' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -c 'KevBoxAutoSetup(' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'LaunchedEffect(profile) { gateSession.authenticateProfile(profile) }' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'get<tv.own.owntv.kevbox.usage.LastPress>().press()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'get<tv.own.owntv.kevbox.session.LoginFileSignIn>().check()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -A8 'override fun onNewIntent' app/src/main/java/tv/own/owntv/MainActivity.kt | grep 'LoginFileSignIn>().check()'` (the count must be 2. 0.5: `dispatchKeyEvent`, added after `onStart`, stamps every key down as the watching diary's last press; `onUserInteraction` is not used because Android calls it on Home too. Login file: `onResume`, which upstream does not override, and upstream's `onNewIntent` check KevBox Setup's login file; see below) |
-| `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.UpdateProfileAttacher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'network.DnsDefault>().applyOnce()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'refresh.PlaylistRefreshSetting>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.start(this, BuildConfig.SENTRY_DSN)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.LiveCheckin>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'errors.ErrorWatchers>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.PlayWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.DiaryWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'sports.SportsDefaults>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.SilentUpdateScheduler>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` (0.3: Sentry starts on the line after `CrashRecorder.install(this)`; the usage check-in; the error watchers, which start the reporter; Sentry's user and breadcrumbs, bound on the line before the watchers start so the reporter's first entries become breadcrumbs too. 0.4: the play watcher, on the line before the error watchers start, so the reporter's first failure already reaches the play notes. 0.5: the watching diary, on the line after the play watcher starts. Sports: SportsDefaults starts every profile on Any commentary language unless it picked its own, 2026-10-28) |
+| `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.UpdateProfileAttacher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'network.DnsDefault>().applyOnce()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'refresh.PlaylistRefreshSetting>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.start(this, BuildConfig.SENTRY_DSN)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.LiveCheckin>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'errors.ErrorWatchers>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.PlayWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.DiaryWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'sports.SportsDefaults>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.SilentUpdateScheduler>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'home.HomeRowsSync>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` (0.3: Sentry starts on the line after `CrashRecorder.install(this)`; the usage check-in; the error watchers, which start the reporter; Sentry's user and breadcrumbs, bound on the line before the watchers start so the reporter's first entries become breadcrumbs too. 0.4: the play watcher, on the line before the error watchers start, so the reporter's first failure already reaches the play notes. 0.5: the watching diary, on the line after the play watcher starts. Sports: SportsDefaults starts every profile on Any commentary language unless it picked its own, 2026-10-28. Home screen rows: HomeRowsSync starts on the line after SilentUpdateScheduler, 2026-10-29) |
 | `app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` | `grep -n 'LiveOnly.sectionToOpen(section)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'LiveOnly.menuSections(it)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.ACCENT_HEX)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.FOCUS_HIGHLIGHT_HEX)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` |
 | `app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` | `grep -n 'onOpenMenu = focusRail' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'KevBox: Live TV is always the grid' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.LiveVideoLayer(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVideoSite(liveVideoStage' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerChromeReady) PlayerHud(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.isBackToGrid(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.live.holdBackOpensBox(' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'guidePlayChannel(boxed, emptyList())' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'epgVm.state.value.channels.none' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'exitPlayerWith(false)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveVm.keepInBox(playingChannel)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevbox.ui.KeptHidden' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (playerMode != PlayerMode.NONE) previewChannelState.value else null' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'RemoteShortcutAction.OPEN_PROFILE_SWITCHER -> Unit' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'liveGuideExpanded && (!railHasFocus' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'menuInUse = railFocused' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'selectedSection == MainSection.LIVE_TV -> 0.dp' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'val multiviewEnabled = false' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'val recordWatchingEnabled = false' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'takeIf { tv.own.owntv.kevbox.live.LiveShortcuts.continueChannel(it) != null }' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'R.string.kevbox_settings_startup_channel_unavailable' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'when (tv.own.owntv.kevbox.live.LiveShortcuts.resolve(action))' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'if (false && isFull && playerChromeReady' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'koinInject<tv.own.owntv.kevbox.errors.PlaybackScene>()' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'kevboxScene.update(channel, category, inBox' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -n 'backLongFired -> Unit' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -nF 'LiveOnly.SHOW_CONTINUE_PILL' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -nF 'onLongSelect = { ch -> liveVm.removeFromHistory(ch.id)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -nF '(selectedSection == MainSection.SPORTS && liveVideoStage.boxSection == MainSection.SPORTS)' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -nF 'if (selectedSection == MainSection.SPORTS) sportsPlayback.pendingMatch.value = m to null' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -nF 'android.os.Build.VERSION.SDK_INT < 31 || kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt && grep -nF 'silentUpdatePrefs.fallbackNeeded(tv.own.owntv.BuildConfig.VERSION_NAME, System.currentTimeMillis())' app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt` (the error reporter's scene hook after `liveVideoStage`, 0.3; Sports stays composed behind full screen while its match page owns the box, and the goal toast's switch sets the match page Back lands on, 2026-10-28; the last two: the startup update card runs only below Android 12, or once the silent updater gave a release up, found it without a silent block, or left it uninstalled 72 h after the block's `after`, 2026-10-29) |
 | `app/src/main/java/tv/own/owntv/ui/stage/StageDraw.kt` | `grep -c 'this.bakedBackground(listOf(' app/src/main/java/tv/own/owntv/ui/stage/StageDraw.kt` (the count must be 2) |
@@ -279,6 +279,9 @@ Two known gaps, checked at every merge:
   `LauncherDeepLink`. When stock OwnTV is installed on the same TV, both apps answer `owntv://`,
   so picking a card can show a "which app?" chooser. Core is not forked, so this is accepted. If a
   new Core starts sending these links to a named app, check that KevBox Live still gets them.
+  Since 2026-10-29 KevBox Live publishes its own rows, whose links name the app's package, and
+  switches Core's row off (see "Home screen rows"). Only Core's cards could open a chooser, and
+  Core publishes none while its switch stays off.
 - **The Pixel app icon must stay unreachable.** With the Pixel icon applied, the in-app mark is
   the OwnTV dot-matrix TV drawn in code (`PixelMark` in `BrandLockup.kt`), which no resource
   override can rebrand. Today no member can apply it: every caller of `setAppIcon` (the setup
@@ -628,6 +631,72 @@ default factory builds `SilentUpdateWorker`. If a Core bump makes it throw or re
 for unknown classes, the silent update stops running: check the `KevBoxSilentUpdate` log line after
 Home on the emulator. `UpdateProfileAttacher` skips any session labelled `KevBox silent update`, so
 the two never touch one install.
+
+## Home screen rows
+
+KevBox Live puts two rows on the TV's home screen, "Recent channels" and "Favorites". Each is a
+`TYPE_PREVIEW` channel in the system TV provider, and "Recent channels" is made first, so it gets
+the lower `_id`. The channel ids live in the `kevbox_home_rows` prefs, and a sync finds a channel
+again by its internal provider id (`kevbox-live:recent`, `kevbox-live:favorites`). A channel
+deleted outside the app is made again on the next sync. Every other channel of the package is
+deleted on each sync: Core's "Recent live" and any duplicate of ours. A TV without the leanback
+feature gets nothing.
+
+Each row holds up to 15 cards. A card has the channel name as its title (the member's rename if
+any) and the programme on now as its second line, read from the stored guide with one
+`LiveEpgReader.nowProgrammesFor` call for both rows, never `nowNext`. The art is Core's fitted
+16:9 logo: `LiveLogoPosterArt` pads the logo onto a 16:9 canvas, and Core's exported
+`LiveLogoArtProvider` (authority `<applicationId>.owntv-live-logo-art`) serves the file to the
+launcher. Until that file exists the card carries the raw logo URL. The card's link is Core's
+`LauncherDeepLink.Live` (`owntv://play/live?...`) in an `ACTION_VIEW` intent with the app's own
+package set, so no chooser shows. The shell's existing deep-link handler resolves it against the
+active profile and plays the channel full screen.
+
+"Recent channels" is the active profile's watch history (`ChannelDao.recentlyWatched`), newest
+first, the same list as the app's Recently watched. "Favorites" is the profile's favourite live
+channels (`FavoriteDao.observeFavoriteIds`), in the guide's Order setting
+(`SettingsRepository.sortGuide`), as the app's Favorites category shows them. Both rows drop
+channels the profile hides in its Live customizations and channels outside its live sources. A
+sync writes only cards whose values changed and deletes only cards no longer wanted.
+
+The code is fork-only, under `kevbox/home/`: `HomeRows.kt` decides what the rows hold,
+`HomeChannels.kt` reads and writes the provider, `HomeRowsSync.kt` keeps the rows current, and
+`HomeRowsWorker.kt` and `HomeRowsBootReceiver.kt` run it with the app closed. `HomeRowsSync` syncs
+1 s after the last change to the KevBox session, the active profile, its watch history, its
+favourites, its Live customizations or the guide's Order setting, and at once when `MainActivity`
+stops. `HomeRowsBootReceiver` asks for one `HomeRowsWorker` run at boot and on
+`android.media.tv.action.INITIALIZE_PROGRAMS`, which the launcher sends when it wants this app's
+channels. `HomeRowsWorker` also runs every 30 minutes, so the on-now lines stay current. Like
+`SilentUpdateWorker`, WorkManager's default factory builds it, because Core's `KoinWorkerFactory`
+returns null for a class it does not know. Signing out empties both rows; the channels stay, and
+signing in fills them again. Two upstream files carry the hooks, each with a row in the table above:
+
+- `OwnTVApp.kt` starts `HomeRowsSync` on the line after `SilentUpdateScheduler` starts. It
+  schedules the 30-minute job and registers its own activity callbacks for the `MainActivity` stop.
+- `AndroidManifest.xml` declares the exported `HomeRowsBootReceiver`, after `SilentUpdateReceiver`.
+  It is exported because the launcher's broadcast comes from outside the app.
+
+Core's own home row is off for good. Each sync checks Core's `androidTvHomeEnabled`; when it is
+on, the sync sets it false and clears Core's rows for every profile
+(`LauncherIntegrationRepository.clearProfile`), and Core then publishes nothing. Core's channel is
+deleted with the other strays. Core's row had no refresh at boot or sign-out, one channel per
+profile, no on-now line, and an implicit `owntv://` link that could open a chooser. Core is a
+prebuilt library, so none of that can be fixed in place. Settings › App no longer shows "Android
+TV home" or "Refresh now" (`ANDROID_TV_HOME`, `ANDROID_TV_HOME_REFRESH` in `LiveOnlySettings`), in
+the list or in settings search. There is no on/off switch for the rows.
+
+The app never calls `requestChannelBrowsable`. Google TV never marks a third-party channel
+browsable, and its "add channel" screen cannot show from the background.
+
+After every Core bump, run `CoreContractTest` as the 0.3 section says. It pins every Core member
+the rows read, under "Home screen rows" in the test: the DAO reads, the settings, the deep links,
+`LauncherIntegrationRepository::clearProfile`, `LiveLogoPosterArt`'s constructor, `cached` and
+`prepare`, `AppIconSwitcher.applied(...).banner` for the channel logo, and the `GuideSort` values.
+The test cannot see three changes. If Core changes `TvHomeRepository`, or starts publishing
+without checking `androidTvHomeEnabled`, run the app on the emulator and check that the provider
+holds exactly two KevBox Live channels. If Core renames `LiveLogoArtProvider`'s authority, the
+cards lose their logos. If Core changes `LauncherDeepLink`'s format, or the shell stops handling
+it, the cards stop opening their channel.
 
 ## Regenerating the rebrand
 
