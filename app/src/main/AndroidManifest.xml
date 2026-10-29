@@ -9,6 +9,8 @@
 
     <!-- In-app updates: hand the downloaded release APK to the system installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- KevBox: SilentUpdater installs a release with no prompt on Android 12 and later. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- MODIFY_AUDIO_SETTINGS is declared by :player-core, which owns VolumeBoost. -->
 
@@ -65,6 +67,11 @@
                 <action android:name="tv.kevbox.live.SENTRY_TEST" />
             </intent-filter>
         </receiver>
+
+        <!-- KevBox: install results of SilentUpdater's sessions; only the installer's PendingIntent reaches it. -->
+        <receiver
+            android:name=".kevbox.release.SilentUpdateReceiver"
+            android:exported="false" />
 
         <!-- Exposes the downloaded update APK to the system installer. -->
         <provider
