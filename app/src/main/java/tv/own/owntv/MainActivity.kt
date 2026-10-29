@@ -154,6 +154,13 @@ open class MainActivity : ComponentActivity() {
         shellViewModel.checkAutoRefresh(includeStartup = false)
     }
 
+    // KevBox: sign in from the login file KevBox Setup leaves in this app's folder. onResume also runs
+    // at app start; the check returns at once and reads the file off the main thread.
+    override fun onResume() {
+        super.onResume()
+        get<tv.own.owntv.kevbox.session.LoginFileSignIn>().check()
+    }
+
     // KevBox: every remote key press this window receives sets the watching diary's last-press time (0.5 AC-5).
     // KevBox: dispatchKeyEvent, not onUserInteraction: Android calls onUserInteraction on Home too, which would stamp every background close as a press.
     // KevBox: the lint suppression is needed because androidx.core's ComponentActivity marks its override library-only; the framework Activity.dispatchKeyEvent it overrides is public.
