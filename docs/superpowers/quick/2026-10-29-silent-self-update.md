@@ -136,6 +136,9 @@ start line, the startup update card in `features/shell/OwnTVShell.kt`, UPSTREAM-
   KoinWorkerFactory returns null for unknown classes) gets `SilentUpdater` from Koin and calls run().
 - `BuildConfig.KEVBOX_UPDATE_FEED`: debug from Gradle property `kevbox.updateFeed` (blank when unset),
   release always blank.
+- From Task 2 as built: pass `BuildConfig.KEVBOX_UPDATE_FEED` to SilentUpdater's `feedUrl` as is
+  (blank = GitHub); build the prefs single with `SilentUpdatePrefs.open(androidContext())`, the same
+  file the receiver opens.
 **Does:**
 - Koin singles for prefs, updater, scheduler; `OwnTVApp` starts the scheduler with the other kevbox
   `start()` lines (with a `KevBox:` comment).
@@ -158,3 +161,4 @@ presses Home, forces the job with `cmd jobscheduler run -f`, and reads the versi
 ## Build log
 Task 1: started at 3758a07e
 baseline: same as kevbox-live (tests and lint green on 2026-10-29 05:2x; check-divergence fails only on features/sports/SportsViewModel.kt). Leave it alone.
+Task 1+2: landed (37f98e67, 3b599fe6). Bent: `markRefused(version: String? = null)` also skips that version so a refusing box stops downloading it every 6 h; added `SilentUpdatePrefs.open(context)`, `FILE`, `MAX_FAILURES`, `SilentUpdater.EXTRA_VERSION`; blank `feedUrl` means GitHub. Also touched tools/i18n/safe_literals.txt and the manifest row of UPSTREAM-SYNC.md.
