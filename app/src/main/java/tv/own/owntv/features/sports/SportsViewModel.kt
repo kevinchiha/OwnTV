@@ -285,6 +285,7 @@ class SportsViewModel(
 
     fun open(match: Match?) {
         pageFilter.value = null
+        // KevBox: no findAsked reset; a match page searches its channels as soon as it opens.
         openMatch.value = match
     }
 
