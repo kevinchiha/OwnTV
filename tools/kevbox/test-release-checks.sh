@@ -3,7 +3,8 @@
 #
 # Test for the release pre-flight checks in tools/kevbox/release-checks.sh (AC-7's refusals).
 # Builds a throwaway git repo under mktemp -d with tags v5.0.4, v5.1.0 and a later v5.1.0.1, runs
-# every check against it and asserts the exit code of each case. A second throwaway repo checks
+# every check against it and asserts the exit code of each case, then the argument rule, the
+# early-user check and kevbox-silent.json, which need no repo. A second throwaway repo checks
 # that tools/kevbox/check-divergence.sh fails when its git diff fails. Removes only that directory.
 #
 #   bash tools/kevbox/test-release-checks.sh
@@ -96,6 +97,58 @@ expect 0 "no Sentry token needs no org or project"   check_sentry_settings "" ""
 expect 0 "token with org and project passes"         check_sentry_settings tok org proj
 expect 1 "token without org refused"                 check_sentry_settings tok "" proj
 expect 1 "token without project refused"             check_sentry_settings tok org ""
+
+# release.sh's arguments: --no-silent counts only first; any other --option stops the script.
+expect 0 "version alone passes"                      check_release_args 5.1.0.2
+expect 0 "version and notes pass"                    check_release_args 5.1.0.2 "Fixes the guide" more
+expect 0 "--no-silent first passes"                  check_release_args --no-silent 5.1.0.2 notes
+expect 0 "notes holding a dash pass"                 check_release_args 5.1.0.2 "guide - fixed"
+expect 0 "no arguments pass (usage is release.sh's)" check_release_args
+expect 1 "--no-silent after the version refused"     check_release_args 5.1.0.2 --no-silent
+expect 1 "--no-silent after the notes refused"       check_release_args 5.1.0.2 notes --no-silent
+expect 1 "--no-silent twice refused"                 check_release_args --no-silent --no-silent 5.1.0.2
+expect 1 "unknown option first refused"              check_release_args --draft 5.1.0.2
+expect 1 "unknown option after the version refused"  check_release_args 5.1.0.2 --draft
+expect 1 "unknown option after --no-silent refused"  check_release_args --no-silent --draft 5.1.0.2
+expect 1 "a version like -h refused"                 check_release_args -h
+expect 1 "a version like -x after --no-silent refused" check_release_args --no-silent -x
+args_message="$(check_release_args 5.1.0.2 notes --no-silent 2>&1 >/dev/null || true)"
+expect 0 "the message names the argument position"   grep -q 'argument 3' <<<"$args_message"
+
+# SILENT_EARLY_USERS: Supabase user ids (UUIDs). A refusal names the position, never the value.
+u1="0f8fad5b-d9cb-469f-a165-70867728950e"
+u2="7C9E6679-7425-40DE-944B-E07FC1F90AE7"
+expect 0 "no early users pass"                       check_early_users ""
+expect 0 "blank early users pass"                    check_early_users "   "
+expect 0 "one id passes"                             check_early_users "$u1"
+expect 0 "two ids with spaces, upper case, pass"     check_early_users " $u1 , $u2 "
+expect 1 "an email refused"                          check_early_users "$u1,kevin@example.com"
+expect 1 "an empty entry refused"                    check_early_users "$u1,,$u2"
+expect 1 "a trailing comma refused"                  check_early_users "$u1,"
+expect 1 "a short id refused"                        check_early_users "${u1%?}"
+expect 1 "a non-hex id refused"                      check_early_users "${u1/0f/0g}"
+expect 1 "an id without dashes refused"              check_early_users "${u1//-/}"
+users_message="$(check_early_users "$u1,kevin@example.com" 2>&1 >/dev/null || true)"
+expect 0 "the message names the entry position"      grep -q 'entry 2' <<<"$users_message"
+expect 1 "the message never prints the value"        grep -q 'example' <<<"$users_message"
+
+# kevbox-silent.json: {"after": now + 24 h, "earlyUsers": [...]}, nothing else.
+# json_is <json> <expected json>: equal once parsed, and "after" a JSON integer.
+json_is() {
+  python3 -c 'import json, sys
+got, want = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+assert type(got["after"]) is int and got == want' "$1" "$2"
+}
+valid_json() { python3 -m json.tool >/dev/null; }
+two_ids="$(render_silent_json 1793190452000 " $u1 , $u2 ")"
+expect 0 "two ids: valid JSON"                       valid_json <<<"$two_ids"
+expect 0 "two ids: after is now + 24 h, ids trimmed" json_is "$two_ids" "{\"after\": 1793276852000, \"earlyUsers\": [\"$u1\", \"$u2\"]}"
+blank_ids="$(render_silent_json 1793190452000 "")"
+expect 0 "blank: valid JSON"                         valid_json <<<"$blank_ids"
+expect 0 "blank: earlyUsers is empty"                json_is "$blank_ids" '{"after": 1793276852000, "earlyUsers": []}'
+expect 1 "an email is refused, no JSON"              render_silent_json 1793190452000 "kevin@example.com"
+expect 1 "a time that is not a number is refused"    render_silent_json soon "$u1"
+expect 1 "a missing time is refused"                 render_silent_json "" "$u1"
 
 # check-divergence.sh guards every upstream merge, and its failure path is tested here too: a git
 # diff that fails must fail the check, never read as "0 changed". A throwaway repo with one upstream
