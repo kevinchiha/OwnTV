@@ -110,3 +110,10 @@ in `kevbox/di/KevBoxModule.kt`, an `onResume` in `MainActivity.kt`, UPSTREAM-SYN
 baseline: tests and lint green; check-divergence fails on `features/sports/SportsViewModel.kt` (hunk @@ -258,7 +285,6 @@ has no KevBox: comment), from kevbox-live. Leave it alone.
 Task 1+2: started at 9589ab2c
 Task 1+2: landed (3a917d63, 408f691c). Also touched tools/i18n/safe_literals.txt: the build's i18n literal check needs the new file names and the four English error texts classified. The delete-fails branch of AC-4 has no test (no way found to make a JVM delete fail while the folder stays writable).
+review: gate green apart from the baseline; AC-1..AC-13 pass.
+review: critical, MainActivity.kt:159: an app already in front (singleTop) gets onNewIntent, not onResume, when Setup's monkey launch arrives, so the file is never read. Fix: also check() from onNewIntent.
+review: important, LoginFileSignIn.kt:61: a file that arrives while a timed-out sign-in still runs is never read once busy clears. Fix: look again when busy clears.
+review: minor, LoginFileSignIn.kt:102: deeply nested JSON can throw StackOverflowError past the catches. Decided: fix (catch it around the parse).
+ocr: medium, LoginFileSignIn.kt:75: an old result file sits there during the new sign-in. Decided: fix (delete it once the login file is accepted).
+ocr: medium, LoginFileSignIn.kt:84: signing out before the new password is checked. Decided: skip, the plan's Decisions chose this (it is what a person at the screen must do); reported to Kevin.
+ocr: 3 low comments dropped.
