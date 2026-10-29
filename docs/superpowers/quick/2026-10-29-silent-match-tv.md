@@ -45,7 +45,8 @@ both"). Live keeps its server clock, 3-hour idle rule and 6 h / 15 min timing, w
   `-Pkevbox.updateFeed=http://10.0.2.2:<port>/latest.json` and a local feed. Run A: `kevbox-silent.json`
   with `after` 24 h ahead and earlyUsers = the emulator account's id → the app installs the newer build
   after Home and a forced job (early). Run B: a newer release with no silent asset → `no-silent`, nothing
-  installed, and Core's update card shows on the next app open.
+  installed, and Core's update card appears on the next app open (it shows the real GitHub release,
+  because Core's own check does not read the local feed; the point is that the gate opened).
 
 ## Non-goals
 - Releasing. release.sh is edited, not run, in this job; a release waits for Kevin's yes (and the
@@ -67,11 +68,16 @@ both"). Live keeps its server clock, 3-hour idle rule and 6 h / 15 min timing, w
 ### Task 1: release.sh publishes the silent block
 **Delivers:** AC-1, AC-2, AC-6 (release-checks tests)
 **Files:** `release.sh`, `tools/kevbox/release-checks.sh`, `tools/kevbox/test-release-checks.sh`
-**Interfaces:** in release-checks.sh: `check_release_args "$@"` (exit 1 on a misplaced or unknown
-`--` option), `check_early_users "<comma list>"` (exit 1, message names the position), and
-`render_silent_json <now_ms> "<comma list>"` (prints the JSON on stdout).
+**Interfaces:** in release-checks.sh, shaped like the existing helpers (return 1 with the reason on
+stderr; release.sh calls them as `check_x || die ...`): `check_release_args "$@"` (returns 1 on a
+misplaced or unknown `--` option), `check_early_users "<comma list>"` (returns 1, message names the
+position), and `render_silent_json <now_ms> "<comma list>"` (prints the JSON on stdout). After
+`check_release_args` passes, release.sh itself tests `$1` for `--no-silent`, sets `no_silent=1` and
+shifts it, before it reads the version from `$1`.
 **Does:**
 - Argument check first, then the existing checks; the early-user check sits with them, before the build.
+- The pre-build cleanup also removes `"$out_dir/kevbox-silent.json"`, so a file from an earlier run
+  can never ship.
 - After the build, write `kevbox-silent.json` into the release folder and add it to `gh release create`
   unless `--no-silent`.
 - Header comment documents `--no-silent` and `SILENT_EARLY_USERS`.
@@ -81,16 +87,20 @@ both"). Live keeps its server clock, 3-hour idle rule and 6 h / 15 min timing, w
 ### Task 2: The app reads the block and uses TV's card rules
 **Delivers:** AC-3, AC-4, AC-5, AC-6 (JVM tests)
 **Files:** `kevbox/release/SilentUpdateRules.kt`, `SilentUpdater.kt`, `SilentUpdatePrefs.kt`,
-`kevbox/di/KevBoxModule.kt`, their tests, `UPSTREAM-SYNC.md`
+`kevbox/di/KevBoxModule.kt`, their tests, `UPSTREAM-SYNC.md` (the 7-day note at line ~157),
+`features/shell/OwnTVShell.kt` (only the `KevBox:` comment at ~2176-2177 that says "7 days")
 **Interfaces:** `SilentRelease` gains `silentUrl: String?`; `data class SilentBlock(val afterMs: Long,
 val earlyUsers: List<String>)` with `SilentBlock.parse(json: String): SilentBlock?`;
 `rolloutDue(block: SilentBlock, signedInUserId: String?, serverNowMs: Long)`;
 `SilentUpdater(..., signedInUserId: () -> String?, ...)`; `fallbackNeeded(gaveUpVersion, seenVersion,
 seenHasSilent: Boolean, seenAfterBoxMs: Long?, installedVersion, boxNowMs)`.
 **Does:**
-- After `isNewer` and `skips`, fetch and parse the block; none → record the release as seen without a
-  block and return `no-silent`.
-- `seen(...)` stores whether the release had a block and its `after` on the box clock.
+- After `isNewer` and `skips`, fetch and parse the block. The `prefs.seen(...)` call moves from its
+  current place (SilentUpdater.kt:120, before `isNewer`) to just after the block fetch, on both paths:
+  `seen(version, hasSilent, afterBoxMs)`; no block → record it and return `no-silent`.
+- `seen(...)` stores whether the release had a block and its `after` on the box clock; its "nothing
+  changed, skip the write" check compares every stored field, so a later run that finds the block
+  replaces an earlier "no block" record.
 - `SAFETY_NET_MS = 259_200_000L` replaces `FALLBACK_AFTER_MS`.
 - KevBoxModule passes `auth.userId.value` instead of `auth.email.value` to SilentUpdater (LoginFileSignIn keeps its email).
 **Tests:** as in AC-6.
@@ -98,3 +108,4 @@ seenHasSilent: Boolean, seenAfterBoxMs: Long?, installedVersion, boxNowMs)`.
 
 ## Build log
 baseline: all green on 27cae12a (2026-10-29 10:4x): testStandardDebugUnitTest + lintStandardDebug BUILD SUCCESSFUL, test-release-checks 35 passed, check-divergence 0 failures.
+plan check (6285a91a): 4 problems folded: seen() moves after the block fetch and compares all fields; helpers return 1 and release.sh shifts --no-silent itself; pre-build cleanup removes kevbox-silent.json; Run B proves the card gate, not the local build. Also the OwnTVShell 7-day comment joins Task 2.
