@@ -163,8 +163,13 @@ class KevBoxCoordinator(
         playNotesOnForeground()
     }
 
-    suspend fun signIn(email: String, password: String): SignInResult {
+    /**
+     * The sign-in screen's and the login file's sign-in. [onAnswer] gets the server's answer before
+     * the playlist check that follows a success, so the login file's result need not wait for it.
+     */
+    suspend fun signIn(email: String, password: String, onAnswer: (SignInResult) -> Unit = {}): SignInResult {
         val result = auth.signIn(email, password)
+        onAnswer(result)
         if (result is SignInResult.Success) {
             // Only now: a fetch still out for the member before must find the reconciler shut.
             session += 1

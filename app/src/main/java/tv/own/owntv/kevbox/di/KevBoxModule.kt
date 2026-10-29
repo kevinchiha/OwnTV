@@ -276,6 +276,21 @@ val kevboxModule = module {
             playNotesOnForeground = get<tv.own.owntv.kevbox.usage.PlayNotes>()::onForeground,
         )
     }
+    // KevBox Setup's login file (kevbox-setup docs/login-file.md), checked from MainActivity.onResume.
+    single {
+        val context = androidContext()
+        val auth = get<KevBoxAuth>()
+        val coordinator = get<KevBoxCoordinator>()
+        tv.own.owntv.kevbox.session.LoginFileSignIn(
+            dir = { context.getExternalFilesDir(null) },
+            now = System::currentTimeMillis,
+            signedInEmail = { auth.email.value },
+            signOut = coordinator::signOut,
+            signIn = coordinator::signIn,
+            scope = get(),
+            io = kotlinx.coroutines.Dispatchers.IO,
+        )
+    }
     single {
         PlaylistRefreshSetting(androidContext().prefs(PlaylistRefreshSetting.PREFS_NAME), get(), get(), scope = get())
     }

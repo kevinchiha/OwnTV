@@ -123,6 +123,10 @@ open class MainActivity : ComponentActivity() {
         setIntent(intent)
         pendingDeepLink = LauncherDeepLink.parse(intent.data)
         Log.d(TAG, "onNewIntent deepLinkHost=${intent.data?.host} deepLinkType=${pendingDeepLink?.javaClass?.simpleName ?: "none"}")
+        // KevBox: this activity is singleTop, so Setup's launch can reach an app already in front
+        // here without an onResume. Look for the login file then too; a check that overlaps
+        // onResume's does nothing.
+        get<tv.own.owntv.kevbox.session.LoginFileSignIn>().check()
     }
 
     override fun onStop() {
@@ -152,6 +156,13 @@ open class MainActivity : ComponentActivity() {
         // Staleness-based auto refresh on resume (interval modes only — STARTUP is cold-start only). The
         // ViewModel throttles this internally so a quick toggle doesn't re-run the check.
         shellViewModel.checkAutoRefresh(includeStartup = false)
+    }
+
+    // KevBox: sign in from the login file KevBox Setup leaves in this app's folder. onResume also runs
+    // at app start; the check returns at once and reads the file off the main thread.
+    override fun onResume() {
+        super.onResume()
+        get<tv.own.owntv.kevbox.session.LoginFileSignIn>().check()
     }
 
     // KevBox: every remote key press this window receives sets the watching diary's last-press time (0.5 AC-5).

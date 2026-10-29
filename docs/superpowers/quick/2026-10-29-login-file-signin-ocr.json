@@ -1,0 +1,166 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 5 finding(s) across 4 selected item(s).",
+  "summary": {
+    "files_reviewed": 4,
+    "comments": 5,
+    "total_tokens": 187844,
+    "input_tokens": 180249,
+    "output_tokens": 7595,
+    "cache_read_tokens": 121620,
+    "cache_write_tokens": 58603,
+    "elapsed": "1m37s"
+  },
+  "tool_calls": {
+    "total": 9,
+    "by_tool": {
+      "code_comment": 2,
+      "code_search": 3,
+      "file_find": 1,
+      "file_read": 3
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt",
+      "content": "A `kevbox-login.result.json` left over from an earlier attempt is still there while this sign-in runs, which can take up to 20 s. If Setup starts polling before the new result is written, it can read the old `{\"ok\":true}` or the old error as the answer to this request. `writeResult` also swallows errors, so if the write or rename fails, the stale file is never replaced. Delete any old result file once the login file is accepted and before the sign-in starts.",
+      "suggestion_code": "        if (!file.delete() || file.exists()) {\n            writeResult(folder, FAILED)\n            return null\n        }\n        File(folder, RESULT_FILE).delete()",
+      "existing_code": "        if (!file.delete() || file.exists()) {\n            writeResult(folder, FAILED)\n            return null\n        }",
+      "start_line": 75,
+      "end_line": 78,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt",
+      "content": "This check only rejects timestamps that are too old. A `requestedAt` in the future always passes, whether it comes from phone/TV clock skew or a crafted file, so the file never goes stale. Bound the check on both sides, for example `abs(now() - requestedAt) \u003e MAX_AGE_MS`, or allow a small skew. Exactly 600 000 ms old still counts as fresh (AC-2), as it does now.",
+      "existing_code": "        if (login == null || now() - login.requestedAt \u003e MAX_AGE_MS) {",
+      "start_line": 71,
+      "end_line": 71,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt",
+      "content": "If the outer coroutine is cancelled while it is suspended in `withTimeoutOrNull` (for example a cancelled `checkNow` caller), `signInFromFile` never returns the job. `signing` stays null, `busy` is cleared, and the inner `scope.launch` sign-in keeps running. The next `onResume` can then start a second sign-in on top of it, which breaks AC-11. Keep the job in a field that is set right after `launch`, or attach `invokeOnCompletion` inside `signInFromFile` as soon as the job exists.",
+      "existing_code": "            val job = signing\n            if (job == null) busy.set(false) else job.invokeOnCompletion { busy.set(false) }",
+      "start_line": 60,
+      "end_line": 61,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt",
+      "content": "The current member is signed out (`signOut()` wipes the reconciler, proxy and stored pick) before the new credentials are checked. A login file for a different email with a wrong password, or one that arrives with no network, leaves the TV signed out and reports only `Wrong email or password` / `No internet connection`. The working account is gone even though the new one was never accepted. Since `signIn` already bumps `session` and reopens the reconciler on success, sign out only after the server accepts the new credentials, or have Setup ask before replacing the account.",
+      "existing_code": "                if (current != null \u0026\u0026 normal(current) != normal(login.email)) signOut()\n                val result = signIn(login.email, login.password) { answer.complete(it) }",
+      "start_line": 84,
+      "end_line": 85,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt",
+      "content": "When the deadline passes, `TOO_SLOW` is written but the sign-in job keeps running. If the server answers Success after that, the TV ends up signed in while the phone and Kevin's report say it failed, and the result file is never corrected. Either cancel `job` on timeout, or rewrite the result file when the late answer arrives (if the contract allows that).",
+      "existing_code": "        val result = withTimeoutOrNull(deadlineMs) { answer.await() }\n        writeResult(folder, result?.let(::jsonOf) ?: TOO_SLOW)",
+      "start_line": 94,
+      "end_line": 95,
+      "category": "bug",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "KevBox login-file sign-in feature and wiring",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+        "app/src/main/java/tv/own/owntv/MainActivity.kt"
+      ]
+    }
+  ],
+  "session_id": "baad7607-4834-49e0-a0a0-a29e3b0efe72",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "baad7607-4834-49e0-a0a0-a29e3b0efe72",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "quick/login-file-signin",
+      "resolved_base": "0414ee7fd7ad60bd0df813f5205658a08262944c",
+      "resolved_head": "38e72d313ab71cb06fcfcb09435e7d5c652e069a",
+      "exact_range": "0414ee7fd7ad60bd0df813f5205658a08262944c..38e72d313ab71cb06fcfcb09435e7d5c652e069a",
+      "source_artifact_sha256": "86b90c25714b7bf676f7779837a5544a060783d25c051394a3d21309acbf2fb3"
+    },
+    "execution": {
+      "ocr_version": "v1.13.3",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "7bdde30da0c66ee5643876474d879e4d72b8803bf0501749f82291f5b9b2b87a",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "7ce53a48991fc1d5076985784b11fdbe7834f6562e79967d5be9085ba47df6de",
+          "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+          "fingerprint": "2d55e78fbc6b6bcc712a1248a368c04ffb8a35d7d9d2ff1beaeb1d7cb29d398c"
+        },
+        {
+          "item_id": "859a4006bb32d1497b08a439dba440940e336846ec15f0cc9bd67da864396b0b",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt",
+          "fingerprint": "a378b969deec0a6aa10cee5ad7b11e4ecb9d1b2bf6ce092c038b45cd25fd0aec"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "437e7a0a15f62744f8fd97524fbc3a383115a9d87d2532ca242807e42128a78f"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "d2d3f056df8852789544c27845c325f6ecfd645ed2fed56b89d847abe80e34ea"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "7ce53a48991fc1d5076985784b11fdbe7834f6562e79967d5be9085ba47df6de",
+          "path": "app/src/main/java/tv/own/owntv/MainActivity.kt",
+          "fingerprint": "2d55e78fbc6b6bcc712a1248a368c04ffb8a35d7d9d2ff1beaeb1d7cb29d398c"
+        },
+        {
+          "item_id": "859a4006bb32d1497b08a439dba440940e336846ec15f0cc9bd67da864396b0b",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt",
+          "fingerprint": "a378b969deec0a6aa10cee5ad7b11e4ecb9d1b2bf6ce092c038b45cd25fd0aec"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "437e7a0a15f62744f8fd97524fbc3a383115a9d87d2532ca242807e42128a78f"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "d2d3f056df8852789544c27845c325f6ecfd645ed2fed56b89d847abe80e34ea"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 97173
+  }
+}

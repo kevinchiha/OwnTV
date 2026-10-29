@@ -533,6 +533,36 @@ class KevBoxCoordinatorTest {
         assertEquals(2, core.calls("create"))
     }
 
+    @Test
+    fun `signIn hands the server's answer to onAnswer once, before the playlist check that follows ends`() = harness {
+        server.always(TOKEN, Canned(200, tokenBody("access-b", "refresh-b")))
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        val answers = java.util.Collections.synchronizedList(mutableListOf<SignInResult>())
+
+        val latch = server.hold(PLAYLIST)
+        val signingIn = scope.async { coordinator.signIn("other@example.com", "pw") { answers += it } }
+        waitFor { server.calls(PLAYLIST) == 1 }
+
+        assertEquals(listOf<SignInResult>(SignInResult.Success("other@example.com")), answers.toList())
+        assertTrue(signingIn.isActive)
+        latch.countDown()
+        assertTrue(signingIn.await() is SignInResult.Success)
+        assertEquals(1, answers.size)
+    }
+
+    @Test
+    fun `a refused sign-in hands its answer to onAnswer too`() = harness {
+        server.always(TOKEN, Canned(400, """{"error":"invalid_grant"}"""))
+        start()
+        val answers = mutableListOf<SignInResult>()
+
+        val result = coordinator.signIn("other@example.com", "wrong") { answers += it }
+
+        assertEquals(SignInResult.WrongCredentials, result)
+        assertEquals(listOf<SignInResult>(SignInResult.WrongCredentials), answers)
+    }
+
     private companion object {
         const val BASE = "https://kevbox.example"
         const val TOKEN = "/auth/v1/token"

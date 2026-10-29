@@ -1089,6 +1089,18 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt	AES/GCM/NoPadding
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt	AndroidKeyStore
 1	technical	app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt	kevbox_live_session
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	.tmp
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	No internet connection
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	Sign-in failed. Try again.
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	Sign-in took too long. Check the box's internet.
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	Wrong email or password
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	email
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	kevbox-login.json
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	kevbox-login.result.json
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	password
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	requestedAt
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	{"ok":false,"error":${JSONObject.quote(error)}}
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/LoginFileSignIn.kt	{"ok":true}
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/SessionStore.kt	access_token
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/SessionStore.kt	email
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/SessionStore.kt	expires_at_ms
