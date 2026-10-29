@@ -25,9 +25,11 @@
 #                                             naming its position, never its value; blank passes
 #   render_silent_json <now ms> <comma list>  prints kevbox-silent.json: {"after": now + 24 h,
 #                                             "earlyUsers": [...]}, entries trimmed
+#   source_env_quietly <env file>             sources <env file> into the calling shell (call it in
+#                                             a subshell); refuses when the file cannot be sourced,
+#                                             and never shows its lines or values
 #   read_early_users <env file>               prints SILENT_EARLY_USERS from <env file> (blank when
-#                                             the line is missing); refuses when the file cannot be
-#                                             sourced, and never shows its lines or values
+#                                             the line is missing); refuses as source_env_quietly does
 #
 # check_release_args, check_early_users and render_silent_json copy KevBox TV's
 # scripts/release_manifest.py, so one SILENT_EARLY_USERS line (Supabase user ids) and one argument
@@ -160,21 +162,28 @@ render_silent_json() {
   printf '{"after": %d, "earlyUsers": [%s]}\n' "$((10#$now_ms + 86400000))" "$users"
 }
 
-# The env file is sourced in a subshell, so only this one line leaves it. Its own output is
-# dropped: bash prints the offending line, value included, on a syntax error. The `|| exit 1` is
-# needed because errexit does not reach a command substitution, nor anything left of `||`: without
-# it an unreadable file or a syntax error still printed an empty list and passed.
-read_early_users() {
+# The file's own output is dropped: bash prints the offending line, value included, on a syntax
+# error. Callers test the return code themselves (`source_env_quietly f || exit 1`), because
+# errexit does not reach a command substitution, nor anything left of `||`: an unreadable file or a
+# syntax error used to read as blank values and pass. Plain KEY=value lines set globals here, so
+# the values reach the caller's (sub)shell.
+source_env_quietly() {
   local env_file="${1:-}"
-  if ! (
-    unset SILENT_EARLY_USERS
-    # shellcheck source=/dev/null
-    source "$env_file" >/dev/null 2>&1 || exit 1
-    printf '%s' "${SILENT_EARLY_USERS:-}"
-  ); then
+  # shellcheck source=/dev/null
+  if ! source "$env_file" >/dev/null 2>&1; then
     echo "release: $env_file could not be sourced (unreadable, or a line bash cannot run; check its quoting)" >&2
     return 1
   fi
+}
+
+# The env file is sourced in a subshell, so only this one line leaves it.
+read_early_users() {
+  local env_file="${1:-}"
+  (
+    unset SILENT_EARLY_USERS
+    source_env_quietly "$env_file" || exit 1
+    printf '%s' "${SILENT_EARLY_USERS:-}"
+  )
 }
 
 # Splits <comma list> into RELEASE_EARLY_USERS, each entry trimmed. Like Python's split(","), it

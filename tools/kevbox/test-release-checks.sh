@@ -182,6 +182,26 @@ release_read() { local users; users="$(read_early_users "$1")" || return 1; echo
 expect 1 "env: release.sh's call stops on a syntax error" release_read "$envs/syntax.env"
 expect 0 "env: release.sh's call passes a good file"  release_read "$envs/ok.env"
 
+# source_env_quietly, as release.sh's kevbox-live.env checks call it: sourced in a subshell, then
+# the URL/key check. A file that cannot be sourced stops the check and shows nothing of itself.
+printf 'KEVBOX_SUPABASE_URL=https://x.supabase.co\nKEVBOX_SUPABASE_ANON_KEY=anon-hunter2\nSENTRY_AUTH_TOKEN=tok-hunter2\n' > "$envs/live-ok.env"
+# The broken line comes last: the URL and key are already set, so a bare `source` passed the check.
+printf 'KEVBOX_SUPABASE_URL=https://x.supabase.co\nKEVBOX_SUPABASE_ANON_KEY=anon-hunter2\nSENTRY_AUTH_TOKEN=tok-hunter2)\n' > "$envs/live-syntax.env"
+printf 'KEVBOX_SUPABASE_URL=https://x.supabase.co\nKEVBOX_SUPABASE_ANON_KEY=anon-hunter2\nSENTRY_AUTH_TOKEN="tok-hunter2\n' > "$envs/live-unclosed.env"
+live_check() {
+  ( source_env_quietly "$1" || exit 1
+    [[ "${KEVBOX_SUPABASE_URL:-}" == https://* && -n "${KEVBOX_SUPABASE_ANON_KEY:-}" ]] || exit 1 )
+}
+expect 0 "live env: a good file passes the URL/key check" live_check "$envs/live-ok.env"
+expect 1 "live env: a syntax error stops the check"   live_check "$envs/live-syntax.env"
+expect 1 "live env: an unclosed quote stops the check" live_check "$envs/live-unclosed.env"
+expect 1 "live env: a missing file stops the check"   live_check "$envs/live-absent.env"
+live_output="$( { live_check "$envs/live-syntax.env"; live_check "$envs/live-unclosed.env"; live_check "$envs/live-ok.env"; } 2>&1 || true)"
+expect 1 "live env: no value is ever printed"         grep -q 'hunter2' <<<"$live_output"
+expect 0 "live env: the refusal names the file"       grep -q 'live-syntax.env could not be sourced' <<<"$live_output"
+live_check "$envs/live-ok.env"
+expect 0 "live env: the values stay in the subshell"  test -z "${SENTRY_AUTH_TOKEN:-}${KEVBOX_SUPABASE_ANON_KEY:-}"
+
 # check-divergence.sh guards every upstream merge, and its failure path is tested here too: a git
 # diff that fails must fail the check, never read as "0 changed". A throwaway repo with one upstream
 # commit and one fork-only file passes; deleting the upstream commit's root tree object then breaks

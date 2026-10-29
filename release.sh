@@ -35,10 +35,10 @@
 #         values) and ~/secrets/kevbox-keys/kevbox-live.env (KEVBOX_SUPABASE_URL and
 #         KEVBOX_SUPABASE_ANON_KEY); the keystore exists; the Supabase URL starts with https:// and
 #         the anon key is not blank. The files are sourced inside subshells and never printed.
-# KevBox: release.env sources cleanly (an unreadable file or a syntax error stops the script
-#         instead of reading as "no early users"); read_early_users (unless --no-silent) and
-#         check_early_users: every SILENT_EARLY_USERS entry is a UUID; a bad entry is named by its
-#         position, never its value.
+# KevBox: source_env_quietly: both files source cleanly; an unreadable file or a syntax error
+#         stops the script (it used to read as blank values) and its lines are never shown.
+# KevBox: read_early_users (unless --no-silent) and check_early_users: every SILENT_EARLY_USERS
+#         entry is a UUID; a bad entry is named by its position, never its value.
 # KevBox: check_sentry_settings: when kevbox-live.env sets SENTRY_AUTH_TOKEN, it sets SENTRY_ORG and
 #         SENTRY_PROJECT too. The four SENTRY_* lines are optional; without them the release has no
 #         Sentry key and uploads no symbols.
@@ -119,23 +119,20 @@ check_code_above_latest "$version" "$latest" || die "stopped: version code not a
 [[ -f "$signing_env" ]] || die "missing $signing_env (the NUVIO_RELEASE_* signing values)"
 [[ -f "$supabase_env" ]] || die "missing $supabase_env; create it with KEVBOX_SUPABASE_URL and KEVBOX_SUPABASE_ANON_KEY (see UPSTREAM-SYNC.md)"
 # Subshells keep the secrets out of this shell and out of every later command (gh, git).
+# KevBox: each env file goes through source_env_quietly with `|| exit 1`: errexit is off left of
+# `||`, and bash shows the offending line, value included, on a syntax error.
 (
-  # KevBox: `|| exit 1` because errexit is off left of `||`; output dropped because bash shows the
-  # offending line, value included, on a syntax error (see read_early_users).
-  # shellcheck source=/dev/null
-  source "$signing_env" >/dev/null 2>&1 || exit 1
+  source_env_quietly "$signing_env" || exit 1
   [[ -n "${NUVIO_RELEASE_STORE_FILE:-}" && -f "${NUVIO_RELEASE_STORE_FILE}" ]] || exit 1
   [[ -n "${NUVIO_RELEASE_STORE_PASSWORD:-}" && -n "${NUVIO_RELEASE_KEY_ALIAS:-}" && -n "${NUVIO_RELEASE_KEY_PASSWORD:-}" ]] || exit 1
 ) || die "$signing_env must source cleanly and set NUVIO_RELEASE_STORE_FILE (an existing keystore), NUVIO_RELEASE_STORE_PASSWORD, NUVIO_RELEASE_KEY_ALIAS and NUVIO_RELEASE_KEY_PASSWORD"
 (
-  # shellcheck source=/dev/null
-  source "$supabase_env"
+  source_env_quietly "$supabase_env" || exit 1
   [[ "${KEVBOX_SUPABASE_URL:-}" == https://* && -n "${KEVBOX_SUPABASE_ANON_KEY:-}" ]] || exit 1
-) || die "$supabase_env must set KEVBOX_SUPABASE_URL to an https:// address and a non-blank KEVBOX_SUPABASE_ANON_KEY"
+) || die "$supabase_env must source cleanly and set KEVBOX_SUPABASE_URL to an https:// address and a non-blank KEVBOX_SUPABASE_ANON_KEY"
 (
   unset SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT
-  # shellcheck source=/dev/null
-  source "$supabase_env"
+  source_env_quietly "$supabase_env" || exit 1
   check_sentry_settings "${SENTRY_AUTH_TOKEN:-}" "${SENTRY_ORG:-}" "${SENTRY_PROJECT:-}"
 ) || die "stopped: incomplete Sentry settings in $supabase_env"
 check_error_codes_match "$kevbox_repo" || die "stopped: error codes differ from kevbox"
