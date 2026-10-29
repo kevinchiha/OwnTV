@@ -115,7 +115,9 @@ class SilentUpdater(
         }
         val release = SilentUpdateRules.parse(body, wantX86, Build.VERSION.SDK_INT) ?: return "no-release"
         found(release.version)
-        prefs.seen(release.version, release.publishedAtMs)
+        // Stored on the box's own clock (publish time moved by the box's offset from the server), so the
+        // 7-day rule, which reads the box clock, works on a box whose date is wrong.
+        prefs.seen(release.version, release.publishedAtMs + (now() - serverNow))
         val files = VersionFiles(File(context.filesDir, DIR), release.version)
         if (!SilentUpdateRules.isNewer(release.version, BuildConfig.VERSION_NAME)) {
             files.clearAll()
