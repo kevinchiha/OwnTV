@@ -343,5 +343,34 @@ val kevboxModule = module {
     single {
         tv.own.owntv.kevbox.network.DnsDefault(get(), androidContext().prefs(tv.own.owntv.kevbox.network.DnsDefault.PREFS_NAME))
     }
+    // The TV home screen's Recent channels and Favorites rows. The logo cards are KevBox's own
+    // (HomeLogoArt: opaque, with the app's plate rule), downloaded with Core's OkHttpClient.
+    single { tv.own.owntv.kevbox.home.HomeLogoArt(androidContext(), get()) }
+    single { tv.own.owntv.kevbox.home.HomeChannels(androidContext()) }
+    single {
+        val channels = get<tv.own.owntv.kevbox.home.HomeChannels>()
+        val app = androidContext() as android.app.Application
+        tv.own.owntv.kevbox.home.HomeRowsSync(
+            provider = channels,
+            reads = tv.own.owntv.kevbox.home.CoreHomeReads(
+                auth = get(),
+                settings = get(),
+                sourceDao = get(),
+                channelDao = get(),
+                categoryDao = get(),
+                favoriteDao = get(),
+                customize = get(),
+                epg = get(),
+                profileDao = get(),
+                launcher = get(),
+            ),
+            art = get<tv.own.owntv.kevbox.home.HomeLogoArt>(),
+            link = channels::link,
+            onAppLeft = { action -> tv.own.owntv.kevbox.home.onMainActivityStop(app, action) },
+            schedule = { tv.own.owntv.kevbox.home.HomeRowsWorker.schedule(app) },
+            scope = get(),
+            io = kotlinx.coroutines.Dispatchers.IO,
+        )
+    }
     viewModelOf(::KevBoxViewModel)
 }

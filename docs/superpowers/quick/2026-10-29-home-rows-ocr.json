@@ -1,0 +1,294 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 9 finding(s) across 11 selected item(s).",
+  "summary": {
+    "files_reviewed": 11,
+    "comments": 9,
+    "total_tokens": 886913,
+    "input_tokens": 865998,
+    "output_tokens": 20915,
+    "cache_read_tokens": 684715,
+    "cache_write_tokens": 181195,
+    "elapsed": "2m15s"
+  },
+  "tool_calls": {
+    "total": 46,
+    "by_tool": {
+      "code_comment": 3,
+      "code_search": 22,
+      "file_find": 5,
+      "file_read": 14,
+      "file_read_diff": 2
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+      "content": "The shared scope bound in AppModule is `SupervisorJob() + Dispatchers.Default` and has no `CoroutineExceptionHandler`. `HomeRowsSync.start()` launches `merge(reads.changes(), kicks).debounce(...).collect { syncNow() }` in this scope. `syncNow()` catches its own errors, but the upstream flows are not covered: `channelDao.recentlyWatched`, `favoriteDao.observeFavoriteIds`, `customize.observe`, `activeProfileSources` and `settings.sortGuide`. If one of them throws (for example a SQLiteException or a DataStore IOException), the exception goes to the thread's uncaught handler and crashes the whole process, which starts this collector from `Application.onCreate`. Fix: add a `.catch { Log.w(...) }` or `retryWhen` to the flow in `start()`, or pass a scope here that has a `CoroutineExceptionHandler`.",
+      "existing_code": "            scope = get(),",
+      "start_line": 370,
+      "end_line": 370,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt",
+      "content": "`ContentResolver.query` can return null when the TV provider is unavailable or busy, for example while it starts or on some Fire OS builds. Here a null cursor reads as \"no programs\", so `HomeRows.diff` sends every wanted card to `insert`. Each such sync adds another full set of duplicates. They are only removed after a later query succeeds. Treat a null cursor as a failure and abort the sync, which the `syncNow` catch already handles.",
+      "suggestion_code": "val cursor = resolver.query(TvContractCompat.PreviewPrograms.CONTENT_URI, PROGRAM_COLUMNS, null, null, null)\n    ?: throw IllegalStateException(\"preview programs query returned null\")\ncursor.use { c -\u003e",
+      "existing_code": "        resolver.query(TvContractCompat.PreviewPrograms.CONTENT_URI, PROGRAM_COLUMNS, null, null, null)?.use { c -\u003e",
+      "start_line": 105,
+      "end_line": 105,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt",
+      "content": "This has the same null-cursor problem, but the effect is worse. An empty `stored` list makes `ensureChannels` call `insertChannel` for both rows, so each failed query creates two more channels and overwrites the saved ids in prefs. The duplicates are only deleted after a later query succeeds. Throw here when the cursor is null, so the sync aborts instead of creating duplicate channels.",
+      "existing_code": "        resolver.query(TvContractCompat.Channels.CONTENT_URI, CHANNEL_COLUMNS, null, null, null)?.use { c -\u003e",
+      "start_line": 178,
+      "end_line": 178,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt",
+      "content": "If `setAndroidTvHomeEnabled` or `launcher.clearProfile` throws, the whole sync aborts before the rows are touched. Because the flag is still on, the same failure happens on every later sync, so the KevBox rows never update. Wrap this cleanup step in its own `runCatching` and log the failure, so the row sync still runs.",
+      "suggestion_code": "runCatching { if (reads.coreHomeOn()) reads.turnCoreHomeOff() }\n    .onFailure { if (it is CancellationException) throw it; Log.w(TAG, \"home rows: core off failed ${it.javaClass.simpleName}\") }",
+      "existing_code": "        if (reads.coreHomeOn()) reads.turnCoreHomeOff()",
+      "start_line": 119,
+      "end_line": 119,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt",
+      "content": "Nothing ever emits to `kicks`, so it is dead code. Remove it and its use in `merge`, or add the method that was meant to emit to it.",
+      "existing_code": "    private val kicks = MutableSharedFlow\u003cUnit\u003e(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)",
+      "start_line": 92,
+      "end_line": 92,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt",
+      "content": "`null.also { ... }` hides a side effect inside an Elvis expression. An explicit form is easier to read.",
+      "suggestion_code": "        val fitted: (String) -\u003e String? = { raw -\u003e art.fitted(raw).also { if (it == null) missingArt += raw } }",
+      "existing_code": "        val fitted: (String) -\u003e String? = { raw -\u003e art.fitted(raw) ?: null.also { missingArt += raw } }",
+      "start_line": 122,
+      "end_line": 122,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt",
+      "content": "This runs one DB query per favourite, the list has no size limit, and it repeats on every debounced change and every 30-minute run. Only `MAX_CARDS` cards are shown, but all favourites are needed for sorting. Use a batched `IN (...)` query if `ChannelDao` has one, or add one in the fork.",
+      "existing_code": "            favorites = favoriteIds.distinct().mapNotNull { channelDao.getById(it) },",
+      "start_line": 195,
+      "end_line": 195,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt",
+      "content": "This writes to SharedPreferences on every sync, even when the id has not changed. Only write when the stored value is different.",
+      "suggestion_code": "            if (prefs.getLong(prefKey(row), NO_ID) != id) prefs.edit().putLong(prefKey(row), id).apply()",
+      "existing_code": "            prefs.edit().putLong(prefKey(row), id).apply()",
+      "start_line": 90,
+      "end_line": 90,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/AndroidManifest.xml",
+      "content": "This receiver listens for `BOOT_COMPLETED`, but the app manifest doesn't declare `android.permission.RECEIVE_BOOT_COMPLETED`. Today it still works only because WorkManager's library manifest merges that permission in. If the dependency setup changes, or someone adds `tools:node=\"remove\"`, the boot sync will stop without any error. Declare the permission here, next to the receiver that needs it.",
+      "suggestion_code": "\u003cuses-permission android:name=\"android.permission.RECEIVE_BOOT_COMPLETED\" /\u003e",
+      "existing_code": "                \u003caction android:name=\"android.intent.action.BOOT_COMPLETED\" /\u003e",
+      "start_line": 83,
+      "end_line": 83,
+      "category": "maintainability",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Android TV home screen channels/rows sync implementation",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsBootReceiver.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt"
+      ]
+    },
+    {
+      "label": "App wiring: manifest, application init, and DI for home rows",
+      "files": [
+        "app/src/main/AndroidManifest.xml",
+        "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt"
+      ]
+    },
+    {
+      "label": "Settings and localized strings for home rows",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt",
+        "app/src/main/res/values-fr/kevbox_strings.xml",
+        "app/src/main/res/values/kevbox_strings.xml"
+      ]
+    }
+  ],
+  "session_id": "ba517fe5-451b-43ca-a3cf-2978017ca9dd",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "ba517fe5-451b-43ca-a3cf-2978017ca9dd",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "quick/home-rows",
+      "resolved_base": "c8cd733c290d6b3b464db8843348bc835d95bc26",
+      "resolved_head": "fb4ae6908a7f94b56e8b32a3d076085d7d8adb49",
+      "exact_range": "c8cd733c290d6b3b464db8843348bc835d95bc26..fb4ae6908a7f94b56e8b32a3d076085d7d8adb49",
+      "source_artifact_sha256": "34795a057210c6862d1d977b9913b09e9db600d7f8ba3858fd45f4321ccce025"
+    },
+    "execution": {
+      "ocr_version": "v1.13.3",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "7bdde30da0c66ee5643876474d879e4d72b8803bf0501749f82291f5b9b2b87a",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "1859d1d6bb09fb3c4f619c2d292f57929ed04cef0388f04d5826a1ee3bf06c2e"
+        },
+        {
+          "item_id": "1fb8af2f9f76f591279469dfa8fab9f4b51c91a4ee311103ccb903babab411b9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt",
+          "fingerprint": "da2da2a1f902211dd72b5f5334951f3fbdd3bd5ce5e1a84a09609857986e6642"
+        },
+        {
+          "item_id": "31a7dbac87b2b98ae4f87b1e5daf791be908ec63c3d2a3d9bd3a20aca30c14b9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt",
+          "fingerprint": "cd15068577841680d20d3b40ca66e0c265bd206acd07c5c731041d7080fca4bd"
+        },
+        {
+          "item_id": "4de65cc0ce7179477481ce272034ad790ab4de5ae3d33c45544db1b1f2d06849",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt",
+          "fingerprint": "e67481ff0838ac1c1be0e26dab2a0e498f441debd747986e9d89b8db0fc88f0e"
+        },
+        {
+          "item_id": "61b15513b81bbff51b6616188f205f46ff30c6fdf470b6a44310a9faa5af1a0f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt",
+          "fingerprint": "b183f4cffb9dd321607ab28dd7f2efe5b07da1019dfbeb167755ada7a5e45241"
+        },
+        {
+          "item_id": "63c6718371bf4cafdd892b9705c79078b666e87df6ce830e707ba8654dbccdcc",
+          "path": "app/src/main/AndroidManifest.xml",
+          "fingerprint": "0fe72729954b0d86f7d64cf1ed94aec92b9815065de0bc0436ce94e31b851ecf"
+        },
+        {
+          "item_id": "714a0844dbcc253a5acae855d88213f1a17ee9b4a88127b6e989c1f8e1a0633a",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt",
+          "fingerprint": "585c1432e0ca81f6a29547485e0983f066ad43e6dd94d2e97647324878bb33ae"
+        },
+        {
+          "item_id": "93fd75cbb2b80b911bdf67cd099ae54e3360824e0094b3c58cff2ef55224e904",
+          "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+          "fingerprint": "6ee8670766f37c60d63094364c78e44103646e85ed1297489c5f22d86be62496"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "4f6cd71d700848616380990806f4b9e139cab5fc7624a28d06bcdc36e542e4cd"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "ae4c2261d20c93ebfab8e0434101495d1953183470bdf65f9c24dcfc7c5ce7cc"
+        },
+        {
+          "item_id": "e001760229880c18b85a224a049be58c7106c30447ee8a79eee6e6ddd5ddb921",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsBootReceiver.kt",
+          "fingerprint": "51094f32d6bd1833ad1ca2daa9135b813451b3678a76c0dc5fcba6c34cf75902"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "1859d1d6bb09fb3c4f619c2d292f57929ed04cef0388f04d5826a1ee3bf06c2e"
+        },
+        {
+          "item_id": "1fb8af2f9f76f591279469dfa8fab9f4b51c91a4ee311103ccb903babab411b9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt",
+          "fingerprint": "da2da2a1f902211dd72b5f5334951f3fbdd3bd5ce5e1a84a09609857986e6642"
+        },
+        {
+          "item_id": "31a7dbac87b2b98ae4f87b1e5daf791be908ec63c3d2a3d9bd3a20aca30c14b9",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt",
+          "fingerprint": "cd15068577841680d20d3b40ca66e0c265bd206acd07c5c731041d7080fca4bd"
+        },
+        {
+          "item_id": "4de65cc0ce7179477481ce272034ad790ab4de5ae3d33c45544db1b1f2d06849",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt",
+          "fingerprint": "e67481ff0838ac1c1be0e26dab2a0e498f441debd747986e9d89b8db0fc88f0e"
+        },
+        {
+          "item_id": "61b15513b81bbff51b6616188f205f46ff30c6fdf470b6a44310a9faa5af1a0f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt",
+          "fingerprint": "b183f4cffb9dd321607ab28dd7f2efe5b07da1019dfbeb167755ada7a5e45241"
+        },
+        {
+          "item_id": "63c6718371bf4cafdd892b9705c79078b666e87df6ce830e707ba8654dbccdcc",
+          "path": "app/src/main/AndroidManifest.xml",
+          "fingerprint": "0fe72729954b0d86f7d64cf1ed94aec92b9815065de0bc0436ce94e31b851ecf"
+        },
+        {
+          "item_id": "714a0844dbcc253a5acae855d88213f1a17ee9b4a88127b6e989c1f8e1a0633a",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/settings/LiveOnlySettings.kt",
+          "fingerprint": "585c1432e0ca81f6a29547485e0983f066ad43e6dd94d2e97647324878bb33ae"
+        },
+        {
+          "item_id": "93fd75cbb2b80b911bdf67cd099ae54e3360824e0094b3c58cff2ef55224e904",
+          "path": "app/src/main/res/values-fr/kevbox_strings.xml",
+          "fingerprint": "6ee8670766f37c60d63094364c78e44103646e85ed1297489c5f22d86be62496"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "4f6cd71d700848616380990806f4b9e139cab5fc7624a28d06bcdc36e542e4cd"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "ae4c2261d20c93ebfab8e0434101495d1953183470bdf65f9c24dcfc7c5ce7cc"
+        },
+        {
+          "item_id": "e001760229880c18b85a224a049be58c7106c30447ee8a79eee6e6ddd5ddb921",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsBootReceiver.kt",
+          "fingerprint": "51094f32d6bd1833ad1ca2daa9135b813451b3678a76c0dc5fcba6c34cf75902"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 134899
+  }
+}

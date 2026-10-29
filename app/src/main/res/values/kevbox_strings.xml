@@ -141,4 +141,7 @@
     <string name="kevbox_sports_tab_channels">Channels</string>
     <!-- Sports hub: the title of one sport's Starting soon row; %1$s is the sport's emoji and name, e.g. "⚽ Football". -->
     <string name="kevbox_sports_starting_soon_sport">Starting soon · %1$s</string>
+    <!-- The TV home screen's two KevBox Live rows (kevbox/home/HomeChannels.kt). -->
+    <string name="kevbox_home_row_recent">Recent channels</string>
+    <string name="kevbox_home_row_favorites">Favorites</string>
 </resources>
