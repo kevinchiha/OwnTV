@@ -110,3 +110,4 @@ seenHasSilent: Boolean, seenAfterBoxMs: Long?, installedVersion, boxNowMs)`.
 baseline: all green on 27cae12a (2026-10-29 10:4x): testStandardDebugUnitTest + lintStandardDebug BUILD SUCCESSFUL, test-release-checks 35 passed, check-divergence 0 failures.
 plan check (6285a91a): 4 problems folded: seen() moves after the block fetch and compares all fields; helpers return 1 and release.sh shifts --no-silent itself; pre-build cleanup removes kevbox-silent.json; Run B proves the card gate, not the local build. Also the OwnTVShell 7-day comment joins Task 2.
 Task 1+2: started at e84be319
+Task 1+2: landed (011716b1, 0f470669). Added SilentUpdateRules.SILENT_ASSET; touched tools/i18n/safe_literals.txt (new literals classified, stale email entry pruned).
