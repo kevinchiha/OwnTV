@@ -164,3 +164,14 @@ baseline: same as kevbox-live (tests and lint green on 2026-10-29 05:2x; check-d
 Task 1+2: landed (37f98e67, 3b599fe6). Bent: `markRefused(version: String? = null)` also skips that version so a refusing box stops downloading it every 6 h; added `SilentUpdatePrefs.open(context)`, `FILE`, `MAX_FAILURES`, `SilentUpdater.EXTRA_VERSION`; blank `feedUrl` means GitHub. Also touched tools/i18n/safe_literals.txt and the manifest row of UPSTREAM-SYNC.md.
 Task 3: started at b6681254
 Task 3: landed (c78f015c). Scheduler lives in SilentUpdateWorker.kt; also touched tools/i18n/safe_literals.txt.
+review: gate green apart from the baseline; AC-1..AC-12 pass as written.
+review: critical, SilentUpdater.kt:107-135: a 62 MB download on a slow line outlives the 10-minute worker limit and restarts from zero every run. Fix: resume with HTTP Range, stop cooperatively on cancel.
+review: important, SilentUpdatePrefs.kt:38: "silent refused" never clears. Fix: replace with a "gave up on version V" mark that stops mattering once the installed version reaches V.
+review: important, OwnTVShell.kt:2181: the card stays hidden when silent install gives up for other reasons. Fix: give up (show the card) after MAX_FAILURES, and when a seen release is 7 days old and still not installed.
+review: important, REQUEST_INSTALL_PACKAGES must be allowed for a no-prompt install. Fix: check canRequestPackageInstalls() before downloading; when off, give up on that version (card comes back). Emulator: allow the app-op first.
+review: minor 5 (idle check right before commit), 6 (no schedule below API 31), 7 (KEEP for the one-time job), 8 (compare signing certificates before installing), 9 (retry once without the .dm), 10 (monotonic clock for idle). Decided: fix all.
+ocr: high/medium, the same card fallback and refused-flag points as the reviewer's 2 and 3: one item each.
+ocr: medium, SilentUpdater.kt:57: CancellationException swallowed. Decided: fix.
+ocr: medium, SilentUpdater.kt:202: a missing Content-Length counts as a bad release. Decided: fix (verify the file instead).
+ocr: medium, SilentUpdater.kt:76: wall clock in the idle rule. Same item as reviewer 10.
+ocr: low (dm bytes() before size check). Decided: fix, it is two lines.
