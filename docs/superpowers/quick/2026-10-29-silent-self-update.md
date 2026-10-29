@@ -176,3 +176,6 @@ ocr: medium, SilentUpdater.kt:202: a missing Content-Length counts as a bad rele
 ocr: medium, SilentUpdater.kt:76: wall clock in the idle rule. Same item as reviewer 10.
 ocr: low (dm bytes() before size check). Decided: fix, it is two lines.
 fix round 1: 01f3d28a closes the list per the fixer; orchestrator gate green apart from the baseline.
+re-review: all 15 listed items closed by 01f3d28a; three new minor points. Decided: fixed the 7-day mark on a box with a wrong clock (now stored on the box's own clock, commit after this line's predecessor); skipped resume without If-Range (a re-uploaded asset costs one strike and heals) and a deleted release leaving the card on (rare; Kevin never deletes releases).
+Task 4 (emulator, kevbox_tv, Android 16): .90 debug installed over the login-file build with data kept, "install unknown apps" allowed with appops, local GitHub-shaped feed offering .91 published 48 h back. First run with the app in front: `in-use`. After Home, forced the one-time job: `committed`, then `installed 5.2.1.91` 3 s later; dumpsys shows versionName 5.2.1.91; the launcher stayed on screen with no installer dialog; reopening the app showed All channels, still signed in. AC-13 passed.
+final review: done
