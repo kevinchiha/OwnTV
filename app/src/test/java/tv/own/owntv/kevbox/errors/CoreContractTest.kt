@@ -14,13 +14,16 @@ import okhttp3.OkHttpClient
 import org.junit.Test
 import tv.own.owntv.core.brand.AppIcon
 import tv.own.owntv.core.brand.AppIconSwitcher
+import tv.own.owntv.core.content.AdultCategoryClassifier
 import tv.own.owntv.core.customize.CustomizationStore
 import tv.own.owntv.core.customize.CustomizeKeys
 import tv.own.owntv.core.customize.SectionCustomizations
+import tv.own.owntv.core.database.dao.CategoryDao
 import tv.own.owntv.core.database.dao.ChannelDao
 import tv.own.owntv.core.database.dao.FavoriteDao
 import tv.own.owntv.core.database.dao.ProfileDao
 import tv.own.owntv.core.database.dao.SourceDao
+import tv.own.owntv.core.database.entity.CategoryEntity
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.database.entity.ProfileEntity
 import tv.own.owntv.core.database.entity.SourceEntity
@@ -131,6 +134,14 @@ class CoreContractTest {
         listOf(recentlyWatched, channelById, favoriteIds, allProfiles, setTvHomeOn, clearProfile, liveLink, linkUri)
             .forEach { assertNotNull(it) }
         listOf(openLive, posterArt, posterCached, posterPrepare, appliedIcon, customizeKey).forEach { assertNotNull(it) }
+        // The Recent row drops hidden categories, and adult ones on a Kids profile, as EpgViewModel reads them.
+        val hiddenCategoryIds: (List<CategoryEntity>, Set<String>, Boolean) -> Set<Long> = AdultCategoryClassifier::hiddenCategoryIds
+        val observeCategories: (CategoryDao, List<Long>, MediaType) -> Flow<List<CategoryEntity>> = CategoryDao::observe
+        val profileById: suspend (ProfileDao, Long) -> ProfileEntity? = ProfileDao::getById
+        val isKids: KProperty1<ProfileEntity, Boolean> = ProfileEntity::isKids
+        val hiddenCategories: KProperty1<SectionCustomizations, Set<String>> = SectionCustomizations::hiddenCategories
+        val channelCategory: KProperty1<ChannelEntity, Long?> = ChannelEntity::categoryId
+        listOf(hiddenCategoryIds, observeCategories, profileById, isKids, hiddenCategories, channelCategory).forEach { assertNotNull(it) }
         // HomeRows.favorites copies EpgViewModel's guideOrder with one branch per value.
         assertEquals(listOf("ALPHA", "PROVIDER", "LIVE_TV", "CATCHUP", "FAVORITES"), guideSorts)
 

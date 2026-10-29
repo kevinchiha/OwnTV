@@ -1024,16 +1024,21 @@
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/expiry/ExpiryMonitor.kt	kevbox_live_expiry
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/expiry/ExpiryMonitor.kt	last_warned_day
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	KevBoxHomeRows
+1	compiler	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	RestrictedApi
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	channel query returned no cursor
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	home rows: channel delete failed ${it.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	home rows: logo failed ${it.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	home rows: write failed ${e.javaClass.simpleName}
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	kevbox_home_rows
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	preview program query returned no cursor
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	ch:
 1	url	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	http://
 1	url	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	https://
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	kevbox-live:favorites
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	kevbox-live:recent
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt	KevBoxHomeRows
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt	home rows: Core switch-off failed ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt	home rows: change watch failed ${cause.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt	home rows: sync failed ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt	KevBoxHomeRows
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt	home rows: schedule failed ${e.javaClass.simpleName}

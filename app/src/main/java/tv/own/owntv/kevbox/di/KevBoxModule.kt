@@ -357,6 +357,7 @@ val kevboxModule = module {
                 settings = get(),
                 sourceDao = get(),
                 channelDao = get(),
+                categoryDao = get(),
                 favoriteDao = get(),
                 customize = get(),
                 epg = get(),

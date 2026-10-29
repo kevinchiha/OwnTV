@@ -1,6 +1,7 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.home
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.content.ContentUris
@@ -8,6 +9,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.tv.TvContract
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -82,10 +84,18 @@ class HomeChannels(private val context: Context) : HomeProvider {
     override fun ensureChannels(): Map<HomeRow, Long> {
         val stored = queryChannels()
         val ids = LinkedHashMap<HomeRow, Long>()
+        // Once a channel can't be made, no later one is made in this sync, so FAVORITES never takes a
+        // lower id than RECENT; channels that already exist are still used. The next sync tries again.
+        var canMake = true
         for (row in HomeRow.entries) {
             val kept = prefs.getLong(prefKey(row), NO_ID).takeIf { id -> stored.any { it.id == id && it.providerId == row.providerId } }
                 ?: stored.firstOrNull { it.providerId == row.providerId }?.id
-            val id = kept ?: insertChannel(row) ?: continue
+            if (kept == null && !canMake) continue
+            val id = kept ?: insertChannel(row)
+            if (id == null) {
+                canMake = false
+                continue
+            }
             if (kept != null) renameIfNeeded(id, row, stored.first { it.id == id }.displayName)
             prefs.edit().putLong(prefKey(row), id).apply()
             ids[row] = id
@@ -102,15 +112,18 @@ class HomeChannels(private val context: Context) : HomeProvider {
     override fun programs(channels: Map<HomeRow, Long>): Map<HomeRow, Map<String, ExistingProgram>> {
         val rowOf = channels.entries.associate { (row, id) -> id to row }
         val found = HashMap<HomeRow, MutableList<Pair<Long, Stored>>>()
-        resolver.query(TvContractCompat.PreviewPrograms.CONTENT_URI, PROGRAM_COLUMNS, null, null, null)?.use { c ->
-            val id = c.getColumnIndexOrThrow(TvContractCompat.PreviewPrograms._ID)
-            val channel = c.getColumnIndexOrThrow(TvContractCompat.PreviewPrograms.COLUMN_CHANNEL_ID)
-            val key = c.getColumnIndexOrThrow(TvContractCompat.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID)
-            val title = c.getColumnIndexOrThrow(TvContractCompat.PreviewPrograms.COLUMN_TITLE)
-            val description = c.getColumnIndexOrThrow(TvContractCompat.PreviewPrograms.COLUMN_SHORT_DESCRIPTION)
-            val art = c.getColumnIndexOrThrow(TvContractCompat.PreviewPrograms.COLUMN_POSTER_ART_URI)
-            val intent = c.getColumnIndexOrThrow(TvContractCompat.PreviewPrograms.COLUMN_INTENT_URI)
-            val weight = c.getColumnIndexOrThrow(TvContractCompat.PreviewPrograms.COLUMN_WEIGHT)
+        // No cursor is a failed read, not an empty one: going on would insert every card again.
+        val cursor = resolver.query(TvContractCompat.PreviewPrograms.CONTENT_URI, PROGRAM_COLUMNS, null, null, null)
+            ?: throw IllegalStateException("preview program query returned no cursor")
+        cursor.use { c ->
+            val id = c.getColumnIndexOrThrow(TvContract.PreviewPrograms._ID)
+            val channel = c.getColumnIndexOrThrow(TvContract.PreviewPrograms.COLUMN_CHANNEL_ID)
+            val key = c.getColumnIndexOrThrow(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID)
+            val title = c.getColumnIndexOrThrow(TvContract.PreviewPrograms.COLUMN_TITLE)
+            val description = c.getColumnIndexOrThrow(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION)
+            val art = c.getColumnIndexOrThrow(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI)
+            val intent = c.getColumnIndexOrThrow(TvContract.PreviewPrograms.COLUMN_INTENT_URI)
+            val weight = c.getColumnIndexOrThrow(TvContract.PreviewPrograms.COLUMN_WEIGHT)
             while (c.moveToNext()) {
                 val row = rowOf[c.getLong(channel)] ?: continue
                 found.getOrPut(row) { mutableListOf() } += c.getLong(id) to Stored(
@@ -153,6 +166,10 @@ class HomeChannels(private val context: Context) : HomeProvider {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .toUri(Intent.URI_INTENT_SCHEME)
 
+    // Lint's false alarm: these setters are public methods PreviewProgram.Builder inherits from
+    // BasePreviewProgram.Builder and BaseProgram.Builder, which are marked library-only. Reached
+    // through the public subclass, they are the documented way to build a program.
+    @SuppressLint("RestrictedApi")
     private fun values(channelId: Long, card: HomeCard): ContentValues {
         val builder = PreviewProgram.Builder()
             .setChannelId(channelId)
@@ -166,16 +183,19 @@ class HomeChannels(private val context: Context) : HomeProvider {
         card.artUri?.let { builder.setPosterArtUri(Uri.parse(it)) }
         return builder.build().toContentValues().apply {
             // An update rewrites every column, so a value that went away is cleared, never left behind.
-            if (card.description == null) putNull(TvContractCompat.PreviewPrograms.COLUMN_SHORT_DESCRIPTION)
-            if (card.artUri == null) putNull(TvContractCompat.PreviewPrograms.COLUMN_POSTER_ART_URI)
-            putNull(TvContractCompat.PreviewPrograms.COLUMN_DURATION_MILLIS)
-            putNull(TvContractCompat.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS)
+            if (card.description == null) putNull(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION)
+            if (card.artUri == null) putNull(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI)
+            putNull(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS)
+            putNull(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS)
         }
     }
 
     private fun queryChannels(): List<StoredChannel> {
         val result = mutableListOf<StoredChannel>()
-        resolver.query(TvContractCompat.Channels.CONTENT_URI, CHANNEL_COLUMNS, null, null, null)?.use { c ->
+        // No cursor is a failed read, not "no channels": going on would make both channels again.
+        val cursor = resolver.query(TvContractCompat.Channels.CONTENT_URI, CHANNEL_COLUMNS, null, null, null)
+            ?: throw IllegalStateException("channel query returned no cursor")
+        cursor.use { c ->
             val id = c.getColumnIndexOrThrow(TvContractCompat.Channels._ID)
             val providerId = c.getColumnIndexOrThrow(TvContractCompat.Channels.COLUMN_INTERNAL_PROVIDER_ID)
             val name = c.getColumnIndexOrThrow(TvContractCompat.Channels.COLUMN_DISPLAY_NAME)
@@ -256,14 +276,14 @@ class HomeChannels(private val context: Context) : HomeProvider {
         )
 
         private val PROGRAM_COLUMNS = arrayOf(
-            TvContractCompat.PreviewPrograms._ID,
-            TvContractCompat.PreviewPrograms.COLUMN_CHANNEL_ID,
-            TvContractCompat.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,
-            TvContractCompat.PreviewPrograms.COLUMN_TITLE,
-            TvContractCompat.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,
-            TvContractCompat.PreviewPrograms.COLUMN_POSTER_ART_URI,
-            TvContractCompat.PreviewPrograms.COLUMN_INTENT_URI,
-            TvContractCompat.PreviewPrograms.COLUMN_WEIGHT,
+            TvContract.PreviewPrograms._ID,
+            TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,
+            TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,
+            TvContract.PreviewPrograms.COLUMN_TITLE,
+            TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,
+            TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,
+            TvContract.PreviewPrograms.COLUMN_INTENT_URI,
+            TvContract.PreviewPrograms.COLUMN_WEIGHT,
         )
     }
 }

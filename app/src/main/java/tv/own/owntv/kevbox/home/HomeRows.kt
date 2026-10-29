@@ -61,18 +61,31 @@ data class HomeDiff(
 object HomeRows {
     const val MAX_CARDS = 15
 
-    /** Recent channels: [history] is newest first; the row keeps that order. */
+    /**
+     * Recent channels: [history] is newest first; the row keeps that order. Channels in
+     * [hiddenCategoryIds] are dropped, as the in-player history list (LiveViewModel.historyChannels)
+     * drops them: the profile's hidden categories, and the adult ones on a Kids profile.
+     */
     fun recent(
         history: List<ChannelEntity>,
         liveSourceIds: Set<Long>,
         customizations: SectionCustomizations,
+        hiddenCategoryIds: Set<Long>,
         nowTitles: Map<Long, String>,
         fitted: (String) -> String?,
         link: (ChannelEntity) -> String,
-    ): List<HomeCard> =
-        cards(visible(history, liveSourceIds, customizations), customizations, nowTitles, fitted, link)
+    ): List<HomeCard> {
+        val shown = visible(history, liveSourceIds, customizations).filter {
+            it.categoryId == null || it.categoryId !in hiddenCategoryIds
+        }
+        return cards(shown, customizations, nowTitles, fitted, link)
+    }
 
-    /** Favorites: every channel in [channels] is a favourite; the row follows the guide's Order setting. */
+    /**
+     * Favorites: every channel in [channels] is a favourite; the row follows the guide's Order setting.
+     * No category filter, as the guide's Favorites category: EpgViewModel skips hidden categories, the
+     * Kids adult ones included, for its member lists (Favorites, History, custom categories).
+     */
     fun favorites(
         channels: List<ChannelEntity>,
         sort: GuideSort,

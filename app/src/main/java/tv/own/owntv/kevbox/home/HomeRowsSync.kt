@@ -8,9 +8,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -18,13 +17,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import tv.own.owntv.core.content.AdultCategoryClassifier
 import tv.own.owntv.core.customize.CustomizationStore
 import tv.own.owntv.core.customize.SectionCustomizations
+import tv.own.owntv.core.database.dao.CategoryDao
 import tv.own.owntv.core.database.dao.ChannelDao
 import tv.own.owntv.core.database.dao.FavoriteDao
 import tv.own.owntv.core.database.dao.ProfileDao
@@ -47,6 +48,8 @@ data class HomeInputs(
     val sort: GuideSort,
     val liveSourceIds: Set<Long>,
     val customizations: SectionCustomizations,
+    /** The profile's hidden categories, plus the adult ones on a Kids profile. */
+    val hiddenCategoryIds: Set<Long>,
 )
 
 /** The app data [HomeRowsSync] reads. [CoreHomeReads] is the real one. */
@@ -89,7 +92,6 @@ class HomeRowsSync(
 ) {
     private val begun = AtomicBoolean(false)
     private val mutex = Mutex()
-    private val kicks = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /** Once per process. */
     @OptIn(FlowPreview::class)
@@ -98,7 +100,17 @@ class HomeRowsSync(
         if (!provider.supported()) return
         schedule()
         scope.launch {
-            merge(reads.changes(), kicks).debounce(DEBOUNCE_MS).collect { syncNow() }
+            reads.changes()
+                // A database or settings error must not crash the app (the app scope has no handler):
+                // log it and watch again after a pause.
+                .retryWhen { cause, _ ->
+                    if (cause is CancellationException) throw cause
+                    Log.w(TAG, "home rows: change watch failed ${cause.javaClass.simpleName}")
+                    delay(RETRY_MS)
+                    true
+                }
+                .debounce(DEBOUNCE_MS)
+                .collect { syncNow() }
         }
         onAppLeft { scope.launch { syncNow() } }
     }
@@ -116,7 +128,7 @@ class HomeRowsSync(
     }
 
     private suspend fun sync() {
-        if (reads.coreHomeOn()) reads.turnCoreHomeOff()
+        turnCoreHomeOff()
         val channels = provider.ensureChannels()
         val missingArt = LinkedHashSet<String>()
         val fitted: (String) -> String? = { raw -> art.fitted(raw) ?: null.also { missingArt += raw } }
@@ -132,13 +144,24 @@ class HomeRowsSync(
         if (missingArt.isNotEmpty()) art.prepare(missingArt.toList()) { syncNow() }
     }
 
+    /** Turns Core's own publishing off when it is on. A failure is logged and the rows sync anyway. */
+    private suspend fun turnCoreHomeOff() {
+        try {
+            if (reads.coreHomeOn()) reads.turnCoreHomeOff()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "home rows: Core switch-off failed ${e.javaClass.simpleName}")
+        }
+    }
+
     private suspend fun wanted(fitted: (String) -> String?): Map<HomeRow, List<HomeCard>> {
         val inputs = reads.inputs() ?: return emptyMap()
         val all = (inputs.history + inputs.favorites).distinctBy { it.id }
         val now = if (all.isEmpty()) emptyMap() else reads.nowTitles(all, inputs.customizations)
         return mapOf(
             HomeRow.RECENT to HomeRows.recent(
-                inputs.history, inputs.liveSourceIds, inputs.customizations, now, fitted, link,
+                inputs.history, inputs.liveSourceIds, inputs.customizations, inputs.hiddenCategoryIds, now, fitted, link,
             ),
             HomeRow.FAVORITES to HomeRows.favorites(
                 inputs.favorites, inputs.sort, inputs.liveSourceIds, inputs.customizations, now, fitted, link,
@@ -149,6 +172,7 @@ class HomeRowsSync(
     private companion object {
         const val TAG = "KevBoxHomeRows"
         const val DEBOUNCE_MS = 1_000L
+        const val RETRY_MS = 30_000L
     }
 }
 
@@ -158,6 +182,7 @@ class CoreHomeReads(
     private val settings: SettingsRepository,
     private val sourceDao: SourceDao,
     private val channelDao: ChannelDao,
+    private val categoryDao: CategoryDao,
     private val favoriteDao: FavoriteDao,
     private val customize: CustomizationStore,
     private val epg: LiveEpgReader,
@@ -190,12 +215,25 @@ class CoreHomeReads(
         if (pid < 0) return null
         // The history query has a limit; the favourites are every id, each channel loaded on its own.
         val favoriteIds = favoriteDao.observeFavoriteIds(pid, MediaType.LIVE).first()
+        val customizations = customize.observe(pid, MediaType.LIVE).first()
         return HomeInputs(
             history = channelDao.recentlyWatched(pid, HISTORY_LIMIT).first(),
             favorites = favoriteIds.distinct().mapNotNull { channelDao.getById(it) },
             sort = settings.sortGuide.first(),
             liveSourceIds = sources.liveSourceIds.toSet(),
-            customizations = customize.observe(pid, MediaType.LIVE).first(),
+            customizations = customizations,
+            hiddenCategoryIds = hiddenCategoryIds(pid, sources.liveSourceIds, customizations),
+        )
+    }
+
+    /** As EpgViewModel and ListedChannels read them: hidden categories, and adult ones on a Kids profile. */
+    private suspend fun hiddenCategoryIds(pid: Long, liveSourceIds: List<Long>, cust: SectionCustomizations): Set<Long> {
+        val isKids = profileDao.getById(pid)?.isKids == true
+        if (cust.hiddenCategories.isEmpty() && !isKids) return emptySet()
+        return AdultCategoryClassifier.hiddenCategoryIds(
+            categoryDao.observe(liveSourceIds, MediaType.LIVE).first(),
+            cust.hiddenCategories,
+            isKids,
         )
     }
 

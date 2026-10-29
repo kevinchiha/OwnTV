@@ -19,9 +19,10 @@ class HomeRowsTest {
         catchup: Boolean = false,
         logoUrl: String? = null,
         remoteId: String? = "$id",
+        categoryId: Long? = null,
     ) = ChannelEntity(
         id = id, sourceId = sourceId, name = name, streamUrl = "http://x/$id.ts",
-        remoteId = remoteId, sortOrder = sortOrder, catchup = catchup, logoUrl = logoUrl,
+        remoteId = remoteId, sortOrder = sortOrder, catchup = catchup, logoUrl = logoUrl, categoryId = categoryId,
     )
 
     private val link: (ChannelEntity) -> String = { "link:${it.sourceId}:${it.remoteId}:${it.name}" }
@@ -31,9 +32,10 @@ class HomeRowsTest {
         history: List<ChannelEntity>,
         sources: Set<Long> = setOf(1, 2),
         cust: SectionCustomizations = noCust,
+        hiddenCats: Set<Long> = emptySet(),
         now: Map<Long, String> = emptyMap(),
         fitted: (String) -> String? = { null },
-    ) = HomeRows.recent(history, sources, cust, now, fitted, link)
+    ) = HomeRows.recent(history, sources, cust, hiddenCats, now, fitted, link)
 
     private fun favorites(
         channels: List<ChannelEntity>,
@@ -68,6 +70,13 @@ class HomeRowsTest {
         assertEquals(15, cards.size)
         assertEquals("ch:1:18", cards.first().key)
         assertTrue(cards.none { it.key == "ch:1:20" || it.key == "ch:9:19" })
+    }
+
+    @Test
+    fun historyChannelInAHiddenCategoryIsLeftOutOfRecent() {
+        val history = listOf(channel(1, categoryId = 7), channel(2, categoryId = 8), channel(3, categoryId = null))
+        val cards = recent(history, hiddenCats = setOf(7))
+        assertEquals(listOf("ch:1:2", "ch:1:3"), cards.map { it.key })
     }
 
     @Test

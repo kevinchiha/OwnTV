@@ -1,12 +1,15 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.home
 
+import java.io.IOException
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -48,14 +51,22 @@ class HomeRowsSyncTest {
         fun titles(row: HomeRow) = stored[channels.getValue(row)].orEmpty().values.sortedByDescending { it.weight }.map { it.title }
     }
 
-    private class FakeReads(var inputs: HomeInputs?, var coreOn: Boolean = false) : HomeReads {
+    private class FakeReads(
+        var inputs: HomeInputs?,
+        var coreOn: Boolean = false,
+        val coreSwitchFails: Boolean = false,
+        val changes: Flow<Unit> = emptyFlow(),
+    ) : HomeReads {
         var turnedOff = 0
 
-        override fun changes(): Flow<Unit> = emptyFlow()
+        override fun changes(): Flow<Unit> = changes
         override suspend fun inputs() = inputs
         override suspend fun nowTitles(channels: List<ChannelEntity>, customizations: SectionCustomizations) =
             emptyMap<Long, String>()
-        override suspend fun coreHomeOn() = coreOn
+        override suspend fun coreHomeOn(): Boolean {
+            if (coreSwitchFails) throw IOException("settings unreadable")
+            return coreOn
+        }
         override suspend fun turnCoreHomeOff() {
             turnedOff++
             coreOn = false
@@ -77,6 +88,7 @@ class HomeRowsSyncTest {
         sort = GuideSort.ALPHA,
         liveSourceIds = setOf(1),
         customizations = SectionCustomizations(),
+        hiddenCategoryIds = emptySet(),
     )
 
     private fun sync(
@@ -134,6 +146,25 @@ class HomeRowsSyncTest {
         val reads = FakeReads(signedIn, coreOn = false)
         sync(FakeProvider(), reads).syncNow()
         assertEquals(0, reads.turnedOff)
+    }
+
+    @Test
+    fun aFailingCoreSwitchStillSyncsTheRows() = runBlocking {
+        val provider = FakeProvider()
+        sync(provider, FakeReads(signedIn, coreSwitchFails = true)).syncNow()
+        assertEquals(listOf("News", "Sport"), provider.titles(HomeRow.RECENT))
+        assertEquals(listOf("Films"), provider.titles(HomeRow.FAVORITES))
+    }
+
+    @Test
+    fun aFailingChangeWatchLeavesTheAppScopeAlive() {
+        val scope = CoroutineScope(Job())
+        val reads = FakeReads(signedIn, changes = flow { throw IOException("database closed") })
+        sync(FakeProvider(), reads, scope = scope).start()
+        // Without the retry, the failure would cancel the scope's plain Job at once.
+        Thread.sleep(200)
+        assertTrue(scope.isActive)
+        scope.cancel()
     }
 
     @Test

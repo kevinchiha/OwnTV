@@ -656,8 +656,11 @@ active profile and plays the channel full screen.
 first, the same list as the app's Recently watched. "Favorites" is the profile's favourite live
 channels (`FavoriteDao.observeFavoriteIds`), in the guide's Order setting
 (`SettingsRepository.sortGuide`), as the app's Favorites category shows them. Both rows drop
-channels the profile hides in its Live customizations and channels outside its live sources. A
-sync writes only cards whose values changed and deletes only cards no longer wanted.
+channels the profile hides in its Live customizations and channels outside its live sources.
+"Recent channels" also drops channels in a hidden category, and in an adult category on a Kids
+profile (`AdultCategoryClassifier.hiddenCategoryIds`), as the in-player history list does.
+"Favorites" keeps them, as the guide's Favorites category does. A sync writes only cards whose
+values changed and deletes only cards no longer wanted.
 
 The code is fork-only, under `kevbox/home/`: `HomeRows.kt` decides what the rows hold,
 `HomeChannels.kt` reads and writes the provider, `HomeRowsSync.kt` keeps the rows current, and
