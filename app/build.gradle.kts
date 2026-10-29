@@ -181,10 +181,15 @@ android {
             // KevBox: debug never reports to Sentry unless the command line passes -Pkevbox.sentryDsnDebug=<dsn>
             // (the end-to-end proof points it at a local fake receiver). Blank means Sentry never starts (AC-4).
             buildConfigField("String", "SENTRY_DSN", javaString(providers.gradleProperty("kevbox.sentryDsnDebug").orNull ?: ""))
+            // KevBox: the silent updater reads GitHub's latest release unless the command line passes
+            // -Pkevbox.updateFeed=<url> (the emulator check points it at a local feed).
+            buildConfigField("String", "KEVBOX_UPDATE_FEED", javaString(providers.gradleProperty("kevbox.updateFeed").orNull ?: ""))
         }
         release {
             // KevBox: release reports to Sentry with the key release.sh exports; without one Sentry never starts (AC-4).
             buildConfigField("String", "SENTRY_DSN", javaString(System.getenv("SENTRY_DSN") ?: ""))
+            // KevBox: a release's silent updater always reads GitHub's latest release.
+            buildConfigField("String", "KEVBOX_UPDATE_FEED", javaString(""))
             // Stable AGP release optimization API. Keep both code and resource shrinking enabled;
             // the optimized default rules are extended by OwnTV's project-specific keep rules.
             isMinifyEnabled = true

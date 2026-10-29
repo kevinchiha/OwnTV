@@ -1,0 +1,276 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 7 finding(s) across 11 selected item(s).",
+  "summary": {
+    "files_reviewed": 11,
+    "comments": 7,
+    "total_tokens": 777568,
+    "input_tokens": 758472,
+    "output_tokens": 19096,
+    "cache_read_tokens": 598230,
+    "cache_write_tokens": 160172,
+    "elapsed": "2m37s"
+  },
+  "tool_calls": {
+    "total": 34,
+    "by_tool": {
+      "code_comment": 4,
+      "code_search": 13,
+      "file_read": 15,
+      "file_read_diff": 2
+    },
+    "failure": 1,
+    "failure_by_tool": {
+      "code_search": 1
+    },
+    "failure_details": [
+      {
+        "tool_call_number": 23,
+        "tool_name": "code_search",
+        "file_path": "app/build.gradle.kts,app/src/main/AndroidManifest.xml,app/src/main/java/tv/own/owntv/OwnTVApp.kt,app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt,app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+        "arguments": "{\"search_text\":\"initWith|create(\\\"|register(\\\"|SENTRY_DSN\",\"file_patterns\":[\"app/build.gradle.kts\"],\"use_perl_regexp\":true}",
+        "error": "git grep failed: exit status 128: fatal: -e option, 'initWith|create(\"|register(\"|SENTRY_DSN': missing closing parenthesis"
+      }
+    ]
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+      "content": "Once `silentRefused` is set, it stays true for good. `SilentUpdatePrefs.markRefused` sets it, and nothing ever clears it (on `Outcome.SUCCESS`, `SilentUpdateReceiver` only logs). The usual way this happens: a box is sideloaded, so the first silent session gets `STATUS_PENDING_USER_ACTION`. The user then updates through Core's prompt, which makes the app its own installer of record. From then on, silent installs succeed, but this gate still shows the startup card on every launch on Android 12+. Both updaters end up running side by side, which the change is meant to avoid. Fix: clear the refused flag when a silent install succeeds (for example, add `prefs.clearRefused()` in the receiver's SUCCESS branch). Alternatively, base the gate on the refused version still being newer than the installed one.",
+      "existing_code": "                (android.os.Build.VERSION.SDK_INT \u003c 31 || silentUpdatePrefs.silentRefused)",
+      "start_line": 2181,
+      "end_line": 2181,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt",
+      "content": "On Android 12+ the startup card in OwnTVShell now shows only when `silentRefused` is true. That flag is set only for PENDING_USER_ACTION. When a version hits MAX_FAILURES (`skips()` returns true for FAILED), the silent path stops trying it, but the card stays hidden. The box is left with no update path for that release. The same thing happens when the silent path loops forever on `no-space`, `download-failed` or `check-failed`, or when the worker never runs. Fix: make the fallback cover these cases too, for example expose `fallbackNeeded = silentRefused || skips(latestFailedVersion)`. Also, `KEY_REFUSED` is never cleared. After one refusal the card stays on for good, even once later silent installs succeed, so both updaters run side by side. Clear it on SUCCESS.",
+      "existing_code": "    val silentRefused: Boolean\n        get() = prefs.getBoolean(KEY_REFUSED, false)",
+      "start_line": 17,
+      "end_line": 18,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt",
+      "content": "`runCatching` also catches `CancellationException`, so a worker that WorkManager stops gets logged as `error-...` and then returns success. On top of that, `attempt` does blocking OkHttp `execute()` and `copyTo` with no cancellation checks. A cancelled run (for example, the network constraint is lost) can still finish downloading and commit an install. Fix: rethrow `CancellationException`, and call `coroutineContext.ensureActive()` (or check `isStopped`) before `install(...)`. Better still, make `attempt` a suspend function so these checks can sit between its steps.",
+      "existing_code": "                runCatching {\n                    if (Build.VERSION.SDK_INT \u003e= Build.VERSION_CODES.S) {\n                        attempt { version = it }\n                    } else {\n                        \"old-android\"\n                    }\n                }.getOrElse { \"error-${it.javaClass.simpleName}\" }",
+      "start_line": 57,
+      "end_line": 63,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt",
+      "content": "A missing Content-Length comes from the transport (chunked transfer, a CDN or proxy, or gzip handled by OkHttp, which drops the length). It says nothing about whether the release file is bad. Counting `apk-no-length` as a release fault means a valid release can be blacklisted after 3 runs. Combined with the card gating, that box then never updates. Fix: remove `apk-no-length` from RELEASE_FAULTS, or handle an unknown length by streaming the body and checking the file afterwards with `getPackageArchiveInfo`.",
+      "existing_code": "        private val RELEASE_FAULTS = setOf(\"apk-no-length\", \"apk-unreadable\", \"apk-wrong-package\", \"apk-not-newer\")",
+      "start_line": 202,
+      "end_line": 202,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt",
+      "content": "`bytes()` loads the whole body into memory before the 4 MB limit is checked. A large or wrong asset could exhaust memory on a low-RAM box. Check `contentLength()` first, or read through a bounded stream.",
+      "existing_code": "            val bytes = resp.body.bytes()\n            if (bytes.size !in 1..MAX_PROFILE_BYTES) return false",
+      "start_line": 149,
+      "end_line": 150,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+      "content": "On Android 12+, the startup card comes back only when `silentRefused` is set, and only `STATUS_PENDING_USER_ACTION` sets it. Other ways the silent path can fail don't set it:\n- `SilentUpdatePrefs.skips()` gives up on a version after `MAX_FAILURES` install or download failures, for example a `STATUS_FAILURE` result, `install-failed`, or `apk-not-newer`.\n- The check itself fails every time: `check-http-403` from GitHub's rate limit, `no-release`, or a bad ABI asset.\n\nIn any of these cases the box stays on the old version for good, and the user gets neither a silent install nor the card. Fall back to the card when the silent updater has given up on the latest version, for example a `SilentUpdatePrefs.gaveUp` flag set when `failed()` reaches `MAX_FAILURES`, or when no silent run has succeeded for N days.",
+      "suggestion_code": "(android.os.Build.VERSION.SDK_INT \u003c 31 || silentUpdatePrefs.silentRefused || silentUpdatePrefs.gaveUp)",
+      "existing_code": "(android.os.Build.VERSION.SDK_INT \u003c 31 || silentUpdatePrefs.silentRefused)",
+      "start_line": 2181,
+      "end_line": 2181,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt",
+      "content": "The idle check subtracts two wall-clock readings (`LastPress` and `now` both use `System.currentTimeMillis`). TV boxes often have no RTC, so the clock can jump by years when NTP syncs after boot. If `LastPress` was set before the sync (the app starts at boot, or the process starts early), `nowMs - lastPressMs` becomes huge. The box then counts as idle while someone is browsing the UI with nothing playing, and the install kills the app in front of them. Use a monotonic clock (`SystemClock.elapsedRealtime()`) for the press time and the idle comparison. Keep wall/server time only for the rollout check.",
+      "existing_code": "    private fun idle() = SilentUpdateRules.idle(activityStarted(), playing(), lastPressMs(), now())",
+      "start_line": 76,
+      "end_line": 76,
+      "category": "bug",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Silent update core logic (updater, rules, prefs, worker, receiver)",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateReceiver.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateWorker.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt"
+      ]
+    },
+    {
+      "label": "Silent update wiring: DI, app init, shell, manifest, build config",
+      "files": [
+        "app/build.gradle.kts",
+        "app/src/main/AndroidManifest.xml",
+        "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+        "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt"
+      ]
+    }
+  ],
+  "session_id": "a4828ba5-7ba0-4a35-9264-11b8711b208c",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "a4828ba5-7ba0-4a35-9264-11b8711b208c",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "quick/silent-self-update",
+      "resolved_base": "0414ee7fd7ad60bd0df813f5205658a08262944c",
+      "resolved_head": "83068d0ce69d0a7702dc43197157a1139398657f",
+      "exact_range": "0414ee7fd7ad60bd0df813f5205658a08262944c..83068d0ce69d0a7702dc43197157a1139398657f",
+      "source_artifact_sha256": "65f6de01783bc186e7c49250bf7ae9bcc40edb682287d4424e02ddb90e357761"
+    },
+    "execution": {
+      "ocr_version": "v1.13.3",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "7bdde30da0c66ee5643876474d879e4d72b8803bf0501749f82291f5b9b2b87a",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "a6c5120d229ec3f29b0ddaa04a2930b3ad29a2f0657e3fcaf757be140a1fc8cb"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "a1ce0a2f75d3a9e3fd8cf379ad2f116dfae8a80d7d7acc24f60c7ad540bb060c"
+        },
+        {
+          "item_id": "494c811c689e485db25d26a9c17110dae27295e544bda72355eeabfcdb70e92d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt",
+          "fingerprint": "e59b34b833a3a0ec8ac5e6cda0e1797416d39741e3064f2978a31c534e9f38ef"
+        },
+        {
+          "item_id": "4b5ade1e04c1de8788e1fb3f470e7a209a88c7fb94b52314a50369d7db402934",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt",
+          "fingerprint": "b5bc15ce2e0bae3df726da25d40f1a3c849936bcc80de3849415ff48bfc13a21"
+        },
+        {
+          "item_id": "63c6718371bf4cafdd892b9705c79078b666e87df6ce830e707ba8654dbccdcc",
+          "path": "app/src/main/AndroidManifest.xml",
+          "fingerprint": "0fcc185aefda01e40f672fbfa959f81a676a741eef03ee1c6317f90ebf28e0c0"
+        },
+        {
+          "item_id": "72f90986a7aeab003da1019585a5aa4e0872bc6dc1f727e97b52bfed48bd772c",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateWorker.kt",
+          "fingerprint": "2b521e5e7b6b92f136db650a34a9fdcb6c9e22f6b49a18ece52b606aadcf3f1c"
+        },
+        {
+          "item_id": "a5343afc40918ec1b8eda239bca9597eca2af7e50b5e13152e7e46bde88a9dc2",
+          "path": "app/build.gradle.kts",
+          "fingerprint": "eb5e64be3fdd9dd946e7a033ba246e317ca30553643e80d31241499ec3601ed7"
+        },
+        {
+          "item_id": "ba65c3e634f3b1a917124d0bb3c63968b3dff6a9a5a35beb88f9cfc7e900e47d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt",
+          "fingerprint": "2446099f7511ef67a7f0f234c909fe0522fd8902e98b97ecb9d1d36e8c284977"
+        },
+        {
+          "item_id": "bea510aac0d8444b379d7f06cc76b4724d9885c497644783d23ea5513293cb1f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateReceiver.kt",
+          "fingerprint": "9522fa62f3f05d0409830d3537f1c557bdae87a90bdf367f04a1e015ce740e1a"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "a5aa9e6f98890346486d432c1106f701895223da2ce67bd226fd8492cc2d5c18"
+        },
+        {
+          "item_id": "d21a807ba3c3397da691bb38c2f58607877ce09d5c15db7816bf73a35dcf8098",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt",
+          "fingerprint": "491199dd033f6d2603961277fc663e1bb60b1f05fb6380b117aac3908bad850d"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0a3ab2e73a0055addb9b593124fa0a515da3a71fd08cf0f87cc7cdc3b9982cda",
+          "path": "app/src/main/java/tv/own/owntv/OwnTVApp.kt",
+          "fingerprint": "a6c5120d229ec3f29b0ddaa04a2930b3ad29a2f0657e3fcaf757be140a1fc8cb"
+        },
+        {
+          "item_id": "3a6f40eb83ea1d92631eab01a12bcd2ac88ce3140a85d5856057f60c884214cb",
+          "path": "app/src/main/java/tv/own/owntv/features/shell/OwnTVShell.kt",
+          "fingerprint": "a1ce0a2f75d3a9e3fd8cf379ad2f116dfae8a80d7d7acc24f60c7ad540bb060c"
+        },
+        {
+          "item_id": "494c811c689e485db25d26a9c17110dae27295e544bda72355eeabfcdb70e92d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt",
+          "fingerprint": "e59b34b833a3a0ec8ac5e6cda0e1797416d39741e3064f2978a31c534e9f38ef"
+        },
+        {
+          "item_id": "4b5ade1e04c1de8788e1fb3f470e7a209a88c7fb94b52314a50369d7db402934",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt",
+          "fingerprint": "b5bc15ce2e0bae3df726da25d40f1a3c849936bcc80de3849415ff48bfc13a21"
+        },
+        {
+          "item_id": "63c6718371bf4cafdd892b9705c79078b666e87df6ce830e707ba8654dbccdcc",
+          "path": "app/src/main/AndroidManifest.xml",
+          "fingerprint": "0fcc185aefda01e40f672fbfa959f81a676a741eef03ee1c6317f90ebf28e0c0"
+        },
+        {
+          "item_id": "72f90986a7aeab003da1019585a5aa4e0872bc6dc1f727e97b52bfed48bd772c",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateWorker.kt",
+          "fingerprint": "2b521e5e7b6b92f136db650a34a9fdcb6c9e22f6b49a18ece52b606aadcf3f1c"
+        },
+        {
+          "item_id": "a5343afc40918ec1b8eda239bca9597eca2af7e50b5e13152e7e46bde88a9dc2",
+          "path": "app/build.gradle.kts",
+          "fingerprint": "eb5e64be3fdd9dd946e7a033ba246e317ca30553643e80d31241499ec3601ed7"
+        },
+        {
+          "item_id": "ba65c3e634f3b1a917124d0bb3c63968b3dff6a9a5a35beb88f9cfc7e900e47d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt",
+          "fingerprint": "2446099f7511ef67a7f0f234c909fe0522fd8902e98b97ecb9d1d36e8c284977"
+        },
+        {
+          "item_id": "bea510aac0d8444b379d7f06cc76b4724d9885c497644783d23ea5513293cb1f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateReceiver.kt",
+          "fingerprint": "9522fa62f3f05d0409830d3537f1c557bdae87a90bdf367f04a1e015ce740e1a"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "a5aa9e6f98890346486d432c1106f701895223da2ce67bd226fd8492cc2d5c18"
+        },
+        {
+          "item_id": "d21a807ba3c3397da691bb38c2f58607877ce09d5c15db7816bf73a35dcf8098",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt",
+          "fingerprint": "491199dd033f6d2603961277fc663e1bb60b1f05fb6380b117aac3908bad850d"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 156635
+  }
+}

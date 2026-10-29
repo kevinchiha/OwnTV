@@ -94,8 +94,9 @@ class UpdateProfileAttacher(
             val dm = ready ?: return
             val installer = context.packageManager.packageInstaller
             val info = installer.getSessionInfo(sessionId) ?: return
-            // Only Core's update session: it is the only one this app ever opens.
+            // Only Core's update session. SilentUpdater's session carries its own profile.
             if (info.installerPackageName != context.packageName) return
+            if (info.appLabel?.toString() == SilentUpdater.SILENT_SESSION_LABEL) return
             runCatching {
                 installer.openSession(sessionId).use { session ->
                     session.openWrite(SESSION_PROFILE_ENTRY, 0, dm.length()).use { out ->

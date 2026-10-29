@@ -133,6 +133,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         GlobalContext.get().get<tv.own.owntv.kevbox.sports.SportsDefaults>().start()
         // KevBox: an in-app update installs with its profile, so it starts compiled (UpdateProfileAttacher).
         GlobalContext.get().get<tv.own.owntv.kevbox.release.UpdateProfileAttacher>().start()
+        // KevBox: on Android 12+ new releases install with no prompt while nobody watches (SilentUpdateScheduler).
+        GlobalContext.get().get<tv.own.owntv.kevbox.release.SilentUpdateScheduler>().start()
         // KevBox: the usage check-in (every 6 hours while signed in) starts without holding up start-up.
         GlobalContext.get().get<tv.own.owntv.kevbox.usage.LiveCheckin>().start()
         // KevBox: Sentry's user is the member's id (never the email) and its breadcrumbs are the reporter's entries.
