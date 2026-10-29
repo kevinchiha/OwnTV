@@ -162,3 +162,4 @@ presses Home, forces the job with `cmd jobscheduler run -f`, and reads the versi
 Task 1: started at 3758a07e
 baseline: same as kevbox-live (tests and lint green on 2026-10-29 05:2x; check-divergence fails only on features/sports/SportsViewModel.kt). Leave it alone.
 Task 1+2: landed (37f98e67, 3b599fe6). Bent: `markRefused(version: String? = null)` also skips that version so a refusing box stops downloading it every 6 h; added `SilentUpdatePrefs.open(context)`, `FILE`, `MAX_FAILURES`, `SilentUpdater.EXTRA_VERSION`; blank `feedUrl` means GitHub. Also touched tools/i18n/safe_literals.txt and the manifest row of UPSTREAM-SYNC.md.
+Task 3: started at b6681254
