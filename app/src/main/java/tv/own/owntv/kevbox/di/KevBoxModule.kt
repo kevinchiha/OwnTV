@@ -246,7 +246,13 @@ val kevboxModule = module {
     single { tv.own.owntv.kevbox.release.SilentUpdatePrefs.open(androidContext()) }
     single {
         val app = androidContext() as android.app.Application
-        tv.own.owntv.kevbox.release.SilentUpdateScheduler(app, workManager = { androidx.work.WorkManager.getInstance(app) })
+        tv.own.owntv.kevbox.release.SilentUpdateScheduler(
+            app,
+            prefs = get(),
+            // The same monotonic clock the updater's idle rule reads.
+            elapsedNow = android.os.SystemClock::elapsedRealtime,
+            workManager = { androidx.work.WorkManager.getInstance(app) },
+        )
     }
     single {
         val scheduler = get<tv.own.owntv.kevbox.release.SilentUpdateScheduler>()

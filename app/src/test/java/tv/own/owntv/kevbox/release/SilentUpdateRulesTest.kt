@@ -209,8 +209,23 @@ class SilentUpdateRulesTest {
     }
 
     @Test
-    fun `a box with no screen open is always idle`() {
-        assertTrue(SilentUpdateRules.idle(activityStarted = false, playing = true, lastPressMs = 100, nowMs = 100))
+    fun `with no screen open the box is idle 15 minutes after the last stop`() {
+        assertEquals(900_000L, SilentUpdateRules.OUT_OF_SIGHT_MS)
+        val stop = 10 * hour
+        assertFalse(SilentUpdateRules.idle(false, playing = false, lastPressMs = 0, lastStopMs = stop, nowMs = stop))
+        assertFalse(SilentUpdateRules.idle(false, playing = false, lastPressMs = 0, lastStopMs = stop, nowMs = stop + 899_999))
+        assertTrue(SilentUpdateRules.idle(false, playing = false, lastPressMs = 0, lastStopMs = stop, nowMs = stop + 900_000))
+        // Playing and key presses belong to the open screen; out of sight only the stop counts.
+        assertTrue(SilentUpdateRules.idle(false, playing = true, lastPressMs = stop + 900_000, lastStopMs = stop, nowMs = stop + 900_000))
+    }
+
+    @Test
+    fun `a stop time from before a reboot, or none, counts as out of sight since boot`() {
+        // A stored stop above now: the box rebooted since, and boot was 10 minutes ago.
+        assertFalse(SilentUpdateRules.idle(false, playing = false, lastPressMs = 0, lastStopMs = 5 * hour, nowMs = 10 * 60_000L))
+        assertFalse(SilentUpdateRules.idle(false, playing = false, lastPressMs = 0, lastStopMs = null, nowMs = 899_999))
+        assertTrue(SilentUpdateRules.idle(false, playing = false, lastPressMs = 0, lastStopMs = 5 * hour, nowMs = 900_000))
+        assertTrue(SilentUpdateRules.idle(false, playing = false, lastPressMs = 0, lastStopMs = null, nowMs = 900_000))
     }
 
     @Test
@@ -218,10 +233,22 @@ class SilentUpdateRulesTest {
         val now = 10 * hour
         val threeHoursAgo = now - SilentUpdateRules.IDLE_AFTER_MS
         assertEquals(3 * hour, SilentUpdateRules.IDLE_AFTER_MS)
-        assertTrue(SilentUpdateRules.idle(true, playing = false, lastPressMs = threeHoursAgo, nowMs = now))
-        assertFalse(SilentUpdateRules.idle(true, playing = false, lastPressMs = threeHoursAgo + 1, nowMs = now))
-        assertFalse(SilentUpdateRules.idle(true, playing = true, lastPressMs = threeHoursAgo, nowMs = now))
-        assertFalse(SilentUpdateRules.idle(true, playing = true, lastPressMs = now, nowMs = now))
+        assertTrue(SilentUpdateRules.idle(true, playing = false, lastPressMs = threeHoursAgo, lastStopMs = null, nowMs = now))
+        assertFalse(SilentUpdateRules.idle(true, playing = false, lastPressMs = threeHoursAgo + 1, lastStopMs = null, nowMs = now))
+        assertFalse(SilentUpdateRules.idle(true, playing = true, lastPressMs = threeHoursAgo, lastStopMs = null, nowMs = now))
+        assertFalse(SilentUpdateRules.idle(true, playing = true, lastPressMs = now, lastStopMs = null, nowMs = now))
+        // An old stop does not make an open screen idle.
+        assertFalse(SilentUpdateRules.idle(true, playing = false, lastPressMs = now, lastStopMs = 0, nowMs = now))
+    }
+
+    @Test
+    fun `the install permission is checked before the rollout`() {
+        // Not yet due, no permission: the box gives up now instead of waiting for its turn.
+        assertEquals(SilentUpdateRules.Hold.NO_INSTALL_PERMISSION, SilentUpdateRules.hold(block, false, null, after - 1))
+        assertEquals(SilentUpdateRules.Hold.NO_INSTALL_PERMISSION, SilentUpdateRules.hold(block, false, kevin, after))
+        assertEquals(SilentUpdateRules.Hold.NOT_YET, SilentUpdateRules.hold(block, true, null, after - 1))
+        assertNull(SilentUpdateRules.hold(block, true, null, after))
+        assertNull(SilentUpdateRules.hold(block, true, kevin, after - 1))
     }
 
     private fun fallback(

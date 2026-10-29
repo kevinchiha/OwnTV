@@ -62,6 +62,9 @@ object SilentUpdateRules {
     /** With the app open, this long without a key press (and nothing playing) counts as nobody watching. */
     const val IDLE_AFTER_MS: Long = 3 * 60 * 60 * 1000L
 
+    /** With no screen open, this long since the last MainActivity stop counts as nobody watching (KevBox TV's 15 minutes). */
+    const val OUT_OF_SIGHT_MS: Long = 900_000L
+
     /**
      * Reads a GitHub "latest release" body. The APK is the first `.apk` asset whose name holds
      * `x86_64` exactly when [wantX86] (Core's rule); the profile is the asset at
@@ -114,12 +117,32 @@ object SilentUpdateRules {
         return serverNowMs >= block.afterMs
     }
 
+    /** What keeps a release that has a [SilentBlock] from installing now. */
+    enum class Hold { NO_INSTALL_PERMISSION, NOT_YET }
+
     /**
-     * No screen open, or nothing playing and no key pressed for [IDLE_AFTER_MS]. [lastPressMs] and
-     * [nowMs] come from the same monotonic clock, so a wall-clock jump never fakes 3 quiet hours.
+     * Null when [block]'s release may install now. The "install unknown apps" permission
+     * ([canRequestInstalls]) comes before the rollout, as on KevBox TV: a box without it gives the
+     * release up at once and gets Core's card, instead of first waiting up to 24 hours for its turn.
      */
-    fun idle(activityStarted: Boolean, playing: Boolean, lastPressMs: Long, nowMs: Long): Boolean =
-        !activityStarted || (!playing && nowMs - lastPressMs >= IDLE_AFTER_MS)
+    fun hold(block: SilentBlock, canRequestInstalls: Boolean, signedInUserId: String?, serverNowMs: Long): Hold? = when {
+        !canRequestInstalls -> Hold.NO_INSTALL_PERMISSION
+        !rolloutDue(block, signedInUserId, serverNowMs) -> Hold.NOT_YET
+        else -> null
+    }
+
+    /**
+     * Nobody watching: with a screen open ([activityStarted]), nothing playing and no key pressed for
+     * [IDLE_AFTER_MS]; with none open, [OUT_OF_SIGHT_MS] since the last MainActivity stop
+     * ([lastStopMs], null when none was stored). All three times come from the same monotonic clock,
+     * so a wall-clock jump never fakes a quiet box. A stop time above [nowMs] is from before a reboot
+     * and, like no stop time, counts as out of sight since boot (KevBox TV's rule).
+     */
+    fun idle(activityStarted: Boolean, playing: Boolean, lastPressMs: Long, lastStopMs: Long?, nowMs: Long): Boolean {
+        if (activityStarted) return !playing && nowMs - lastPressMs >= IDLE_AFTER_MS
+        val stop = lastStopMs?.takeIf { it <= nowMs } ?: 0L
+        return nowMs - stop >= OUT_OF_SIGHT_MS
+    }
 
     /** A release still not installed this long after its block's `after` brings Core's card back (72 h, as on KevBox TV). */
     const val SAFETY_NET_MS: Long = 259_200_000L

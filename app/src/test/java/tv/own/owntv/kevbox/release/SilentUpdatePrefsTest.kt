@@ -206,6 +206,65 @@ class SilentUpdatePrefsTest {
     }
 
     @Test
+    fun `an after that moved by under a minute is not written again`() {
+        val store = MemoryPrefs()
+        val prefs = SilentUpdatePrefs(store)
+        val afterBox = 100 * day
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = afterBox)
+        val commits = store.commits
+
+        // The server's Date has whole seconds, so each check computes a slightly different value.
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = afterBox + 999)
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = afterBox - 59_999)
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = afterBox + 59_999)
+        assertEquals(commits, store.commits)
+        assertEquals(afterBox, store.values["seen_after_box_ms"])
+
+        // A minute or more is a real move (the box clock was set right) and is stored.
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = afterBox + 60_000)
+        assertEquals(commits + 1, store.commits)
+        assertEquals(afterBox + 60_000, store.values["seen_after_box_ms"])
+
+        // A gap that overflows a Long is never "close".
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = Long.MIN_VALUE + 1)
+        assertEquals(Long.MIN_VALUE + 1, store.values["seen_after_box_ms"])
+    }
+
+    @Test
+    fun `a record from before the silent block opens no card until a check rewrites it`() {
+        // What Live 5.2.1.4 stored: the version and its publish time, no block flag.
+        val store = MemoryPrefs()
+        store.values["seen_version"] = "5.2.1.3"
+        store.values["seen_published_at"] = 5L
+        val prefs = SilentUpdatePrefs(store)
+        assertFalse(prefs.fallbackNeeded("5.2.1.2", boxNowMs = 100 * day))
+
+        // A real "no block" check of that same version is written and opens the card.
+        prefs.seen("5.2.1.3", hasSilent = false, afterBoxMs = null)
+        assertTrue(SilentUpdatePrefs(store).fallbackNeeded("5.2.1.2", boxNowMs = 100 * day))
+    }
+
+    @Test
+    fun `an old record without its publish time is rewritten by the next check too`() {
+        val store = MemoryPrefs()
+        store.values["seen_version"] = "5.2.1.3"
+        val prefs = SilentUpdatePrefs(store)
+        prefs.seen("5.2.1.3", hasSilent = false, afterBoxMs = null)
+        assertEquals(false, store.values["seen_has_silent"])
+        assertTrue(prefs.fallbackNeeded("5.2.1.2", boxNowMs = 0L))
+    }
+
+    @Test
+    fun `the last stop time survives a new instance`() {
+        val store = MemoryPrefs()
+        assertNull(SilentUpdatePrefs(store).lastStopElapsedMs)
+        SilentUpdatePrefs(store).stopped(123_456L)
+        assertEquals(123_456L, SilentUpdatePrefs(store).lastStopElapsedMs)
+        SilentUpdatePrefs(store).stopped(0L)
+        assertEquals(0L, SilentUpdatePrefs(store).lastStopElapsedMs)
+    }
+
+    @Test
     fun `a fresh box needs no fallback`() {
         assertFalse(SilentUpdatePrefs(MemoryPrefs()).fallbackNeeded("5.2.1.2", boxNowMs = Long.MAX_VALUE))
     }

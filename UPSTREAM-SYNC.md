@@ -588,12 +588,19 @@ On Android 12 and later the TV installs a newer release by itself, with no promp
 nobody watches, when the release carries `kevbox-silent.json` (release.sh writes it unless
 `--no-silent`). Boxes signed in as one of its early users (Supabase user ids, `SILENT_EARLY_USERS`
 in release.env) get it at once, every other box from its `after`, 24 hours after release.sh ran.
+Boxes on v5.2.1.4 or older ignore the file and install any newer release by their old rule (24
+hours after publishing, early users by email), so `--no-silent` holds only on boxes already running
+a build that reads it: the first release with this code must be a normal one.
 Core's updater cannot do this: its install session
 never asks Android to skip the prompt, and Core is a prebuilt library. The code is fork-only, under
 `kevbox/release/SilentUpdate*.kt`: the rules, the updater (download, checks, one install session),
 the result receiver, the prefs, and the scheduler with its WorkManager job (every 6 hours with a
-network, and once 15 minutes after `MainActivity` stops; neither is scheduled below Android 12). A
+network, and once 15 minutes after `MainActivity` stops, each stop starting the 15 minutes again;
+neither is scheduled below Android 12). With no screen open the box counts as idle only 15 minutes
+after the last stop, timed on the monotonic clock and kept in the prefs, as on KevBox TV. A
 download that a run's 10-minute limit cuts short resumes from where it stopped on the next run.
+The install permission is checked before the rollout, as on KevBox TV, and a failed fetch of
+`kevbox-silent.json` changes nothing: the run logs `silent-fetch-failed` and the next one tries again.
 Four upstream files carry the hooks, each with a row in the table above:
 
 - `AndroidManifest.xml` declares `UPDATE_PACKAGES_WITHOUT_USER_ACTION` and the non-exported
@@ -605,8 +612,8 @@ Four upstream files carry the hooks, each with a row in the table above:
   `SilentUpdatePrefs.fallbackNeeded` says the silent path is stuck: it gave up on a release newer
   than the installed one (Android wanted a prompt, the release failed 3 times, its APK has another
   signing key, or "install unknown apps" is off), or the newest release a check read is newer than
-  the installed one and has no `kevbox-silent.json` (release.sh's `--no-silent`, or the file failed
-  to load), or it is still not installed 72 hours after the file's `after` (on the box's own clock,
+  the installed one and has no `kevbox-silent.json` (release.sh's `--no-silent`, or a file that does
+  not parse), or it is still not installed 72 hours after the file's `after` (on the box's own clock,
   so a wrong box date does not matter). These are KevBox TV's rules too. Every case turns off by
   itself once the installed version catches up. Without this, every customer would get the prompt
   the moment a release appears and the 24-hour wait would mean nothing. The prefs are read off the main thread. The manual check in More › About is
