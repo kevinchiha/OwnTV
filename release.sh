@@ -4,10 +4,24 @@
 # Builds, verifies and publishes one KevBox Live release (AC-4, AC-7). Kevin runs it by hand; it
 # is the only way the fork publishes (the upstream workflows skip the fork, AC-9).
 #
-#   ./release.sh <A.B.C.K> [release notes...]
+#   ./release.sh [--no-silent] <A.B.C.K> [release notes...]
+#
+# By default the release carries kevbox-silent.json, which lets Android 12+ boxes install it with no
+# prompt (kevbox/release/SilentUpdater.kt): {"after": <publish time + 24 h, epoch ms>, "earlyUsers":
+# [<Supabase user ids>]}. Boxes signed in as an early user install it at once, the rest from "after".
+# The ids come from SILENT_EARLY_USERS in ~/secrets/kevbox-keys/release.env, comma-separated; blank
+# or missing means no early users. KevBox TV's release.sh reads the same line, so one list serves both
+# apps. --no-silent publishes without the file: every box then gets Core's update card instead.
+# KevBox: boxes on v5.2.1.4 or older ignore kevbox-silent.json: they install any newer release by
+#         their old rule (24 h after it is published, early users by email), --no-silent or not.
+#         So --no-silent holds only on boxes already running a build that reads the file, and the
+#         first release with this code must be a normal one.
 #
 # Every check below runs before anything is built or created, and a failed check stops the script
 # with a message and exit 1:
+# KevBox: check_release_args: --no-silent counts only as the first argument; anywhere else, or any
+#         other argument starting with --, stops the script, so a typo cannot publish a release that
+#         installs by itself.
 # KevBox: an argument is required: the version A.B.C.K (notes default to "KevBox Live <version>").
 # KevBox: check_clean_tree: no uncommitted or untracked files, so the release is exactly HEAD.
 # KevBox: check_version: A.B.C.K with A, B, C in 0..99 and K in 1..99 (tools/kevbox/version.sh, AC-5).
@@ -21,6 +35,10 @@
 #         values) and ~/secrets/kevbox-keys/kevbox-live.env (KEVBOX_SUPABASE_URL and
 #         KEVBOX_SUPABASE_ANON_KEY); the keystore exists; the Supabase URL starts with https:// and
 #         the anon key is not blank. The files are sourced inside subshells and never printed.
+# KevBox: source_env_quietly: both files source cleanly; an unreadable file or a syntax error
+#         stops the script (it used to read as blank values) and its lines are never shown.
+# KevBox: read_early_users (unless --no-silent) and check_early_users: every SILENT_EARLY_USERS
+#         entry is a UUID; a bad entry is named by its position, never its value.
 # KevBox: check_sentry_settings: when kevbox-live.env sets SENTRY_AUTH_TOKEN, it sets SENTRY_ORG and
 #         SENTRY_PROJECT too. The four SENTRY_* lines are optional; without them the release has no
 #         Sentry key and uploads no symbols.
@@ -34,7 +52,8 @@
 # names, so https://github.com/kevinchiha/OwnTV/releases/latest/download/KevBoxLive.apk always
 # works), checks both carry versionName <version>, checks both signatures against the KevBox TV
 # key's SHA-256 (AC-4), runs tools/kevbox/check-brand.sh on the arm APK (AC-3), and only then
-# creates GitHub release v<version> on kevinchiha/OwnTV with those two APKs and their compile profiles (.dm).
+# creates GitHub release v<version> on kevinchiha/OwnTV with those two APKs, their compile profiles
+# (.dm) and, unless --no-silent, build/kevbox-release/kevbox-silent.json, written just before.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,6 +71,7 @@ expected_sha256="9A:E0:71:8C:CC:F9:F6:83:90:93:49:31:D3:FE:0E:52:F4:57:EF:B5:81:
 out_dir="build/kevbox-release"
 arm_apk="$out_dir/KevBoxLive.apk"
 x86_apk="$out_dir/KevBoxLive-x86_64.apk"
+silent_json="$out_dir/kevbox-silent.json"
 
 die() {
   echo "release: $*" >&2
@@ -60,7 +80,13 @@ die() {
 
 # --- Pre-flight checks: nothing is built or created until all of them pass. ---
 
-[[ $# -ge 1 && -n "$1" ]] || die "usage: ./release.sh <A.B.C.K> [release notes...]"
+check_release_args "$@" || die "usage: ./release.sh [--no-silent] <A.B.C.K> [release notes...]"
+no_silent=0
+if [[ "${1:-}" == "--no-silent" ]]; then
+  no_silent=1
+  shift
+fi
+[[ $# -ge 1 && -n "$1" ]] || die "usage: ./release.sh [--no-silent] <A.B.C.K> [release notes...]"
 version="$1"
 shift
 notes="$*"
@@ -93,24 +119,29 @@ check_code_above_latest "$version" "$latest" || die "stopped: version code not a
 [[ -f "$signing_env" ]] || die "missing $signing_env (the NUVIO_RELEASE_* signing values)"
 [[ -f "$supabase_env" ]] || die "missing $supabase_env; create it with KEVBOX_SUPABASE_URL and KEVBOX_SUPABASE_ANON_KEY (see UPSTREAM-SYNC.md)"
 # Subshells keep the secrets out of this shell and out of every later command (gh, git).
+# KevBox: each env file goes through source_env_quietly with `|| exit 1`: errexit is off left of
+# `||`, and bash shows the offending line, value included, on a syntax error.
 (
-  # shellcheck source=/dev/null
-  source "$signing_env"
+  source_env_quietly "$signing_env" || exit 1
   [[ -n "${NUVIO_RELEASE_STORE_FILE:-}" && -f "${NUVIO_RELEASE_STORE_FILE}" ]] || exit 1
   [[ -n "${NUVIO_RELEASE_STORE_PASSWORD:-}" && -n "${NUVIO_RELEASE_KEY_ALIAS:-}" && -n "${NUVIO_RELEASE_KEY_PASSWORD:-}" ]] || exit 1
-) || die "$signing_env must set NUVIO_RELEASE_STORE_FILE (an existing keystore), NUVIO_RELEASE_STORE_PASSWORD, NUVIO_RELEASE_KEY_ALIAS and NUVIO_RELEASE_KEY_PASSWORD"
+) || die "$signing_env must source cleanly and set NUVIO_RELEASE_STORE_FILE (an existing keystore), NUVIO_RELEASE_STORE_PASSWORD, NUVIO_RELEASE_KEY_ALIAS and NUVIO_RELEASE_KEY_PASSWORD"
 (
-  # shellcheck source=/dev/null
-  source "$supabase_env"
+  source_env_quietly "$supabase_env" || exit 1
   [[ "${KEVBOX_SUPABASE_URL:-}" == https://* && -n "${KEVBOX_SUPABASE_ANON_KEY:-}" ]] || exit 1
-) || die "$supabase_env must set KEVBOX_SUPABASE_URL to an https:// address and a non-blank KEVBOX_SUPABASE_ANON_KEY"
+) || die "$supabase_env must source cleanly and set KEVBOX_SUPABASE_URL to an https:// address and a non-blank KEVBOX_SUPABASE_ANON_KEY"
 (
   unset SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT
-  # shellcheck source=/dev/null
-  source "$supabase_env"
+  source_env_quietly "$supabase_env" || exit 1
   check_sentry_settings "${SENTRY_AUTH_TOKEN:-}" "${SENTRY_ORG:-}" "${SENTRY_PROJECT:-}"
 ) || die "stopped: incomplete Sentry settings in $supabase_env"
 check_error_codes_match "$kevbox_repo" || die "stopped: error codes differ from kevbox"
+early_users=""
+if (( no_silent == 0 )); then
+  # Only this line leaves read_early_users' subshell; the signing values stay inside it.
+  early_users="$(read_early_users "$signing_env")" || die "stopped: could not read SILENT_EARLY_USERS from $signing_env"
+  check_early_users "$early_users" || die "stopped: fix SILENT_EARLY_USERS in $signing_env, or pass --no-silent"
+fi
 
 version_code="$(bash tools/kevbox/version.sh code "$version")"
 
@@ -131,6 +162,8 @@ rm -f -- "$built_arm" "$built_x86" "$arm_apk" "$x86_apk"
 # KevBox: the profiles too (see dex_metadata below), so an old one can never ship beside a new APK.
 rm -rf -- app/build/outputs/apk/standard/release/baselineProfiles app/build/outputs/apk/x86_64/release/baselineProfiles
 rm -f -- "$out_dir"/*.dm
+# KevBox: and the silent block, so one from an earlier run can never ship, least of all with --no-silent.
+rm -f -- "$silent_json"
 
 echo "release: building KevBox Live $version (code $version_code)"
 (
@@ -209,6 +242,18 @@ bash tools/kevbox/check-brand.sh "$arm_apk" \
 
 # --- Publish. ---
 
+assets=("$arm_apk" "$x86_apk" "$out_dir"/*.dm)
+if (( no_silent == 0 )); then
+  # Written last, so "after" is 24 h from now, as close to publishing as it gets.
+  now_ms="$(date +%s%3N)"
+  render_silent_json "$now_ms" "$early_users" > "$silent_json" \
+    || die "could not write $silent_json; nothing was published"
+  assets+=("$silent_json")
+  echo "release: silent install from $(date -d "@$(( now_ms / 1000 + 86400 ))" '+%Y-%m-%d %H:%M %Z'), early users first"
+else
+  echo "release: --no-silent: no kevbox-silent.json, every box gets Core's update card"
+fi
+
 gh release create "v$version" --repo "$release_repo" --target "$(git rev-parse HEAD)" \
-  --title "KevBox Live $version" --notes "$notes" "$arm_apk" "$x86_apk" "$out_dir"/*.dm
+  --title "KevBox Live $version" --notes "$notes" "${assets[@]}"
 echo "release: published v$version on $release_repo"

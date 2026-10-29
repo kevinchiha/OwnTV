@@ -30,7 +30,9 @@ import tv.own.owntv.core.CoreBuildInfo
 /**
  * Installs a newer release with no prompt, on Android 12 and later, while nobody watches.
  *
- * Each [run] reads the latest release, applies [SilentUpdateRules] (newer, rollout, idle), downloads
+ * Each [run] reads the latest release and its [SilentBlock] (the `kevbox-silent.json` asset; a release
+ * without one is never installed here, see [SilentBlockFetch]), applies [SilentUpdateRules] (newer,
+ * install permission, rollout, idle), downloads
  * the APK and its profile into `filesDir/silent-update/`, checks the APK, and commits one
  * [PackageInstaller] session that asks for no user action, after a last idle check. [SilentUpdateReceiver]
  * gets the result. Core's own updater is left alone: its session cannot skip the prompt.
@@ -40,7 +42,8 @@ import tv.own.owntv.core.CoreBuildInfo
  * given up, or another version appears. A cancelled run (WorkManager's 10-minute limit) stops between
  * two buffers and never installs.
  *
- * Idle compares [lastPressElapsedMs] with [elapsedNow], both monotonic. [now] is the wall clock, used
+ * Idle compares [lastPressElapsedMs] and the last MainActivity stop ([SilentUpdatePrefs.lastStopElapsedMs])
+ * with [elapsedNow], all monotonic. [now] is the wall clock, used
  * only when the server sends no `Date`. A blank [feedUrl] means GitHub's latest release of
  * [CoreBuildInfo.releaseRepo].
  */
@@ -48,7 +51,8 @@ class SilentUpdater(
     private val context: Context,
     client: OkHttpClient,
     private val prefs: SilentUpdatePrefs,
-    private val signedInEmail: () -> String?,
+    /** The signed-in Supabase user id, matched against the block's early users. Never logged. */
+    private val signedInUserId: () -> String?,
     private val activityStarted: () -> Boolean,
     private val playing: () -> Boolean,
     private val lastPressElapsedMs: () -> Long,
@@ -95,7 +99,8 @@ class SilentUpdater(
         return word
     }
 
-    private fun idle() = SilentUpdateRules.idle(activityStarted(), playing(), lastPressElapsedMs(), elapsedNow())
+    private fun idle() =
+        SilentUpdateRules.idle(activityStarted(), playing(), lastPressElapsedMs(), prefs.lastStopElapsedMs, elapsedNow())
 
     @RequiresApi(Build.VERSION_CODES.S)
     private suspend fun attempt(found: (String) -> Unit): String {
@@ -115,9 +120,6 @@ class SilentUpdater(
         }
         val release = SilentUpdateRules.parse(body, wantX86, Build.VERSION.SDK_INT) ?: return "no-release"
         found(release.version)
-        // Stored on the box's own clock (publish time moved by the box's offset from the server), so the
-        // 7-day rule, which reads the box clock, works on a box whose date is wrong.
-        prefs.seen(release.version, release.publishedAtMs + (now() - serverNow))
         val files = VersionFiles(File(context.filesDir, DIR), release.version)
         if (!SilentUpdateRules.isNewer(release.version, BuildConfig.VERSION_NAME)) {
             files.clearAll()
@@ -127,13 +129,30 @@ class SilentUpdater(
             files.clearAll()
             return "skipped"
         }
-        if (!SilentUpdateRules.rolloutDue(release, signedInEmail(), serverNow)) return "waiting"
+        // A missing asset and a file that does not parse mean "no block": Core's card takes over. A
+        // failed fetch says nothing about the release, so the last check's record stays.
+        val block = when (val url = release.silentUrl) {
+            null -> null
+            else -> when (val fetched = SilentBlockFetch.fetch(http, url, USER_AGENT)) {
+                SilentBlockFetch.Failed -> return "silent-fetch-failed"
+                is SilentBlockFetch.Read -> fetched.block
+            }
+        }
+        // `after` stored on the box's own clock (moved by the box's offset from the server), so the
+        // 72-hour net, which reads the box clock, works on a box whose date is wrong.
+        prefs.seen(release.version, hasSilent = block != null, afterBoxMs = block?.let { it.afterMs + (now() - serverNow) })
+        if (block == null) return "no-silent"
         // Without "install unknown apps" Android shows a prompt whatever the session asks; Core's
-        // card and its own install path ask the person to allow it.
-        if (!context.packageManager.canRequestPackageInstalls()) {
-            prefs.giveUp(release.version)
-            files.clearAll()
-            return "no-install-permission"
+        // card and its own install path ask the person to allow it. Checked before the rollout.
+        val canInstall = context.packageManager.canRequestPackageInstalls()
+        when (SilentUpdateRules.hold(block, canInstall, signedInUserId(), serverNow)) {
+            SilentUpdateRules.Hold.NO_INSTALL_PERMISSION -> {
+                prefs.giveUp(release.version)
+                files.clearAll()
+                return "no-install-permission"
+            }
+            SilentUpdateRules.Hold.NOT_YET -> return "waiting"
+            null -> Unit
         }
         if (!idle()) return "in-use"
 

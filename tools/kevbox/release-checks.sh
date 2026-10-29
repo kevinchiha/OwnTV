@@ -17,6 +17,23 @@
 #   check_sentry_settings <token> <org> <project>
 #                                             refuses when a Sentry auth token is set but the org
 #                                             or project is blank (an upload would fail mid-build)
+#   check_release_args <release.sh arguments...>
+#                                             refuses --no-silent anywhere but first, any other
+#                                             argument starting with --, and a version starting
+#                                             with -; names the argument's position
+#   check_early_users <comma list>            refuses an entry that is not a UUID (8-4-4-4-12 hex),
+#                                             naming its position, never its value; blank passes
+#   render_silent_json <now ms> <comma list>  prints kevbox-silent.json: {"after": now + 24 h,
+#                                             "earlyUsers": [...]}, entries trimmed
+#   source_env_quietly <env file>             sources <env file> into the calling shell (call it in
+#                                             a subshell); refuses when the file cannot be sourced,
+#                                             and never shows its lines or values
+#   read_early_users <env file>               prints SILENT_EARLY_USERS from <env file> (blank when
+#                                             the line is missing); refuses as source_env_quietly does
+#
+# check_release_args, check_early_users and render_silent_json copy KevBox TV's
+# scripts/release_manifest.py, so one SILENT_EARLY_USERS line (Supabase user ids) and one argument
+# rule serve both apps.
 
 # Both callers run with these options already; setting them here keeps the file safe on its own.
 set -euo pipefail
@@ -95,4 +112,92 @@ check_sentry_settings() {
     echo "release: SENTRY_AUTH_TOKEN is set but ${missing[*]} is blank; add the missing line to kevbox-live.env or remove the token" >&2
     return 1
   fi
+}
+
+# Silent install is the default, so a misplaced --no-silent would publish a release that installs
+# by itself; it stops the script instead.
+check_release_args() {
+  local skip=0 position=0 arg
+  [[ "${1:-}" == "--no-silent" ]] && skip=1
+  for arg in "$@"; do
+    position=$((position + 1))
+    (( position <= skip )) && continue
+    if [[ "$arg" == "--no-silent" ]]; then
+      echo "release: argument $position: --no-silent must come first, before the version" >&2
+      return 1
+    fi
+    # Any --option, and a version that looks like an option (-h, -v).
+    if [[ "$arg" == --* ]] || { (( position == skip + 1 )) && [[ "$arg" == -* ]]; }; then
+      echo "release: argument $position: unknown option '$arg'" >&2
+      return 1
+    fi
+  done
+}
+
+# The early-user list: comma-separated Supabase user ids. Blank (or only spaces) is no early users.
+check_early_users() {
+  local position=0 entry
+  release_early_users "${1:-}"
+  for entry in "${RELEASE_EARLY_USERS[@]+"${RELEASE_EARLY_USERS[@]}"}"; do
+    position=$((position + 1))
+    if [[ ! "$entry" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+      echo "release: SILENT_EARLY_USERS entry $position is not a UUID" >&2
+      return 1
+    fi
+  done
+}
+
+render_silent_json() {
+  local now_ms="${1:-}" raw="${2:-}" entry users=""
+  if [[ ! "$now_ms" =~ ^[0-9]{1,15}$ ]]; then
+    echo "release: the time for kevbox-silent.json is not a number of milliseconds" >&2
+    return 1
+  fi
+  check_early_users "$raw" || return 1
+  release_early_users "$raw"
+  for entry in "${RELEASE_EARLY_USERS[@]+"${RELEASE_EARLY_USERS[@]}"}"; do
+    # Checked above: every entry is hex and dashes, so it needs no JSON escaping.
+    users+="${users:+, }\"$entry\""
+  done
+  printf '{"after": %d, "earlyUsers": [%s]}\n' "$((10#$now_ms + 86400000))" "$users"
+}
+
+# The file's own output is dropped: bash prints the offending line, value included, on a syntax
+# error. Callers test the return code themselves (`source_env_quietly f || exit 1`), because
+# errexit does not reach a command substitution, nor anything left of `||`: an unreadable file or a
+# syntax error used to read as blank values and pass. Plain KEY=value lines set globals here, so
+# the values reach the caller's (sub)shell.
+source_env_quietly() {
+  local env_file="${1:-}"
+  # shellcheck source=/dev/null
+  if ! source "$env_file" >/dev/null 2>&1; then
+    echo "release: $env_file could not be sourced (unreadable, or a line bash cannot run; check its quoting)" >&2
+    return 1
+  fi
+}
+
+# The env file is sourced in a subshell, so only this one line leaves it.
+read_early_users() {
+  local env_file="${1:-}"
+  (
+    unset SILENT_EARLY_USERS
+    source_env_quietly "$env_file" || exit 1
+    printf '%s' "${SILENT_EARLY_USERS:-}"
+  )
+}
+
+# Splits <comma list> into RELEASE_EARLY_USERS, each entry trimmed. Like Python's split(","), it
+# keeps empty entries ("a,,b" and "a," have an empty one), so the UUID check refuses them.
+release_early_users() {
+  local rest="$1" piece
+  RELEASE_EARLY_USERS=()
+  [[ -z "${rest//[[:space:]]/}" ]] && return 0
+  while :; do
+    piece="${rest%%,*}"
+    piece="${piece#"${piece%%[![:space:]]*}"}"
+    piece="${piece%"${piece##*[![:space:]]}"}"
+    RELEASE_EARLY_USERS+=("$piece")
+    [[ "$rest" == *,* ]] || break
+    rest="${rest#*,}"
+  done
 }

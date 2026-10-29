@@ -38,17 +38,23 @@ class SilentUpdateWorker(context: Context, params: WorkerParameters) : Coroutine
 /**
  * Schedules [SilentUpdateWorker] on Android 12 and later (nothing earlier can install silently):
  * every 6 hours with a network, and once 15 minutes after the app leaves the screen. Also keeps the set of started [MainActivity] instances (its colour
- * subclasses included), which [activityStarted] reads for the idle rule.
+ * subclasses included), which [activityStarted] reads for the idle rule, and stores each stop's time
+ * on the monotonic clock ([elapsedNow]) in [prefs], for the 15 minutes out of sight that rule asks.
  */
 class SilentUpdateScheduler(
     private val application: Application,
+    private val prefs: SilentUpdatePrefs,
+    private val elapsedNow: () -> Long,
     private val workManager: () -> WorkManager,
 ) {
     private val startedActivities = Collections.synchronizedSet(HashSet<Activity>())
     private val begun = AtomicBoolean(false)
 
-    /** True while any MainActivity is between onStart and onStop. */
-    val activityStarted: () -> Boolean = { startedActivities.isNotEmpty() }
+    /**
+     * True while any MainActivity is between onStart and onStop, and before [start] registered the
+     * callbacks: with visibility unknown the box counts as on screen, as on KevBox TV.
+     */
+    val activityStarted: () -> Boolean = { !begun.get() || startedActivities.isNotEmpty() }
 
     private val callbacks = object : Application.ActivityLifecycleCallbacks {
         override fun onActivityStarted(activity: Activity) {
@@ -59,7 +65,10 @@ class SilentUpdateScheduler(
             if (activity !is MainActivity) return
             // Removed on every stop, a rotation's too, so the set stays exact.
             startedActivities.remove(activity)
-            if (!activity.isChangingConfigurations) enqueueSoon()
+            if (!activity.isChangingConfigurations) {
+                prefs.stopped(elapsedNow())
+                enqueueSoon()
+            }
         }
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
@@ -78,8 +87,9 @@ class SilentUpdateScheduler(
             val request = PeriodicWorkRequestBuilder<SilentUpdateWorker>(PERIOD_HOURS, TimeUnit.HOURS)
                 .setConstraints(networkNeeded())
                 .build()
-            // KEEP: an app start never pushes the next run back.
-            workManager().enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.KEEP, request)
+            // UPDATE: a changed period or constraint reaches boxes that already have the job, an
+            // unchanged request changes nothing, and neither pushes the next run back.
+            workManager().enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, request)
         }
     }
 
@@ -88,9 +98,9 @@ class SilentUpdateScheduler(
             .setInitialDelay(SOON_DELAY_MINUTES, TimeUnit.MINUTES)
             .setConstraints(networkNeeded())
             .build()
-        // KEEP: a stop while one waits leaves it alone, so a run already going (perhaps mid-download)
-        // is never cancelled by the next Home press.
-        workManager().enqueueUniqueWork(SOON_WORK, ExistingWorkPolicy.KEEP, request)
+        // REPLACE, as on KevBox TV: each leave starts the 15 minutes again. A run it cancels stops
+        // between two buffers, installs nothing, and the next run resumes its download.
+        workManager().enqueueUniqueWork(SOON_WORK, ExistingWorkPolicy.REPLACE, request)
     }
 
     private fun networkNeeded() = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()

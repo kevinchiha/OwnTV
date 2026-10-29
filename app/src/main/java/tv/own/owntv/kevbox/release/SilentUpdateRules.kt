@@ -4,30 +4,73 @@ package tv.own.owntv.kevbox.release
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import org.json.JSONArray
 import org.json.JSONObject
 
-/** The latest release as the silent updater needs it. [dmUrl] is null when the release has no profile for this box. */
-data class SilentRelease(val version: String, val publishedAtMs: Long, val apkUrl: String, val dmUrl: String?)
+/**
+ * The latest release as the silent updater needs it. [dmUrl] is null when the release has no profile
+ * for this box, [silentUrl] when it has no `kevbox-silent.json` (published with `--no-silent`).
+ */
+data class SilentRelease(
+    val version: String,
+    val publishedAtMs: Long,
+    val apkUrl: String,
+    val dmUrl: String?,
+    val silentUrl: String?,
+)
+
+/**
+ * The release's `kevbox-silent.json`, written by release.sh: from [afterMs] (epoch ms, server time)
+ * every box may install the release with no prompt, and the Supabase users in [earlyUsers] may at
+ * once. Entries are kept as written; [SilentUpdateRules.rolloutDue] trims them. KevBox TV reads the
+ * same block from its version.json with the same rules.
+ */
+data class SilentBlock(val afterMs: Long, val earlyUsers: List<String>) {
+    companion object {
+        /**
+         * Null for anything but a valid block, and never throws: `after` must be a positive bare JSON
+         * integer (not `"5"`, `1.5` or null), `earlyUsers` missing, null or an array of strings.
+         */
+        fun parse(json: String): SilentBlock? = runCatching { parseOrNull(json) }.getOrNull()
+
+        private fun parseOrNull(json: String): SilentBlock? {
+            val o = JSONObject(json)
+            val afterMs = when (val after = o.opt("after")) {
+                is Int -> after.toLong()
+                is Long -> after
+                else -> return null
+            }
+            if (afterMs <= 0) return null
+            val earlyUsers = when (val users = o.opt("earlyUsers")) {
+                null, JSONObject.NULL -> emptyList()
+                is JSONArray -> (0 until users.length()).map { i -> users.opt(i) as? String ?: return null }
+                else -> return null
+            }
+            return SilentBlock(afterMs, earlyUsers)
+        }
+    }
+}
 
 /**
  * The decisions behind the silent update, kept free of Android so they run as plain JVM tests.
  * The ABI pick and the version compare copy Core's UpdateManager, so both updaters agree.
  */
 object SilentUpdateRules {
-    /** Signed in as one of these, a box installs a release at once. Compared trimmed and lowercased. */
-    val EARLY_EMAILS: Set<String> = setOf("kevin.chiha@gmail.com")
-
-    /** Every other box waits this long after the release is published. */
-    const val ROLLOUT_DELAY_MS: Long = 24 * 60 * 60 * 1000L
+    /** The release asset that carries the [SilentBlock]. */
+    const val SILENT_ASSET = "kevbox-silent.json"
 
     /** With the app open, this long without a key press (and nothing playing) counts as nobody watching. */
     const val IDLE_AFTER_MS: Long = 3 * 60 * 60 * 1000L
 
+    /** With no screen open, this long since the last MainActivity stop counts as nobody watching (KevBox TV's 15 minutes). */
+    const val OUT_OF_SIGHT_MS: Long = 900_000L
+
     /**
      * Reads a GitHub "latest release" body. The APK is the first `.apk` asset whose name holds
      * `x86_64` exactly when [wantX86] (Core's rule); the profile is the asset at
-     * [UpdateProfileAttacher.dexMetadataUrl] when the release carries it. Null when the tag, the
-     * publish time or a matching APK is missing, or the body is not JSON.
+     * [UpdateProfileAttacher.dexMetadataUrl] when the release carries it, and the silent block the
+     * asset named [SILENT_ASSET]. Null when the tag, the publish time or a matching APK is missing, or
+     * the body is not JSON.
      */
     fun parse(body: String, wantX86: Boolean, sdk: Int): SilentRelease? {
         val o = runCatching { JSONObject(body) }.getOrNull() ?: return null
@@ -45,7 +88,8 @@ object SilentUpdateRules {
         }?.second ?: return null
         val wanted = UpdateProfileAttacher.dexMetadataUrl(apkUrl, sdk)
         val dmUrl = wanted?.takeIf { want -> urls.any { it.second == want } }
-        return SilentRelease(version, publishedAtMs, apkUrl, dmUrl)
+        val silentUrl = urls.firstOrNull { (name, _) -> name == SILENT_ASSET }?.second
+        return SilentRelease(version, publishedAtMs, apkUrl, dmUrl, silentUrl)
     }
 
     /** Core's compare: number by number, a leading `v` dropped, junk counts as 0, equal is not newer. */
@@ -63,39 +107,67 @@ object SilentUpdateRules {
     private fun segments(version: String): List<Int> =
         version.removePrefix("v").split('.').map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 }
 
-    /** Early emails at once; everyone else, signed out included, from [ROLLOUT_DELAY_MS] after publishing. */
-    fun rolloutDue(release: SilentRelease, signedInEmail: String?, serverNowMs: Long): Boolean {
-        val email = signedInEmail?.trim()?.lowercase()
-        if (email != null && email in EARLY_EMAILS) return true
-        return serverNowMs - release.publishedAtMs >= ROLLOUT_DELAY_MS
+    /**
+     * At once for a box signed in as one of the block's early users (Supabase user ids, both sides
+     * trimmed, case ignored); for everyone else, signed out included, from the block's `after`.
+     */
+    fun rolloutDue(block: SilentBlock, signedInUserId: String?, serverNowMs: Long): Boolean {
+        val id = signedInUserId?.trim().orEmpty()
+        if (id.isNotEmpty() && block.earlyUsers.any { it.trim().equals(id, ignoreCase = true) }) return true
+        return serverNowMs >= block.afterMs
+    }
+
+    /** What keeps a release that has a [SilentBlock] from installing now. */
+    enum class Hold { NO_INSTALL_PERMISSION, NOT_YET }
+
+    /**
+     * Null when [block]'s release may install now. The "install unknown apps" permission
+     * ([canRequestInstalls]) comes before the rollout, as on KevBox TV: a box without it gives the
+     * release up at once and gets Core's card, instead of first waiting up to 24 hours for its turn.
+     */
+    fun hold(block: SilentBlock, canRequestInstalls: Boolean, signedInUserId: String?, serverNowMs: Long): Hold? = when {
+        !canRequestInstalls -> Hold.NO_INSTALL_PERMISSION
+        !rolloutDue(block, signedInUserId, serverNowMs) -> Hold.NOT_YET
+        else -> null
     }
 
     /**
-     * No screen open, or nothing playing and no key pressed for [IDLE_AFTER_MS]. [lastPressMs] and
-     * [nowMs] come from the same monotonic clock, so a wall-clock jump never fakes 3 quiet hours.
+     * Nobody watching: with a screen open ([activityStarted]), nothing playing and no key pressed for
+     * [IDLE_AFTER_MS]; with none open, [OUT_OF_SIGHT_MS] since the last MainActivity stop
+     * ([lastStopMs], null when none was stored). All three times come from the same monotonic clock,
+     * so a wall-clock jump never fakes a quiet box. A stop time above [nowMs] is from before a reboot
+     * and, like no stop time, counts as out of sight since boot (KevBox TV's rule).
      */
-    fun idle(activityStarted: Boolean, playing: Boolean, lastPressMs: Long, nowMs: Long): Boolean =
-        !activityStarted || (!playing && nowMs - lastPressMs >= IDLE_AFTER_MS)
+    fun idle(activityStarted: Boolean, playing: Boolean, lastPressMs: Long, lastStopMs: Long?, nowMs: Long): Boolean {
+        if (activityStarted) return !playing && nowMs - lastPressMs >= IDLE_AFTER_MS
+        val stop = lastStopMs?.takeIf { it <= nowMs } ?: 0L
+        return nowMs - stop >= OUT_OF_SIGHT_MS
+    }
 
-    /** A release the box has seen but not installed this long after publishing brings Core's card back. */
-    const val FALLBACK_AFTER_MS: Long = 7 * 24 * 60 * 60 * 1000L
+    /** A release still not installed this long after its block's `after` brings Core's card back (72 h, as on KevBox TV). */
+    const val SAFETY_NET_MS: Long = 259_200_000L
 
     /**
-     * Whether Core's startup "update available" card should run on Android 12+: the box gave up
-     * installing [gaveUpVersion] silently and it is newer than [installedVersion], or the newest
-     * release the updater saw ([seenVersion]) is still not installed more than [FALLBACK_AFTER_MS]
-     * after it was published. Both turn off by themselves once the installed version catches up.
+     * Whether Core's startup "update available" card should run on Android 12+. It does when the
+     * box gave up installing [gaveUpVersion] silently and it is newer than [installedVersion], or
+     * when the newest release a check read ([seenVersion]) is newer than [installedVersion] and
+     * either has no silent block ([seenHasSilent] false) or is still not installed [SAFETY_NET_MS]
+     * after its `after` ([seenAfterBoxMs], on the box's own clock like [boxNowMs]). Every case turns
+     * off by itself once the installed version catches up.
      */
     fun fallbackNeeded(
         gaveUpVersion: String?,
         seenVersion: String?,
-        seenPublishedAtMs: Long,
+        seenHasSilent: Boolean,
+        seenAfterBoxMs: Long?,
         installedVersion: String,
         boxNowMs: Long,
     ): Boolean {
         if (gaveUpVersion != null && isNewer(gaveUpVersion, installedVersion)) return true
-        return seenVersion != null && isNewer(seenVersion, installedVersion) &&
-            boxNowMs - seenPublishedAtMs > FALLBACK_AFTER_MS
+        if (seenVersion == null || !isNewer(seenVersion, installedVersion)) return false
+        val afterMs = seenAfterBoxMs?.takeIf { seenHasSilent } ?: return true
+        // Overflow-safe form of `boxNowMs >= afterMs + SAFETY_NET_MS`.
+        return boxNowMs - afterMs >= SAFETY_NET_MS
     }
 
     /**

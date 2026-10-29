@@ -246,7 +246,13 @@ val kevboxModule = module {
     single { tv.own.owntv.kevbox.release.SilentUpdatePrefs.open(androidContext()) }
     single {
         val app = androidContext() as android.app.Application
-        tv.own.owntv.kevbox.release.SilentUpdateScheduler(app, workManager = { androidx.work.WorkManager.getInstance(app) })
+        tv.own.owntv.kevbox.release.SilentUpdateScheduler(
+            app,
+            prefs = get(),
+            // The same monotonic clock the updater's idle rule reads.
+            elapsedNow = android.os.SystemClock::elapsedRealtime,
+            workManager = { androidx.work.WorkManager.getInstance(app) },
+        )
     }
     single {
         val scheduler = get<tv.own.owntv.kevbox.release.SilentUpdateScheduler>()
@@ -256,7 +262,8 @@ val kevboxModule = module {
             context = androidContext(),
             client = get(),
             prefs = get(),
-            signedInEmail = { auth.email.value },
+            // The Supabase user id, the value release.sh's SILENT_EARLY_USERS lists.
+            signedInUserId = { auth.userId.value },
             activityStarted = scheduler.activityStarted,
             playing = { session.active.value },
             // Idle on the monotonic clock; the wall clock only stands in for a missing server Date.

@@ -1048,13 +1048,17 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/refresh/CoreSyncSteps.kt	kevbox_update_now
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/refresh/PlaylistRefreshSetting.kt	choice
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/refresh/PlaylistRefreshSetting.kt	kevbox_playlist_refresh
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/release/SilentBlockFetch.kt	User-Agent
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateDownload.kt	*
 1	regex	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateDownload.kt	bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	failed_count
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	failed_version
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	gave_up_version
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	kevbox_silent_update
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	last_stop_elapsed_ms
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	no_profile_version
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	seen_after_box_ms
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	seen_has_silent
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	seen_published_at
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdatePrefs.kt	seen_version
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateReceiver.kt	Android wants a prompt for $version: left to the update card
@@ -1062,9 +1066,11 @@
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateReceiver.kt	install of $version failed: status $status, profile $withProfile
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateReceiver.kt	installed $version
 1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	.apk
+1	json	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	after
 1	json	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	assets
 1	json	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	browser_download_url
-1	technical	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	kevin.chiha@gmail.com
+1	json	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	earlyUsers
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	kevbox-silent.json
 1	json	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	name
 1	json	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	published_at
 1	json	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdateRules.kt	tag_name
@@ -1111,12 +1117,14 @@
 1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	kevbox-update.dm
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	no-install-permission
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	no-release
+1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	no-silent
 2	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	no-space
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	old-android
 1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	primary.prof
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	retry
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	silent update: $word
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	silent update: $word $version
+1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	silent-fetch-failed
 1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	silent-update
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	skipped
 1	log	app/src/main/java/tv/own/owntv/kevbox/release/SilentUpdater.kt	up-to-date
