@@ -1023,11 +1023,18 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/errors/SentryTestReceiver.kt	tv.kevbox.live.SENTRY_TEST
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/expiry/ExpiryMonitor.kt	kevbox_live_expiry
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/expiry/ExpiryMonitor.kt	last_warned_day
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	KevBoxHomeRows
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	home rows: channel delete failed ${it.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	home rows: logo failed ${it.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	home rows: write failed ${e.javaClass.simpleName}
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	kevbox_home_rows
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	ch:
 1	url	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	http://
 1	url	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	https://
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	kevbox-live:favorites
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	kevbox-live:recent
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt	KevBoxHomeRows
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt	home rows: sync failed ${e.javaClass.simpleName}
 2	empty	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	[
 1	regex	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	\\p{Mn}+

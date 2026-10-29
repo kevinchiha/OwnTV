@@ -343,5 +343,32 @@ val kevboxModule = module {
     single {
         tv.own.owntv.kevbox.network.DnsDefault(get(), androidContext().prefs(tv.own.owntv.kevbox.network.DnsDefault.PREFS_NAME))
     }
+    // The TV home screen's Recent channels and Favorites rows. Core builds its LiveLogoPosterArt inline
+    // and binds none, so the fitted 16:9 logos get their own binding here.
+    single { tv.own.owntv.core.tv.LiveLogoPosterArt(androidContext(), get()) }
+    single { tv.own.owntv.kevbox.home.HomeChannels(androidContext()) }
+    single {
+        val channels = get<tv.own.owntv.kevbox.home.HomeChannels>()
+        val app = androidContext() as android.app.Application
+        tv.own.owntv.kevbox.home.HomeRowsSync(
+            provider = channels,
+            reads = tv.own.owntv.kevbox.home.CoreHomeReads(
+                auth = get(),
+                settings = get(),
+                sourceDao = get(),
+                channelDao = get(),
+                favoriteDao = get(),
+                customize = get(),
+                epg = get(),
+                profileDao = get(),
+                launcher = get(),
+            ),
+            art = tv.own.owntv.kevbox.home.CoreLogoArt(get()),
+            link = channels::link,
+            onAppLeft = { action -> tv.own.owntv.kevbox.home.onMainActivityStop(app, action) },
+            scope = get(),
+            io = kotlinx.coroutines.Dispatchers.IO,
+        )
+    }
     viewModelOf(::KevBoxViewModel)
 }

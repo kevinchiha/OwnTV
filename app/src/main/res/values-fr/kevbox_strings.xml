@@ -59,4 +59,7 @@
     <string name="kevbox_sports_tab_channels">Chaînes</string>
     <!-- Sports hub: Starting soon row of one sport -->
     <string name="kevbox_sports_starting_soon_sport">Bientôt · %1$s</string>
+    <!-- The TV home screen's two KevBox Live rows (kevbox/home/HomeChannels.kt). -->
+    <string name="kevbox_home_row_recent">Chaînes récentes</string>
+    <string name="kevbox_home_row_favorites">Favoris</string>
 </resources>
