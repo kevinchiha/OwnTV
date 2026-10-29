@@ -4,7 +4,7 @@
 # Test for the release pre-flight checks in tools/kevbox/release-checks.sh (AC-7's refusals).
 # Builds a throwaway git repo under mktemp -d with tags v5.0.4, v5.1.0 and a later v5.1.0.1, runs
 # every check against it and asserts the exit code of each case, then the argument rule, the
-# early-user check and kevbox-silent.json, which need no repo. A second throwaway repo checks
+# early-user check, kevbox-silent.json and reading release.env (throwaway files), which need no repo. A second throwaway repo checks
 # that tools/kevbox/check-divergence.sh fails when its git diff fails. Removes only that directory.
 #
 #   bash tools/kevbox/test-release-checks.sh
@@ -149,6 +149,38 @@ expect 0 "blank: earlyUsers is empty"                json_is "$blank_ids" '{"aft
 expect 1 "an email is refused, no JSON"              render_silent_json 1793190452000 "kevin@example.com"
 expect 1 "a time that is not a number is refused"    render_silent_json soon "$u1"
 expect 1 "a missing time is refused"                 render_silent_json "" "$u1"
+
+# read_early_users: release.env sourced in a subshell; a file that cannot be sourced stops the
+# release instead of reading as "no early users", and none of its lines or values is printed.
+envs="$tmp/envs"
+mkdir "$envs"
+printf 'NUVIO_RELEASE_KEY_PASSWORD=hunter2\nSILENT_EARLY_USERS=" %s , %s "\n' "$u1" "$u2" > "$envs/ok.env"
+printf 'NUVIO_RELEASE_KEY_PASSWORD=hunter2\n' > "$envs/no-line.env"
+printf 'NUVIO_RELEASE_KEY_PASSWORD=hunter2)\nSILENT_EARLY_USERS=%s\n' "$u1" > "$envs/syntax.env"
+printf 'NUVIO_RELEASE_KEY_PASSWORD=(hunter2\nSILENT_EARLY_USERS=%s\n' "$u1" > "$envs/unclosed.env"
+printf 'echo hunter2\nSILENT_EARLY_USERS=%s\n' "$u1" > "$envs/noisy.env"
+printf 'SILENT_EARLY_USERS=%s\n' "$u1" > "$envs/unreadable.env"
+chmod 000 "$envs/unreadable.env"
+read_is() { [[ "$(read_early_users "$1")" == "$2" ]]; }
+expect 0 "env: the line is read as written"          read_is "$envs/ok.env" " $u1 , $u2 "
+expect 0 "env: a missing line reads as blank"        read_is "$envs/no-line.env" ""
+expect 0 "env: the file's own output is dropped"     read_is "$envs/noisy.env" "$u1"
+expect 1 "env: a syntax error refused"               read_early_users "$envs/syntax.env"
+expect 1 "env: an unclosed quote refused"            read_early_users "$envs/unclosed.env"
+expect 1 "env: a missing file refused"               read_early_users "$envs/absent.env"
+# Root reads a mode-000 file anyway; there the case says nothing.
+if [[ ! -r "$envs/unreadable.env" ]]; then
+  expect 1 "env: an unreadable file refused"         read_early_users "$envs/unreadable.env"
+fi
+env_output="$( { read_early_users "$envs/syntax.env"; read_early_users "$envs/ok.env"; } 2>&1 || true)"
+expect 1 "env: no value is ever printed"             grep -q 'hunter2' <<<"$env_output"
+expect 0 "env: the refusal names the file"           grep -q 'syntax.env could not be sourced' <<<"$env_output"
+read_early_users "$envs/ok.env" >/dev/null
+expect 0 "env: the signing values stay in the subshell" test -z "${NUVIO_RELEASE_KEY_PASSWORD:-}"
+# Exactly how release.sh calls it: the || after the substitution must fire.
+release_read() { local users; users="$(read_early_users "$1")" || return 1; echo "$users" >/dev/null; }
+expect 1 "env: release.sh's call stops on a syntax error" release_read "$envs/syntax.env"
+expect 0 "env: release.sh's call passes a good file"  release_read "$envs/ok.env"
 
 # check-divergence.sh guards every upstream merge, and its failure path is tested here too: a git
 # diff that fails must fail the check, never read as "0 changed". A throwaway repo with one upstream
