@@ -121,3 +121,4 @@ skipped: review 3 (Live decides from its own silent run; TV reads version.json a
 re-review (d57c9446): items 1-8 ADDRESSED; gate green (773 tests rerun, lint ok, release checks 80/80, divergence 0). New minor: release.sh:131 kevbox-live.env sourced unguarded (can print a secret line) -> sent to the fixer as item 9. Skipped minors: begun set just before callbacks register (no effect in Application.onCreate); prefs.stopped on the main thread (apply(), async).
 item 9 (kevbox-live.env guard): df818396, source_env_quietly at all pre-build env reads; release checks 87/87; divergence 0. Verified by the orchestrator.
 final review: done
+emulator (AC-7): skipped on Kevin's word ("lets move on", 11:28). The new 15-minute out-of-sight rule makes each run a 16-minute wait; the silent install flow itself passed on the emulator this morning (5.2.1.90 -> .91) and every new rule has JVM tests.
