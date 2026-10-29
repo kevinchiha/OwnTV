@@ -1,0 +1,99 @@
+# Silent update: match KevBox TV (Live side)
+
+## Goal
+KevBox Live takes its early-user list from each release (`SILENT_EARLY_USERS` in release.env, Supabase
+user ids), can publish a release with silent install switched off, and brings Core's update card back
+on TV's rules, so Live and KevBox TV behave the same (Kevin's ruling 2026-10-29: "best of each, change
+both"). Live keeps its server clock, 3-hour idle rule and 6 h / 15 min timing, which TV adopts.
+
+## Scope
+`release.sh`, `tools/kevbox/release-checks.sh` and its test script; `kevbox/release/SilentUpdateRules.kt`,
+`SilentUpdater.kt`, `SilentUpdatePrefs.kt`, `kevbox/di/KevBoxModule.kt` (signed-in id instead of email);
+`UPSTREAM-SYNC.md` notes. No Core file changes beyond what already exists.
+
+**Gate:** `GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew testStandardDebugUnitTest lintStandardDebug && bash tools/kevbox/test-release-checks.sh && bash tools/kevbox/check-divergence.sh`
+(commit first: check-divergence reads committed work only; known baseline in the Build log.)
+
+## Acceptance criteria
+- **AC-1** `./release.sh [--no-silent] <A.B.C.K> [notes...]`: `--no-silent` counts only as the first
+  argument; `--no-silent` anywhere else, or any other argument starting with `--`, stops the script
+  with exit 1 before any build or GitHub call. The old usage (`<version> [notes...]`) works unchanged.
+- **AC-2** Without `--no-silent`, release.sh reads `SILENT_EARLY_USERS` from
+  `~/secrets/kevbox-keys/release.env` (comma-separated; blank or missing = no early users). An entry that
+  is not a UUID (8-4-4-4-12 hex) stops the script before the build, naming its position, never its value.
+  It writes `build/kevbox-release/kevbox-silent.json` = `{"after": <epoch ms when written + 86 400 000>,
+  "earlyUsers": [...]}` and uploads it with the release. With `--no-silent` no such asset is uploaded.
+- **AC-3** `SilentUpdateRules.parse` also returns the URL of the asset named `kevbox-silent.json` (null
+  when absent). `SilentUpdater` fetches it (at most 64 KB) and parses it leniently: `after` a positive
+  JSON integer, `earlyUsers` missing (= empty) or an array of strings. A missing asset, a failed fetch or
+  any malformed value means "no silent block": the run logs `no-silent`, downloads and installs nothing.
+- **AC-4** `rolloutDue` is due when the signed-in Supabase user id (KevBoxAuth.userId) equals an
+  `earlyUsers` entry (trimmed, case-insensitive), or when the server time is at or past `after`.
+  `EARLY_EMAILS` and the email parameter are gone. Logs never contain the user id.
+- **AC-5** Core's startup card (`SilentUpdatePrefs.fallbackNeeded`) shows on Android 12+ when: the box gave
+  up on a newer version (as today: refused, no install permission, 3 failures); or the newest release a
+  check read is newer than the installed version and has no silent block; or that release is still not
+  installed at `after` + 259 200 000 ms (72 h). `after` is stored on the box's own clock (moved by the
+  box's offset from the server, as `seen` does today), so a wrong box date does not matter. The 7-day
+  rule (`FALLBACK_AFTER_MS`) is removed. Below Android 12 the card shows as today.
+- **AC-6** JVM tests cover: early by id (case and spaces), not early, not yet, due by server time;
+  silent JSON parse (missing asset, `"after": "x"`, `0`, `-5`, `earlyUsers` not an array or holding a
+  number, valid); the card rules (no silent block, 72 h boundary on a wrong box clock, gave up, caught up).
+  `tools/kevbox/test-release-checks.sh` covers the argument rule, the UUID check (an email refused with
+  its position, no value printed) and the JSON shape (two ids; blank; passes `python3 -m json.tool`).
+- **AC-7** Emulator (orchestrator, after the final review): a debug build with
+  `-Pkevbox.updateFeed=http://10.0.2.2:<port>/latest.json` and a local feed. Run A: `kevbox-silent.json`
+  with `after` 24 h ahead and earlyUsers = the emulator account's id → the app installs the newer build
+  after Home and a forced job (early). Run B: a newer release with no silent asset → `no-silent`, nothing
+  installed, and Core's update card shows on the next app open.
+
+## Non-goals
+- Releasing. release.sh is edited, not run, in this job; a release waits for Kevin's yes (and the
+  untracked `docs/superpowers/research/2026-10-28-extra-sports-sources.md` blocks release.sh's clean-tree
+  check until Kevin commits or moves it).
+- TV's metered-network prompt rule: Live downloads at install time on any network, so it has no
+  "no download possible" case.
+
+## Decisions
+- The silent block travels as a release asset, not in the release notes, because Core shows the notes
+  and an asset can be left out with `--no-silent`.
+- `after` is computed by release.sh (as TV does) instead of `published_at + 24 h`, so both apps read
+  one rule from the release.
+- One `SILENT_EARLY_USERS` line serves both apps: TV and Live sign in to the same Supabase project
+  (checked 2026-10-29 by comparing the configured URLs).
+
+## Tasks
+
+### Task 1: release.sh publishes the silent block
+**Delivers:** AC-1, AC-2, AC-6 (release-checks tests)
+**Files:** `release.sh`, `tools/kevbox/release-checks.sh`, `tools/kevbox/test-release-checks.sh`
+**Interfaces:** in release-checks.sh: `check_release_args "$@"` (exit 1 on a misplaced or unknown
+`--` option), `check_early_users "<comma list>"` (exit 1, message names the position), and
+`render_silent_json <now_ms> "<comma list>"` (prints the JSON on stdout).
+**Does:**
+- Argument check first, then the existing checks; the early-user check sits with them, before the build.
+- After the build, write `kevbox-silent.json` into the release folder and add it to `gh release create`
+  unless `--no-silent`.
+- Header comment documents `--no-silent` and `SILENT_EARLY_USERS`.
+**Tests:** the three helpers, as in AC-6.
+**Verify:** `bash tools/kevbox/test-release-checks.sh && bash -n release.sh`
+
+### Task 2: The app reads the block and uses TV's card rules
+**Delivers:** AC-3, AC-4, AC-5, AC-6 (JVM tests)
+**Files:** `kevbox/release/SilentUpdateRules.kt`, `SilentUpdater.kt`, `SilentUpdatePrefs.kt`,
+`kevbox/di/KevBoxModule.kt`, their tests, `UPSTREAM-SYNC.md`
+**Interfaces:** `SilentRelease` gains `silentUrl: String?`; `data class SilentBlock(val afterMs: Long,
+val earlyUsers: List<String>)` with `SilentBlock.parse(json: String): SilentBlock?`;
+`rolloutDue(block: SilentBlock, signedInUserId: String?, serverNowMs: Long)`;
+`SilentUpdater(..., signedInUserId: () -> String?, ...)`; `fallbackNeeded(gaveUpVersion, seenVersion,
+seenHasSilent: Boolean, seenAfterBoxMs: Long?, installedVersion, boxNowMs)`.
+**Does:**
+- After `isNewer` and `skips`, fetch and parse the block; none → record the release as seen without a
+  block and return `no-silent`.
+- `seen(...)` stores whether the release had a block and its `after` on the box clock.
+- `SAFETY_NET_MS = 259_200_000L` replaces `FALLBACK_AFTER_MS`.
+- KevBoxModule passes `auth.userId.value` instead of `auth.email.value` to SilentUpdater (LoginFileSignIn keeps its email).
+**Tests:** as in AC-6.
+**Verify:** `GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew testStandardDebugUnitTest --tests 'tv.own.owntv.kevbox.release.*'`
+
+## Build log
