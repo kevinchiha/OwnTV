@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageInstaller
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.kevbox.release.SilentUpdatePrefs.Outcome
@@ -52,51 +53,112 @@ class SilentUpdatePrefsTest {
         }
     }
 
-    @Test
-    fun `the refused mark survives a new instance`() {
-        val store = MemoryPrefs()
-        assertFalse(SilentUpdatePrefs(store).silentRefused)
-
-        SilentUpdatePrefs(store).markRefused()
-
-        assertTrue(SilentUpdatePrefs(store).silentRefused)
-    }
+    private val day = 24 * 60 * 60 * 1000L
 
     @Test
-    fun `a refused version is skipped, a newer one is not`() {
+    fun `a given-up version survives a new instance and is skipped, a newer one is not`() {
         val store = MemoryPrefs()
-        SilentUpdatePrefs(store).markRefused("5.2.1.3")
+        assertNull(SilentUpdatePrefs(store).gaveUpVersion)
+
+        SilentUpdatePrefs(store).giveUp("5.2.1.3")
 
         val prefs = SilentUpdatePrefs(store)
-        assertTrue(prefs.silentRefused)
+        assertEquals("5.2.1.3", prefs.gaveUpVersion)
         assertTrue(prefs.skips("5.2.1.3"))
         assertFalse(prefs.skips("5.2.1.4"))
     }
 
     @Test
-    fun `three failures skip that version`() {
+    fun `giving up shows the card until the installed version reaches it`() {
+        val store = MemoryPrefs()
+        SilentUpdatePrefs(store).giveUp("5.2.1.3")
+
+        val prefs = SilentUpdatePrefs(store)
+        assertTrue(prefs.fallbackNeeded("5.2.1.2", boxNowMs = 0L))
+        assertFalse(prefs.fallbackNeeded("5.2.1.3", boxNowMs = 0L))
+        assertFalse(prefs.fallbackNeeded("5.2.1.4", boxNowMs = 0L))
+    }
+
+    @Test
+    fun `an older given-up version never replaces a newer one`() {
+        val prefs = SilentUpdatePrefs(MemoryPrefs())
+        prefs.giveUp("5.2.1.4")
+        prefs.giveUp("5.2.1.3")
+        assertEquals("5.2.1.4", prefs.gaveUpVersion)
+        prefs.giveUp("5.2.1.5")
+        assertEquals("5.2.1.5", prefs.gaveUpVersion)
+    }
+
+    @Test
+    fun `three failures give that version up and bring the card back`() {
         val store = MemoryPrefs()
         val prefs = SilentUpdatePrefs(store)
 
-        prefs.failed("5.2.1.3")
-        prefs.failed("5.2.1.3")
+        prefs.failed("5.2.1.3", withProfile = false)
+        prefs.failed("5.2.1.3", withProfile = false)
+        assertFalse(SilentUpdatePrefs(store).skips("5.2.1.3"))
+        assertFalse(SilentUpdatePrefs(store).fallbackNeeded("5.2.1.2", boxNowMs = 0L))
+
+        prefs.failed("5.2.1.3", withProfile = false)
+        assertTrue(SilentUpdatePrefs(store).skips("5.2.1.3"))
+        assertTrue(SilentUpdatePrefs(store).fallbackNeeded("5.2.1.2", boxNowMs = 0L))
+    }
+
+    @Test
+    fun `a failure with the profile drops the profile and does not count`() {
+        val store = MemoryPrefs()
+        val prefs = SilentUpdatePrefs(store)
+        assertFalse(prefs.skipsProfile("5.2.1.3"))
+
+        repeat(SilentUpdatePrefs.MAX_FAILURES) { prefs.failed("5.2.1.3", withProfile = true) }
+
+        assertTrue(SilentUpdatePrefs(store).skipsProfile("5.2.1.3"))
+        assertFalse(SilentUpdatePrefs(store).skipsProfile("5.2.1.4"))
         assertFalse(SilentUpdatePrefs(store).skips("5.2.1.3"))
 
-        prefs.failed("5.2.1.3")
+        repeat(SilentUpdatePrefs.MAX_FAILURES) { prefs.failed("5.2.1.3", withProfile = false) }
         assertTrue(SilentUpdatePrefs(store).skips("5.2.1.3"))
-        assertFalse(SilentUpdatePrefs(store).silentRefused)
     }
 
     @Test
     fun `a newer version starts with a clean count`() {
         val store = MemoryPrefs()
         val prefs = SilentUpdatePrefs(store)
-        repeat(3) { prefs.failed("5.2.1.3") }
+        repeat(3) { prefs.failed("5.2.1.3", withProfile = false) }
 
         assertFalse(prefs.skips("5.2.1.4"))
-        prefs.failed("5.2.1.4")
-        prefs.failed("5.2.1.4")
+        prefs.failed("5.2.1.4", withProfile = false)
+        prefs.failed("5.2.1.4", withProfile = false)
         assertFalse(prefs.skips("5.2.1.4"))
+    }
+
+    @Test
+    fun `a seen release still not installed after 7 days brings the card back`() {
+        val store = MemoryPrefs()
+        val published = 1_000 * day
+        SilentUpdatePrefs(store).seen("5.2.1.3", published)
+
+        val prefs = SilentUpdatePrefs(store)
+        assertFalse(prefs.fallbackNeeded("5.2.1.2", boxNowMs = published + 7 * day))
+        assertTrue(prefs.fallbackNeeded("5.2.1.2", boxNowMs = published + 7 * day + 1))
+        assertFalse(prefs.fallbackNeeded("5.2.1.3", boxNowMs = published + 30 * day))
+    }
+
+    @Test
+    fun `the latest seen release replaces the one before`() {
+        val store = MemoryPrefs()
+        val prefs = SilentUpdatePrefs(store)
+        prefs.seen("5.2.1.3", 0L)
+        prefs.seen("5.2.1.4", 100 * day)
+
+        assertFalse(prefs.fallbackNeeded("5.2.1.3", boxNowMs = 100 * day + 7 * day))
+        assertTrue(prefs.fallbackNeeded("5.2.1.3", boxNowMs = 100 * day + 8 * day))
+        assertFalse(prefs.fallbackNeeded("5.2.1.4", boxNowMs = 100 * day + 8 * day))
+    }
+
+    @Test
+    fun `a fresh box needs no fallback`() {
+        assertFalse(SilentUpdatePrefs(MemoryPrefs()).fallbackNeeded("5.2.1.2", boxNowMs = Long.MAX_VALUE))
     }
 
     @Test

@@ -13,14 +13,15 @@ import tv.own.owntv.kevbox.release.SilentUpdatePrefs.Outcome
  * PendingIntent, reaches it.
  *
  * Success needs nothing. A request for user action never shows the prompt: the session is abandoned
- * and the box is marked "silent refused", so Core's startup card offers the update instead. Any other
- * failure counts against the version.
+ * and the box gives that version up, so Core's startup card offers it instead. Any other failure
+ * counts against the version, or, when the install carried the profile, drops the profile next time.
  */
 class SilentUpdateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
         val version = intent.getStringExtra(SilentUpdater.EXTRA_VERSION)
+        val withProfile = intent.getBooleanExtra(SilentUpdater.EXTRA_WITH_PROFILE, false)
         val prefs = SilentUpdatePrefs.open(context)
         when (SilentUpdatePrefs.outcomeOf(status)) {
             Outcome.SUCCESS -> Log.i(TAG, "installed $version")
@@ -28,12 +29,12 @@ class SilentUpdateReceiver : BroadcastReceiver() {
                 if (sessionId != -1) {
                     runCatching { context.packageManager.packageInstaller.abandonSession(sessionId) }
                 }
-                prefs.markRefused(version)
+                if (version != null) prefs.giveUp(version)
                 Log.i(TAG, "Android wants a prompt for $version: left to the update card")
             }
             Outcome.FAILED -> {
-                if (version != null) prefs.failed(version)
-                Log.w(TAG, "install of $version failed: status $status")
+                if (version != null) prefs.failed(version, withProfile)
+                Log.w(TAG, "install of $version failed: status $status, profile $withProfile")
             }
         }
     }

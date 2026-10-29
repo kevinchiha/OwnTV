@@ -259,7 +259,9 @@ val kevboxModule = module {
             signedInEmail = { auth.email.value },
             activityStarted = scheduler.activityStarted,
             playing = { session.active.value },
-            lastPressMs = get<tv.own.owntv.kevbox.usage.LastPress>()::at,
+            // Idle on the monotonic clock; the wall clock only stands in for a missing server Date.
+            lastPressElapsedMs = get<tv.own.owntv.kevbox.usage.LastPress>()::elapsedAt,
+            elapsedNow = android.os.SystemClock::elapsedRealtime,
             now = System::currentTimeMillis,
             // Blank means GitHub's latest release; only a debug build can point it elsewhere.
             feedUrl = BuildConfig.KEVBOX_UPDATE_FEED,

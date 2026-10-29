@@ -148,4 +148,37 @@ class SilentUpdateRulesTest {
         assertFalse(SilentUpdateRules.idle(true, playing = true, lastPressMs = threeHoursAgo, nowMs = now))
         assertFalse(SilentUpdateRules.idle(true, playing = true, lastPressMs = now, nowMs = now))
     }
+
+    @Test
+    fun `fallback when the box gave up on a newer version, until that version is installed`() {
+        assertTrue(SilentUpdateRules.fallbackNeeded("5.2.1.3", null, 0L, installedVersion = "5.2.1.2", boxNowMs = 0L))
+        assertFalse(SilentUpdateRules.fallbackNeeded("5.2.1.3", null, 0L, installedVersion = "5.2.1.3", boxNowMs = 0L))
+        assertFalse(SilentUpdateRules.fallbackNeeded("5.2.1.3", null, 0L, installedVersion = "99.99.99.99", boxNowMs = 0L))
+    }
+
+    @Test
+    fun `fallback when a seen release is more than 7 days old and still not installed`() {
+        val week = SilentUpdateRules.FALLBACK_AFTER_MS
+        assertEquals(7 * 24 * hour, week)
+        assertFalse(SilentUpdateRules.fallbackNeeded(null, "5.2.1.3", published, "5.2.1.2", boxNowMs = published + week))
+        assertTrue(SilentUpdateRules.fallbackNeeded(null, "5.2.1.3", published, "5.2.1.2", boxNowMs = published + week + 1))
+        assertFalse(SilentUpdateRules.fallbackNeeded(null, "5.2.1.3", published, "5.2.1.3", boxNowMs = published + 2 * week))
+        assertFalse(SilentUpdateRules.fallbackNeeded(null, null, 0L, "5.2.1.2", boxNowMs = published))
+    }
+
+    @Test
+    fun `an older given-up version brings no card back`() {
+        assertFalse(SilentUpdateRules.fallbackNeeded("5.2.1.1", "5.2.1.2", published, "5.2.1.2", boxNowMs = published))
+    }
+
+    @Test
+    fun `signed alike when the APK carries every installed certificate`() {
+        assertTrue(SilentUpdateRules.signedAlike(setOf("a"), setOf("a")))
+        // A rotated key: the APK proves it came from the installed one.
+        assertTrue(SilentUpdateRules.signedAlike(setOf("new", "a"), setOf("a")))
+        assertFalse(SilentUpdateRules.signedAlike(setOf("b"), setOf("a")))
+        assertFalse(SilentUpdateRules.signedAlike(setOf("a"), setOf("a", "b")))
+        assertFalse(SilentUpdateRules.signedAlike(emptySet(), setOf("a")))
+        assertFalse(SilentUpdateRules.signedAlike(setOf("a"), emptySet()))
+    }
 }

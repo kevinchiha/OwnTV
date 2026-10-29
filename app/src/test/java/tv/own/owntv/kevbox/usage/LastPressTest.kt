@@ -23,4 +23,20 @@ class LastPressTest {
         clock = 20_000L
         assertEquals(9_000L, last.at())
     }
+
+    @Test
+    fun `the monotonic stamp follows its own clock, the wall stamp stays as it was`() {
+        var wall = 1_000L
+        var elapsed = 50L
+        val last = LastPress(elapsed = { elapsed }) { wall }
+        assertEquals(1_000L, last.at())
+        assertEquals(50L, last.elapsedAt())
+
+        // The wall clock jumps back a day; the monotonic one only moves on.
+        wall = -86_400_000L
+        elapsed = 70L
+        last.press()
+        assertEquals(-86_400_000L, last.at())
+        assertEquals(70L, last.elapsedAt())
+    }
 }

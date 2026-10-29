@@ -70,9 +70,41 @@ object SilentUpdateRules {
         return serverNowMs - release.publishedAtMs >= ROLLOUT_DELAY_MS
     }
 
-    /** No screen open, or nothing playing and no key pressed for [IDLE_AFTER_MS]. */
+    /**
+     * No screen open, or nothing playing and no key pressed for [IDLE_AFTER_MS]. [lastPressMs] and
+     * [nowMs] come from the same monotonic clock, so a wall-clock jump never fakes 3 quiet hours.
+     */
     fun idle(activityStarted: Boolean, playing: Boolean, lastPressMs: Long, nowMs: Long): Boolean =
         !activityStarted || (!playing && nowMs - lastPressMs >= IDLE_AFTER_MS)
+
+    /** A release the box has seen but not installed this long after publishing brings Core's card back. */
+    const val FALLBACK_AFTER_MS: Long = 7 * 24 * 60 * 60 * 1000L
+
+    /**
+     * Whether Core's startup "update available" card should run on Android 12+: the box gave up
+     * installing [gaveUpVersion] silently and it is newer than [installedVersion], or the newest
+     * release the updater saw ([seenVersion]) is still not installed more than [FALLBACK_AFTER_MS]
+     * after it was published. Both turn off by themselves once the installed version catches up.
+     */
+    fun fallbackNeeded(
+        gaveUpVersion: String?,
+        seenVersion: String?,
+        seenPublishedAtMs: Long,
+        installedVersion: String,
+        boxNowMs: Long,
+    ): Boolean {
+        if (gaveUpVersion != null && isNewer(gaveUpVersion, installedVersion)) return true
+        return seenVersion != null && isNewer(seenVersion, installedVersion) &&
+            boxNowMs - seenPublishedAtMs > FALLBACK_AFTER_MS
+    }
+
+    /**
+     * Whether Android would accept the downloaded APK as an update of the installed app: every
+     * certificate the installed app signs with is among the APK's ([apkCerts] holds its signers and,
+     * for a single signer, the older keys it proves it rotated from). Nothing on either side is a no.
+     */
+    fun signedAlike(apkCerts: Set<String>, installedCerts: Set<String>): Boolean =
+        apkCerts.isNotEmpty() && installedCerts.isNotEmpty() && apkCerts.containsAll(installedCerts)
 
     /** The time from an HTTP `Date` header, or [boxNowMs] when the header is missing or unreadable. */
     fun serverNow(dateHeader: String?, boxNowMs: Long): Long {

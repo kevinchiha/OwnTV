@@ -4,6 +4,7 @@ package tv.own.owntv.kevbox.release
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.work.Constraints
@@ -35,8 +36,8 @@ class SilentUpdateWorker(context: Context, params: WorkerParameters) : Coroutine
 }
 
 /**
- * Schedules [SilentUpdateWorker]: every 6 hours with a network, and once 15 minutes after the
- * app leaves the screen. Also keeps the set of started [MainActivity] instances (its colour
+ * Schedules [SilentUpdateWorker] on Android 12 and later (nothing earlier can install silently):
+ * every 6 hours with a network, and once 15 minutes after the app leaves the screen. Also keeps the set of started [MainActivity] instances (its colour
  * subclasses included), which [activityStarted] reads for the idle rule.
  */
 class SilentUpdateScheduler(
@@ -68,8 +69,9 @@ class SilentUpdateScheduler(
         override fun onActivityDestroyed(activity: Activity) = Unit
     }
 
-    /** Registers the callbacks and the periodic job. Once per process. */
+    /** Registers the callbacks and the periodic job. Once per process; nothing below Android 12. */
     fun start() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         if (!begun.compareAndSet(false, true)) return
         application.registerActivityLifecycleCallbacks(callbacks)
         guarded {
@@ -86,8 +88,9 @@ class SilentUpdateScheduler(
             .setInitialDelay(SOON_DELAY_MINUTES, TimeUnit.MINUTES)
             .setConstraints(networkNeeded())
             .build()
-        // REPLACE: the 15 minutes count from the latest stop.
-        workManager().enqueueUniqueWork(SOON_WORK, ExistingWorkPolicy.REPLACE, request)
+        // KEEP: a stop while one waits leaves it alone, so a run already going (perhaps mid-download)
+        // is never cancelled by the next Home press.
+        workManager().enqueueUniqueWork(SOON_WORK, ExistingWorkPolicy.KEEP, request)
     }
 
     private fun networkNeeded() = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
