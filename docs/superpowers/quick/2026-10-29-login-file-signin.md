@@ -108,3 +108,4 @@ in `kevbox/di/KevBoxModule.kt`, an `onResume` in `MainActivity.kt`, UPSTREAM-SYN
 
 ## Build log
 baseline: tests and lint green; check-divergence fails on `features/sports/SportsViewModel.kt` (hunk @@ -258,7 +285,6 @@ has no KevBox: comment), from kevbox-live. Leave it alone.
+Task 1+2: started at 9589ab2c
