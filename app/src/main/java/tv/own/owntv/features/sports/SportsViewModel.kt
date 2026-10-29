@@ -370,7 +370,7 @@ class SportsViewModel(
         return config.orderSports(SportsCatalog.sports.filter { s -> keys.any { SportsCatalog.league(it)?.sport == s } })
     }
 
-    /** [match]'s channels if a channel search already ran for it (the hub's Remind me needs one); never searches. */
+    /** KevBox: [match]'s channels if a channel search already ran for it (the hub's Remind me needs one); never searches. */
     suspend fun channelsFound(match: Match): List<WatchOption> {
         val c = config.first()
         val options = watchReader.found(match) { SportsMemory.rememberedFor(c, it) } ?: return emptyList()
