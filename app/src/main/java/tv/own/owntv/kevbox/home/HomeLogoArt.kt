@@ -47,8 +47,9 @@ class HomeLogoArt(private val context: Context, client: OkHttpClient) : HomeArt 
         scope.launch {
             var wrote = false
             try {
-                for (raw in missing) if (write(raw)) wrote = true
-                if (wrote) trim()
+                val written = missing.filter { write(it) }.mapTo(HashSet()) { fileFor(it).name }
+                wrote = written.isNotEmpty()
+                if (wrote) trim(keep = written)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -73,7 +74,8 @@ class HomeLogoArt(private val context: Context, client: OkHttpClient) : HomeArt 
         val written = runCatching {
             directory(context).mkdirs()
             val compressed = FileOutputStream(temporary).use { card.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, it) }
-            compressed && (!destination.exists() || destination.delete()) && temporary.renameTo(destination)
+            // renameTo replaces an older card in one step, so the launcher never finds the file missing.
+            compressed && temporary.renameTo(destination)
         }.getOrDefault(false)
         card.recycle()
         if (!written) temporary.delete()
@@ -115,12 +117,17 @@ class HomeLogoArt(private val context: Context, client: OkHttpClient) : HomeArt 
         return card
     }
 
-    /** Oldest first out: files past 7 days, and any beyond the newest 200. */
-    private fun trim() {
-        val files = directory(context).listFiles { f -> f.name.endsWith(PNG) }?.sortedByDescending { it.lastModified() } ?: return
+    /**
+     * Oldest first out: files past 7 days, and any beyond the newest 200. The cards just written
+     * ([keep]) always stay and count first: with the clock set back, older cards carry later dates,
+     * and a fresh card deleted here would be fetched again on every sync.
+     */
+    private fun trim(keep: Set<String>) {
+        val files = directory(context).listFiles { f -> f.name.endsWith(PNG) }
+            ?.sortedWith(compareByDescending<File> { it.name in keep }.thenByDescending { it.lastModified() }) ?: return
         val now = System.currentTimeMillis()
         files.forEachIndexed { index, file ->
-            if (index >= MAX_FILES || now - file.lastModified() > MAX_AGE_MS) file.delete()
+            if (file.name !in keep && (index >= MAX_FILES || now - file.lastModified() > MAX_AGE_MS)) file.delete()
         }
     }
 
