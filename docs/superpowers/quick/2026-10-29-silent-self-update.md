@@ -175,3 +175,4 @@ ocr: medium, SilentUpdater.kt:57: CancellationException swallowed. Decided: fix.
 ocr: medium, SilentUpdater.kt:202: a missing Content-Length counts as a bad release. Decided: fix (verify the file instead).
 ocr: medium, SilentUpdater.kt:76: wall clock in the idle rule. Same item as reviewer 10.
 ocr: low (dm bytes() before size check). Decided: fix, it is two lines.
+fix round 1: 01f3d28a closes the list per the fixer; orchestrator gate green apart from the baseline.
