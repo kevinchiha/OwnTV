@@ -109,3 +109,4 @@ in `kevbox/di/KevBoxModule.kt`, an `onResume` in `MainActivity.kt`, UPSTREAM-SYN
 ## Build log
 baseline: tests and lint green; check-divergence fails on `features/sports/SportsViewModel.kt` (hunk @@ -258,7 +285,6 @@ has no KevBox: comment), from kevbox-live. Leave it alone.
 Task 1+2: started at 9589ab2c
+Task 1+2: landed (3a917d63, 408f691c). Also touched tools/i18n/safe_literals.txt: the build's i18n literal check needs the new file names and the four English error texts classified. The delete-fails branch of AC-4 has no test (no way found to make a JVM delete fail while the folder stays writable).
