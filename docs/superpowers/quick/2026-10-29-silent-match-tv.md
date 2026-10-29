@@ -97,3 +97,4 @@ seenHasSilent: Boolean, seenAfterBoxMs: Long?, installedVersion, boxNowMs)`.
 **Verify:** `GRADLE_USER_HOME=/home/kevin/.gradle ./gradlew testStandardDebugUnitTest --tests 'tv.own.owntv.kevbox.release.*'`
 
 ## Build log
+baseline: all green on 27cae12a (2026-10-29 10:4x): testStandardDebugUnitTest + lintStandardDebug BUILD SUCCESSFUL, test-release-checks 35 passed, check-divergence 0 failures.
