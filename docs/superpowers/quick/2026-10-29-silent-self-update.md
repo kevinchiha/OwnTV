@@ -156,3 +156,5 @@ presses Home, forces the job with `cmd jobscheduler run -f`, and reads the versi
 **Verify:** `dumpsys package tv.kevbox.live` shows 5.2.1.91; no installer dialog appeared.
 
 ## Build log
+Task 1: started at 3758a07e
+baseline: same as kevbox-live (tests and lint green on 2026-10-29 05:2x; check-divergence fails only on features/sports/SportsViewModel.kt). Leave it alone.
