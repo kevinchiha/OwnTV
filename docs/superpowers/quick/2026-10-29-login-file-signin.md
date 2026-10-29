@@ -119,3 +119,5 @@ ocr: medium, LoginFileSignIn.kt:84: signing out before the new password is check
 ocr: 3 low comments dropped.
 fix round 1: 4db5fdf6 fixes all four listed items (onNewIntent check, re-check when busy clears, StackOverflowError counts as unreadable, old result deleted once a file is accepted); 19/19 LoginFileSignInTest; fixer's gate green apart from the baseline.
 re-review: the four items checked against 4db5fdf6, all closed; onNewIntent left for the emulator check.
+Task 3 (emulator, kevbox_tv, x86_64 debug after uninstalling the release copy): wrong password on a cold fresh install gave {"ok":false,"error":"Wrong email or password"} in 2 s, sign-in screen stays; good file with the app already in front (monkey → onNewIntent) gave {"ok":true} in 1 s and the guide on All channels with Kevin's playlist; stale, bad JSON and missing-key files were gone within 6 s with no result; good file from Home (onResume, already signed in, same account) and from a force-stopped app both gave {"ok":true}. logcat holds neither the password nor the file name. AC-14 passed.
+final review: done
