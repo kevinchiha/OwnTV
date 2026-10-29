@@ -1,19 +1,33 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.errors
 
+import android.content.Context
+import android.net.Uri
+import kotlin.reflect.KFunction2
 import kotlin.reflect.KProperty1
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import okhttp3.OkHttpClient
 import org.junit.Test
+import tv.own.owntv.core.brand.AppIcon
+import tv.own.owntv.core.brand.AppIconSwitcher
 import tv.own.owntv.core.customize.CustomizationStore
+import tv.own.owntv.core.customize.CustomizeKeys
 import tv.own.owntv.core.customize.SectionCustomizations
+import tv.own.owntv.core.database.dao.ChannelDao
+import tv.own.owntv.core.database.dao.FavoriteDao
+import tv.own.owntv.core.database.dao.ProfileDao
 import tv.own.owntv.core.database.dao.SourceDao
 import tv.own.owntv.core.database.entity.ChannelEntity
+import tv.own.owntv.core.database.entity.ProfileEntity
 import tv.own.owntv.core.database.entity.SourceEntity
 import tv.own.owntv.core.epg.EpgSource
+import tv.own.owntv.core.epg.displayLogoUrl
+import tv.own.owntv.core.launcher.LauncherDeepLink
+import tv.own.owntv.core.launcher.LauncherIntegrationRepository
 import tv.own.owntv.core.live.LiveEpgReader
 import tv.own.owntv.core.model.MediaType
 import tv.own.owntv.core.parser.XtEpgEntry
@@ -26,6 +40,7 @@ import tv.own.owntv.core.sync.SyncResult
 import tv.own.owntv.core.sync.SyncRunStats
 import tv.own.owntv.core.sync.work.CatalogSyncScheduler
 import tv.own.owntv.core.sync.work.CatalogSyncState
+import tv.own.owntv.core.tv.LiveLogoPosterArt
 import tv.own.owntv.player.ErrorInfo
 import tv.own.owntv.player.LivePreviewEngine
 import tv.own.owntv.player.LiveTuneController
@@ -84,6 +99,40 @@ class CoreContractTest {
         assertNotNull(nowProgrammes)
         assertNotNull(observeCustom)
         assertNotNull(activeSources)
+
+        // Home screen rows (kevbox/home): what the rows hold, Core's own TV home switch, the card
+        // links, the channel logo and the fitted 16:9 poster art.
+        val recentlyWatched: (ChannelDao, Long, Int) -> Flow<List<ChannelEntity>> = ChannelDao::recentlyWatched
+        val channelById: suspend (ChannelDao, Long) -> ChannelEntity? = ChannelDao::getById
+        val favoriteIds: (FavoriteDao, Long, MediaType) -> Flow<List<Long>> = FavoriteDao::observeFavoriteIds
+        val allProfiles: suspend (ProfileDao) -> List<ProfileEntity> = ProfileDao::getAllOnce
+        val profileId: KProperty1<ProfileEntity, Long> = ProfileEntity::id
+        val liveSources: KProperty1<ActiveProfileSources, List<Long>> = ActiveProfileSources::liveSourceIds
+        val tvHomeOn: KProperty1<SettingsRepository, Flow<Boolean>> = SettingsRepository::androidTvHomeEnabled
+        val setTvHomeOn: suspend (SettingsRepository, Boolean) -> Unit = SettingsRepository::setAndroidTvHomeEnabled
+        val sortGuide: KProperty1<SettingsRepository, Flow<SettingsRepository.GuideSort>> = SettingsRepository::sortGuide
+        val guideSorts = SettingsRepository.GuideSort.entries.map { it.name }
+        val clearProfile: suspend (LauncherIntegrationRepository, Long) -> Unit = LauncherIntegrationRepository::clearProfile
+        val liveLink: (Long?, String?, String?) -> LauncherDeepLink = { sourceId, remoteId, name ->
+            LauncherDeepLink.Live(sourceId = sourceId, remoteId = remoteId, name = name)
+        }
+        val linkUri: (LauncherDeepLink) -> Uri = LauncherDeepLink::toUri
+        val openLive: LauncherDeepLink = LauncherDeepLink.OpenLiveSection
+        val posterArt: KFunction2<Context, OkHttpClient, LiveLogoPosterArt> = ::LiveLogoPosterArt
+        val posterCached: (LiveLogoPosterArt, Uri, Int) -> Uri? = LiveLogoPosterArt::cached
+        val posterPrepare: (LiveLogoPosterArt, List<Uri>, Int, suspend () -> Unit) -> Unit = LiveLogoPosterArt::prepare
+        val appliedIcon: (Context) -> AppIcon = AppIconSwitcher::applied
+        val banner: KProperty1<AppIcon, Int> = AppIcon::banner
+        val customizeKey: (ChannelEntity) -> String = CustomizeKeys::channel
+        val hiddenItems: KProperty1<SectionCustomizations, Map<String, String>> = SectionCustomizations::hiddenItems
+        val itemNames: KProperty1<SectionCustomizations, Map<String, String>> = SectionCustomizations::itemNames
+        val logoUrl: KProperty1<ChannelEntity, String?> = ChannelEntity::displayLogoUrl
+        listOf(profileId, liveSources, tvHomeOn, sortGuide, banner, hiddenItems, itemNames, logoUrl).forEach { assertNotNull(it) }
+        listOf(recentlyWatched, channelById, favoriteIds, allProfiles, setTvHomeOn, clearProfile, liveLink, linkUri)
+            .forEach { assertNotNull(it) }
+        listOf(openLive, posterArt, posterCached, posterPrepare, appliedIcon, customizeKey).forEach { assertNotNull(it) }
+        // HomeRows.favorites copies EpgViewModel's guideOrder with one branch per value.
+        assertEquals(listOf("ALPHA", "PROVIDER", "LIVE_TV", "CATCHUP", "FAVORITES"), guideSorts)
 
         listOf(playerErrors, exoActive, previewErrors, reason, raw, result, finishedAt, failedMessage, lastError, playerFailure, previewFailure)
             .forEach { assertNotNull(it) }

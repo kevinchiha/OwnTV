@@ -1035,6 +1035,10 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	kevbox-live:recent
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt	KevBoxHomeRows
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsSync.kt	home rows: sync failed ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt	KevBoxHomeRows
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt	home rows: schedule failed ${e.javaClass.simpleName}
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt	kevbox-home-rows
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRowsWorker.kt	kevbox-home-rows-now
 2	empty	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	[
 1	regex	app/src/main/java/tv/own/owntv/kevbox/live/AccentFold.kt	\\p{Mn}+

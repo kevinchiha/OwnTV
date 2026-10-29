@@ -41,13 +41,18 @@ object LiveOnlySettings {
     // The Quick mute switch (AC-9, AC-13)
     const val QUICK_PREVIEW_SOUND = "quick_preview_sound"
 
-    /** Exactly the 23 keys above. */
+    // Settings › App › Android TV home and its Refresh now: KevBox Live publishes its own home screen
+    // rows, always on (home rows plan AC-9), so Core's switch stays off and out of sight.
+    const val ANDROID_TV_HOME = "android_tv_home"
+    const val ANDROID_TV_HOME_REFRESH = "android_tv_home_refresh"
+
+    /** Exactly the 25 keys above. */
     val HIDDEN_KEYS: Set<String> = setOf(
         LIVE_LAYOUT, LIVE_OPENS_IN, VOD_LAYOUT, TAB_PANEL_WIDTH, TAB_CONTENT_MENUS, BROWSING_LISTS,
         TAB_HOME, TAB_METADATA, TAB_OPEN_SUBTITLES, ACCENT, FOCUS_HIGHLIGHT,
         VP_LIVE_ENGINE, VP_LIVE_ENGINE_SOURCES, VP_VOD_ENGINE, VP_VOD_ENGINE_SOURCES, VP_RESET_PINS,
         VP_RESUME, VP_AFR_PAUSE, VP_AFR_RESOLUTION, VP_MULTIVIEW, VP_MULTIVIEW_TILES, VP_PREVIEW_AUDIO,
-        QUICK_PREVIEW_SOUND,
+        QUICK_PREVIEW_SOUND, ANDROID_TV_HOME, ANDROID_TV_HOME_REFRESH,
     )
 
     /** Whether KevBox draws the row with this key. */
@@ -83,8 +88,6 @@ object LiveOnlySettings {
 
     /** Row key to the root group key it is drawn in instead of its own. */
     val MOVED_ROWS: Map<String, String> = mapOf(TAB_CUSTOMIZE to GROUP_LIVE)
-    const val ANDROID_TV_HOME = "android_tv_home"
-    const val ANDROID_TV_HOME_REFRESH = "android_tv_home_refresh"
 
     // Fixed values, read instead of storage (AC-13, AC-14, AC-15, AC-38)
     const val ACCENT_HEX: String = LiveOnly.ACCENT_HEX

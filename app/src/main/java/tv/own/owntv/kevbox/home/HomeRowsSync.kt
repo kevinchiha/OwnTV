@@ -72,7 +72,7 @@ interface HomeReads {
  *
  * [start] syncs 1 s after the last change to the watch history, the favourites, the session, the
  * active profile, its customizations or the guide's Order setting, and at once when MainActivity
- * stops. [syncNow] is also what the background worker calls.
+ * stops, and it schedules the 30-minute background job. [syncNow] is also what HomeRowsWorker calls.
  */
 class HomeRowsSync(
     private val provider: HomeProvider,
@@ -81,6 +81,8 @@ class HomeRowsSync(
     private val link: (ChannelEntity) -> String,
     /** Registers an action for each MainActivity stop. */
     private val onAppLeft: (() -> Unit) -> Unit,
+    /** Schedules the periodic background sync; HomeRowsWorker.schedule in the app. */
+    private val schedule: () -> Unit,
     private val scope: CoroutineScope,
     /** Where the provider and database are read; Dispatchers.IO in the app. */
     private val io: CoroutineContext,
@@ -94,6 +96,7 @@ class HomeRowsSync(
     fun start() {
         if (!begun.compareAndSet(false, true)) return
         if (!provider.supported()) return
+        schedule()
         scope.launch {
             merge(reads.changes(), kicks).debounce(DEBOUNCE_MS).collect { syncNow() }
         }

@@ -13,7 +13,7 @@ import tv.own.owntv.core.player.EnginePreference
 class LiveOnlySettingsTest {
 
     @Test
-    fun hiddenKeysAreExactlyTheAc2AndAc3KeysPlusTheQuickMute() {
+    fun hiddenKeysAreExactlyTheAc2AndAc3KeysPlusTheQuickMuteAndTvHome() {
         val expected = setOf(
             "live_layout", "live_opens_in", "vod_layout", "tab_PANEL_WIDTH", "tab_CONTENT_MENUS",
             "browsing_lists", "tab_HOME", "tab_METADATA", "tab_OPEN_SUBTITLES", "accent", "focus_highlight",
@@ -21,8 +21,9 @@ class LiveOnlySettingsTest {
             "vp_reset_pins", "vp_resume", "vp_afr_pause", "vp_afr_resolution", "vp_multiview",
             "vp_multiview_tiles", "vp_preview_audio",
             "quick_preview_sound",
+            "android_tv_home", "android_tv_home_refresh",
         )
-        assertEquals(23, expected.size)
+        assertEquals(25, expected.size)
         assertEquals(expected, LiveOnlySettings.HIDDEN_KEYS)
         expected.forEach { assertFalse(it, LiveOnlySettings.shows(it)) }
     }

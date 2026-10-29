@@ -3,6 +3,8 @@ package tv.own.owntv.kevbox.home
 
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
@@ -17,13 +19,13 @@ import tv.own.owntv.core.settings.SettingsRepository.GuideSort
 class HomeRowsSyncTest {
 
     /** Two channels and their programs, kept in memory the way the provider keeps them. */
-    private class FakeProvider : HomeProvider {
+    private class FakeProvider(private val leanback: Boolean = true) : HomeProvider {
         val channels = mapOf(HomeRow.RECENT to 10L, HomeRow.FAVORITES to 11L)
         val stored = HashMap<Long, MutableMap<Long, HomeCard>>()
         var ensured = 0
         private var nextId = 100L
 
-        override fun supported() = true
+        override fun supported() = leanback
 
         override fun ensureChannels(): Map<HomeRow, Long> {
             ensured++
@@ -77,13 +79,19 @@ class HomeRowsSyncTest {
         customizations = SectionCustomizations(),
     )
 
-    private fun sync(provider: FakeProvider, reads: FakeReads) = HomeRowsSync(
+    private fun sync(
+        provider: FakeProvider,
+        reads: FakeReads,
+        schedule: () -> Unit = {},
+        scope: CoroutineScope = CoroutineScope(EmptyCoroutineContext),
+    ) = HomeRowsSync(
         provider = provider,
         reads = reads,
         art = NoArt,
         link = { "link:${it.remoteId}" },
         onAppLeft = {},
-        scope = CoroutineScope(EmptyCoroutineContext),
+        schedule = schedule,
+        scope = scope,
         io = EmptyCoroutineContext,
     )
 
@@ -126,5 +134,28 @@ class HomeRowsSyncTest {
         val reads = FakeReads(signedIn, coreOn = false)
         sync(FakeProvider(), reads).syncNow()
         assertEquals(0, reads.turnedOff)
+    }
+
+    @Test
+    fun startSchedulesTheBackgroundJobOnceOnALeanbackTv() {
+        var scheduled = 0
+        val scope = CoroutineScope(Job())
+        val sync = sync(FakeProvider(), FakeReads(signedIn), schedule = { scheduled++ }, scope = scope)
+
+        sync.start()
+        sync.start()
+        scope.cancel()
+
+        assertEquals(1, scheduled)
+    }
+
+    @Test
+    fun startSchedulesNothingWithoutLeanback() {
+        var scheduled = 0
+        val scope = CoroutineScope(Job())
+        sync(FakeProvider(leanback = false), FakeReads(signedIn), schedule = { scheduled++ }, scope = scope).start()
+        scope.cancel()
+
+        assertEquals(0, scheduled)
     }
 }

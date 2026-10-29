@@ -366,6 +366,7 @@ val kevboxModule = module {
             art = tv.own.owntv.kevbox.home.CoreLogoArt(get()),
             link = channels::link,
             onAppLeft = { action -> tv.own.owntv.kevbox.home.onMainActivityStop(app, action) },
+            schedule = { tv.own.owntv.kevbox.home.HomeRowsWorker.schedule(app) },
             scope = get(),
             io = kotlinx.coroutines.Dispatchers.IO,
         )
