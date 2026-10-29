@@ -117,3 +117,5 @@ review: minor, LoginFileSignIn.kt:102: deeply nested JSON can throw StackOverflo
 ocr: medium, LoginFileSignIn.kt:75: an old result file sits there during the new sign-in. Decided: fix (delete it once the login file is accepted).
 ocr: medium, LoginFileSignIn.kt:84: signing out before the new password is checked. Decided: skip, the plan's Decisions chose this (it is what a person at the screen must do); reported to Kevin.
 ocr: 3 low comments dropped.
+fix round 1: 4db5fdf6 fixes all four listed items (onNewIntent check, re-check when busy clears, StackOverflowError counts as unreadable, old result deleted once a file is accepted); 19/19 LoginFileSignInTest; fixer's gate green apart from the baseline.
+re-review: the four items checked against 4db5fdf6, all closed; onNewIntent left for the emulator check.
