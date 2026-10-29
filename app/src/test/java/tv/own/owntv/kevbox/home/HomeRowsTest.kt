@@ -104,6 +104,26 @@ class HomeRowsTest {
     }
 
     @Test
+    fun titleDropsProviderTagsButTheLinkKeepsTheProviderName() {
+        val ch = channel(5, name = "FR| FRANCE 3 4K")
+        val card = recent(listOf(ch)).single()
+        assertEquals("FRANCE 3 4K", card.title)
+        assertEquals("link:1:5:FR| FRANCE 3 4K", card.intentUri)
+        assertEquals("ch:1:5", card.key)
+    }
+
+    @Test
+    fun renameIsParsedLikeTheGuideParsesIt() {
+        // EpgViewModel copies the rename into the channel's name; EpgScreen then parses that name.
+        val chs = listOf(channel(5, name = "FR| FRANCE 2 HD"), channel(6, name = "UK: BBC ONE"))
+        val cust = SectionCustomizations(itemNames = mapOf("1:5" to "BE| La Deux"))
+        assertEquals(listOf("La Deux", "BBC ONE"), recent(chs, cust = cust).map { it.title })
+        assertEquals(listOf("link:1:5:FR| FRANCE 2 HD", "link:1:6:UK: BBC ONE"), recent(chs, cust = cust).map { it.intentUri })
+        // The guide's A-Z sorts on the unparsed name ("be| la deux" before "uk: bbc one"); so does the row.
+        assertEquals(listOf("La Deux", "BBC ONE"), favorites(chs, GuideSort.ALPHA, cust = cust).map { it.title })
+    }
+
+    @Test
     fun keyFallsBackToNameWithoutRemoteId() {
         val cards = recent(listOf(channel(3, name = "Local", remoteId = null)))
         assertEquals("ch:1:Local", cards.single().key)

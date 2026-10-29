@@ -150,7 +150,7 @@ keep one file per row, with its full path.
 | File | Proof the change survived |
 | --- | --- |
 | `app/build.gradle.kts` | `grep -n 'tv.kevbox.live' app/build.gradle.kts && grep -n 'id("io.sentry.android.gradle") version "6.23.0"' app/build.gradle.kts && grep -n 'io.sentry:sentry-android-ndk:8.60.0' app/build.gradle.kts && grep -n 'kevbox.sentryDsnDebug' app/build.gradle.kts && grep -n 'ignoredBuildTypes.set(setOf("debug"))' app/build.gradle.kts && grep -n 'kevbox.updateFeed' app/build.gradle.kts && grep -n '"KEVBOX_UPDATE_FEED", javaString("")' app/build.gradle.kts` (the KevBox package name; Sentry plugin, SDK, `SENTRY_DSN` and the `sentry { }` block, 0.3; the silent updater's `KEVBOX_UPDATE_FEED`, blank in release) |
-| `app/src/main/AndroidManifest.xml` | `grep -n 'io.sentry.auto-init' app/src/main/AndroidManifest.xml && grep -n 'SentryTestReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:permission="android.permission.DUMP"' app/src/main/AndroidManifest.xml && grep -n 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' app/src/main/AndroidManifest.xml && grep -n 'SilentUpdateReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.home.HomeRowsBootReceiver"' app/src/main/AndroidManifest.xml` (Sentry starts by hand after CrashRecorder; the shell-only Sentry test receiver, 0.3; the silent self-update permission and its result receiver; the home screen rows' receiver for boot and `INITIALIZE_PROGRAMS`, declared after `SilentUpdateReceiver`) |
+| `app/src/main/AndroidManifest.xml` | `grep -n 'io.sentry.auto-init' app/src/main/AndroidManifest.xml && grep -n 'SentryTestReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:permission="android.permission.DUMP"' app/src/main/AndroidManifest.xml && grep -n 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' app/src/main/AndroidManifest.xml && grep -n 'SilentUpdateReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.home.HomeRowsBootReceiver"' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.home.HomeLogoArtProvider"' app/src/main/AndroidManifest.xml` (Sentry starts by hand after CrashRecorder; the shell-only Sentry test receiver, 0.3; the silent self-update permission and its result receiver; the home screen rows' receiver for boot and `INITIALIZE_PROGRAMS`, declared after `SilentUpdateReceiver`, and the rows' read-only logo card provider right after it) |
 | `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'kevbox.ui.QuietAccessibility.install(this)' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -c 'KevBoxAutoSetup(' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'LaunchedEffect(profile) { gateSession.authenticateProfile(profile) }' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'get<tv.own.owntv.kevbox.usage.LastPress>().press()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'get<tv.own.owntv.kevbox.session.LoginFileSignIn>().check()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -A8 'override fun onNewIntent' app/src/main/java/tv/own/owntv/MainActivity.kt | grep 'LoginFileSignIn>().check()'` (the count must be 2. 0.5: `dispatchKeyEvent`, added after `onStart`, stamps every key down as the watching diary's last press; `onUserInteraction` is not used because Android calls it on Home too. Login file: `onResume`, which upstream does not override, and upstream's `onNewIntent` check KevBox Setup's login file; see below) |
 | `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.UpdateProfileAttacher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'network.DnsDefault>().applyOnce()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'refresh.PlaylistRefreshSetting>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.start(this, BuildConfig.SENTRY_DSN)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.LiveCheckin>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'errors.ErrorWatchers>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.PlayWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.DiaryWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'sports.SportsDefaults>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.SilentUpdateScheduler>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'home.HomeRowsSync>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` (0.3: Sentry starts on the line after `CrashRecorder.install(this)`; the usage check-in; the error watchers, which start the reporter; Sentry's user and breadcrumbs, bound on the line before the watchers start so the reporter's first entries become breadcrumbs too. 0.4: the play watcher, on the line before the error watchers start, so the reporter's first failure already reaches the play notes. 0.5: the watching diary, on the line after the play watcher starts. Sports: SportsDefaults starts every profile on Any commentary language unless it picked its own, 2026-10-28. Home screen rows: HomeRowsSync starts on the line after SilentUpdateScheduler, 2026-10-29) |
 | `app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` | `grep -n 'LiveOnly.sectionToOpen(section)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'LiveOnly.menuSections(it)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.ACCENT_HEX)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.FOCUS_HIGHLIGHT_HEX)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` |
@@ -642,15 +642,34 @@ deleted outside the app is made again on the next sync. Every other channel of t
 deleted on each sync: Core's "Recent live" and any duplicate of ours. A TV without the leanback
 feature gets nothing.
 
-Each row holds up to 15 cards. A card has the channel name as its title (the member's rename if
-any) and the programme on now as its second line, read from the stored guide with one
-`LiveEpgReader.nowProgrammesFor` call for both rows, never `nowNext`. The art is Core's fitted
-16:9 logo: `LiveLogoPosterArt` pads the logo onto a 16:9 canvas, and Core's exported
-`LiveLogoArtProvider` (authority `<applicationId>.owntv-live-logo-art`) serves the file to the
-launcher. Until that file exists the card carries the raw logo URL. The card's link is Core's
-`LauncherDeepLink.Live` (`owntv://play/live?...`) in an `ACTION_VIEW` intent with the app's own
-package set, so no chooser shows. The shell's existing deep-link handler resolves it against the
-active profile and plays the channel full screen.
+Each row holds up to 15 cards. A card's title is the channel name as the guide shows it: the
+member's rename if any, else the provider's name, then Core's `ProviderTags.parse(name).name`
+("FR| FRANCE 3 4K" shows as "FRANCE 3 4K"). The rename is parsed too, because the guide copies it
+into the channel's name before parsing. The Favorites A-Z order still sorts on the unparsed name,
+as the guide does, and the card's link keeps the provider's original name. The second line is the
+programme on now, read from the stored guide with one `LiveEpgReader.nowProgrammesFor` call for
+both rows, never `nowNext`.
+
+The art is KevBox's own logo card, not Core's. Core's `LiveLogoPosterArt` writes a transparent
+16:9 PNG, so a dark-ink logo (France 2's black "2") vanished on the launcher's dark card.
+`HomeLogoArt` downloads the logo with Core's `OkHttpClient` (8 s, 5 MB at most, Core's limits) and
+draws an opaque 1280x720 PNG: the dark plate (`0xFF161C24`) behind the logo, or the light plate
+(`0xFFEDF1F5`) when the logo's ink would be unreadable on the dark one. The rule is the app's
+`ChannelLogoTile` rule, copied into `HomeLogoPlate.kt` because `ChannelLogoTile.kt` is an upstream
+file: the alpha-weighted mean ink colour, a light plate under 3:1 contrast with the dark plate,
+opaque logos left on the dark plate. The logo sits whole inside 72% of the width and 60% of the
+height, never cropped. Files live in `cache/kevbox-home-art/`, named by a SHA-256 of a style
+version and the logo URL, kept 7 days and 200 at most, written to a temporary file and renamed into
+place. The fork's exported, read-only `HomeLogoArtProvider` (authority
+`<applicationId>.kevbox-home-art`) serves them to the launcher; like Core's `LiveLogoArtProvider`
+it opens only a single hash-named `.png` path segment from that directory, read mode only, and
+refuses everything else. Until a card's file exists it carries the raw logo URL; a sync that finds
+missing files has them written off the main thread and syncs again once one is written. If you
+change how the card is drawn, bump `STYLE` in `HomeLogoArt.kt` so the launcher sees new URIs.
+
+The card's link is Core's `LauncherDeepLink.Live` (`owntv://play/live?...`) in an `ACTION_VIEW`
+intent with the app's own package set, so no chooser shows. The shell's existing deep-link handler
+resolves it against the active profile and plays the channel full screen.
 
 "Recent channels" is the active profile's watch history (`ChannelDao.recentlyWatched`), newest
 first, the same list as the app's Recently watched. "Favorites" is the profile's favourite live
@@ -663,8 +682,9 @@ profile (`AdultCategoryClassifier.hiddenCategoryIds`), as the in-player history 
 values changed and deletes only cards no longer wanted.
 
 The code is fork-only, under `kevbox/home/`: `HomeRows.kt` decides what the rows hold,
-`HomeChannels.kt` reads and writes the provider, `HomeRowsSync.kt` keeps the rows current, and
-`HomeRowsWorker.kt` and `HomeRowsBootReceiver.kt` run it with the app closed. `HomeRowsSync` syncs
+`HomeChannels.kt` reads and writes the provider, `HomeLogoArt.kt`, `HomeLogoPlate.kt` and
+`HomeLogoArtProvider.kt` make and serve the logo cards, `HomeRowsSync.kt` keeps the rows current,
+and `HomeRowsWorker.kt` and `HomeRowsBootReceiver.kt` run it with the app closed. `HomeRowsSync` syncs
 1 s after the last change to the KevBox session, the active profile, its watch history, its
 favourites, its Live customizations or the guide's Order setting, and at once when `MainActivity`
 stops. `HomeRowsBootReceiver` asks for one `HomeRowsWorker` run at boot and on
@@ -676,8 +696,9 @@ signing in fills them again. Two upstream files carry the hooks, each with a row
 
 - `OwnTVApp.kt` starts `HomeRowsSync` on the line after `SilentUpdateScheduler` starts. It
   schedules the 30-minute job and registers its own activity callbacks for the `MainActivity` stop.
-- `AndroidManifest.xml` declares the exported `HomeRowsBootReceiver`, after `SilentUpdateReceiver`.
-  It is exported because the launcher's broadcast comes from outside the app.
+- `AndroidManifest.xml` declares the exported `HomeRowsBootReceiver`, after `SilentUpdateReceiver`,
+  and the exported `HomeLogoArtProvider` right after it. Both are exported because the launcher
+  runs outside the app.
 
 Core's own home row is off for good. Each sync checks Core's `androidTvHomeEnabled`; when it is
 on, the sync sets it false and clears Core's rows for every profile
@@ -693,13 +714,15 @@ browsable, and its "add channel" screen cannot show from the background.
 
 After every Core bump, run `CoreContractTest` as the 0.3 section says. It pins every Core member
 the rows read, under "Home screen rows" in the test: the DAO reads, the settings, the deep links,
-`LauncherIntegrationRepository::clearProfile`, `LiveLogoPosterArt`'s constructor, `cached` and
-`prepare`, `AppIconSwitcher.applied(...).banner` for the channel logo, and the `GuideSort` values.
-The test cannot see three changes. If Core changes `TvHomeRepository`, or starts publishing
-without checking `androidTvHomeEnabled`, run the app on the emulator and check that the provider
-holds exactly two KevBox Live channels. If Core renames `LiveLogoArtProvider`'s authority, the
-cards lose their logos. If Core changes `LauncherDeepLink`'s format, or the shell stops handling
-it, the cards stop opening their channel.
+`LauncherIntegrationRepository::clearProfile`, `AppIconSwitcher.applied(...).banner` for the
+channel logo, `ProviderTags.parse` for the titles, and the `GuideSort` values. The logo cards use
+no Core code, so nothing is pinned for them. The test cannot see three changes. If Core changes
+`TvHomeRepository`, or starts publishing without checking `androidTvHomeEnabled`, run the app on
+the emulator and check that the provider holds exactly two KevBox Live channels. If Core changes
+how the guide shows a channel name (no longer `ProviderTags.parse(name).name`), change
+`HomeRows.title` to match. If Core changes `LauncherDeepLink`'s format, or the shell stops
+handling it, the cards stop opening their channel. If upstream changes `ChannelLogoTile`'s plate
+rule or colours, copy the change into `HomeLogoPlate.kt`.
 
 ## Regenerating the rebrand
 

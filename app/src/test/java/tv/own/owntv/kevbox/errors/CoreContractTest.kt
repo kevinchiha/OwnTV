@@ -3,14 +3,12 @@ package tv.own.owntv.kevbox.errors
 
 import android.content.Context
 import android.net.Uri
-import kotlin.reflect.KFunction2
 import kotlin.reflect.KProperty1
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import okhttp3.OkHttpClient
 import org.junit.Test
 import tv.own.owntv.core.brand.AppIcon
 import tv.own.owntv.core.brand.AppIconSwitcher
@@ -32,6 +30,7 @@ import tv.own.owntv.core.epg.displayLogoUrl
 import tv.own.owntv.core.launcher.LauncherDeepLink
 import tv.own.owntv.core.launcher.LauncherIntegrationRepository
 import tv.own.owntv.core.live.LiveEpgReader
+import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.core.model.MediaType
 import tv.own.owntv.core.parser.XtEpgEntry
 import tv.own.owntv.core.parser.XtreamClient
@@ -43,7 +42,6 @@ import tv.own.owntv.core.sync.SyncResult
 import tv.own.owntv.core.sync.SyncRunStats
 import tv.own.owntv.core.sync.work.CatalogSyncScheduler
 import tv.own.owntv.core.sync.work.CatalogSyncState
-import tv.own.owntv.core.tv.LiveLogoPosterArt
 import tv.own.owntv.player.ErrorInfo
 import tv.own.owntv.player.LivePreviewEngine
 import tv.own.owntv.player.LiveTuneController
@@ -104,7 +102,7 @@ class CoreContractTest {
         assertNotNull(activeSources)
 
         // Home screen rows (kevbox/home): what the rows hold, Core's own TV home switch, the card
-        // links, the channel logo and the fitted 16:9 poster art.
+        // links and the channel logo. The logo cards are KevBox's own (HomeLogoArt), so no Core pin.
         val recentlyWatched: (ChannelDao, Long, Int) -> Flow<List<ChannelEntity>> = ChannelDao::recentlyWatched
         val channelById: suspend (ChannelDao, Long) -> ChannelEntity? = ChannelDao::getById
         val favoriteIds: (FavoriteDao, Long, MediaType) -> Flow<List<Long>> = FavoriteDao::observeFavoriteIds
@@ -121,9 +119,6 @@ class CoreContractTest {
         }
         val linkUri: (LauncherDeepLink) -> Uri = LauncherDeepLink::toUri
         val openLive: LauncherDeepLink = LauncherDeepLink.OpenLiveSection
-        val posterArt: KFunction2<Context, OkHttpClient, LiveLogoPosterArt> = ::LiveLogoPosterArt
-        val posterCached: (LiveLogoPosterArt, Uri, Int) -> Uri? = LiveLogoPosterArt::cached
-        val posterPrepare: (LiveLogoPosterArt, List<Uri>, Int, suspend () -> Unit) -> Unit = LiveLogoPosterArt::prepare
         val appliedIcon: (Context) -> AppIcon = AppIconSwitcher::applied
         val banner: KProperty1<AppIcon, Int> = AppIcon::banner
         val customizeKey: (ChannelEntity) -> String = CustomizeKeys::channel
@@ -133,7 +128,10 @@ class CoreContractTest {
         listOf(profileId, liveSources, tvHomeOn, sortGuide, banner, hiddenItems, itemNames, logoUrl).forEach { assertNotNull(it) }
         listOf(recentlyWatched, channelById, favoriteIds, allProfiles, setTvHomeOn, clearProfile, liveLink, linkUri)
             .forEach { assertNotNull(it) }
-        listOf(openLive, posterArt, posterCached, posterPrepare, appliedIcon, customizeKey).forEach { assertNotNull(it) }
+        listOf(openLive, appliedIcon, customizeKey).forEach { assertNotNull(it) }
+        // Card titles are parsed as the guide parses channel names.
+        val providerName: (String) -> String = { ProviderTags.parse(it).name }
+        assertEquals("FRANCE 3 4K", providerName("FR| FRANCE 3 4K"))
         // The Recent row drops hidden categories, and adult ones on a Kids profile, as EpgViewModel reads them.
         val hiddenCategoryIds: (List<CategoryEntity>, Set<String>, Boolean) -> Set<Long> = AdultCategoryClassifier::hiddenCategoryIds
         val observeCategories: (CategoryDao, List<Long>, MediaType) -> Flow<List<CategoryEntity>> = CategoryDao::observe

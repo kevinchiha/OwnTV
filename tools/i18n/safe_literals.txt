@@ -1031,6 +1031,22 @@
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	home rows: write failed ${e.javaClass.simpleName}
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	kevbox_home_rows
 1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeChannels.kt	preview program query returned no cursor
+1	empty	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	\0
+1	technical	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	$STYLE|$raw
+1	technical	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	%02x
+1	uri	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	.kevbox-home-art
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	.png
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	.tmp
+1	uri	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	/
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	KevBoxHomeRows
+1	technical	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	SHA-256
+1	url	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	content://
+1	log	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	home rows: logo art failed ${e.javaClass.simpleName}
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	kevbox-home-art
+1	technical	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArt.kt	v1
+1	file-path	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArtProvider.kt	.png
+1	mime	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArtProvider.kt	image/png
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeLogoArtProvider.kt	r
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	ch:
 1	url	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	http://
 1	url	app/src/main/java/tv/own/owntv/kevbox/home/HomeRows.kt	https://

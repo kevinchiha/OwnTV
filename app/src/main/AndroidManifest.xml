@@ -85,6 +85,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- KevBox: serves the home screen rows' logo cards to the launcher, read-only. Exported: the
+             launcher runs outside the app. It opens only hash-named PNGs in its own cache directory,
+             as Core's LiveLogoArtProvider does, so it needs no permission (lint's ExportedContentProvider). -->
+        <provider
+            android:name=".kevbox.home.HomeLogoArtProvider"
+            android:authorities="${applicationId}.kevbox-home-art"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
+
         <!-- Exposes the downloaded update APK to the system installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -5,6 +5,7 @@ import tv.own.owntv.core.customize.CustomizeKeys
 import tv.own.owntv.core.customize.SectionCustomizations
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.epg.displayLogoUrl
+import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.core.settings.SettingsRepository.GuideSort
 
 /** The two rows KevBox Live puts on the TV home screen, in the order they are created. */
@@ -53,9 +54,9 @@ data class HomeDiff(
  * Shared parameters:
  * - `liveSourceIds`: the active profile's live sources; channels from any other source are dropped.
  * - `customizations`: the profile's Live customizations; hidden channels are dropped, renames
- *   become titles.
+ *   become titles. A title has its provider tags parsed off, as the guide shows it.
  * - `nowTitles`: the title of the programme on now, by channel id, from the stored guide.
- * - `fitted`: the fitted 16:9 logo for a raw logo URL once it exists, null before.
+ * - `fitted`: the 16:9 logo card (HomeLogoArt) for a raw logo URL once it exists, null before.
  * - `link`: the card's intent URI for the original (not renamed) channel.
  */
 object HomeRows {
@@ -150,8 +151,16 @@ object HomeRows {
         it.sourceId in liveSourceIds && !customizations.hiddenItems.containsKey(CustomizeKeys.channel(it))
     }
 
+    /** The rename or the provider's name, unparsed: what the guide sorts on. */
     private fun displayName(ch: ChannelEntity, customizations: SectionCustomizations): String =
         customizations.itemNames[CustomizeKeys.channel(ch)] ?: ch.name
+
+    /**
+     * The card title, as the guide shows a channel: EpgViewModel copies the rename into the name, and
+     * EpgScreen shows `ProviderTags.parse(name).name` ("FR| FRANCE 3 4K" becomes "FRANCE 3 4K").
+     */
+    private fun title(ch: ChannelEntity, customizations: SectionCustomizations): String =
+        ProviderTags.parse(displayName(ch, customizations)).name
 
     private fun cards(
         channels: List<ChannelEntity>,
@@ -165,7 +174,7 @@ object HomeRows {
         .mapIndexed { index, ch ->
             HomeCard(
                 key = keyOf(ch),
-                title = displayName(ch, customizations),
+                title = title(ch, customizations),
                 description = nowTitles[ch.id]?.trim()?.takeIf { it.isNotEmpty() },
                 artUri = rawLogo(ch)?.let { fitted(it) ?: it },
                 intentUri = link(ch),

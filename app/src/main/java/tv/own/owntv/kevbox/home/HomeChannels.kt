@@ -24,7 +24,6 @@ import tv.own.owntv.R
 import tv.own.owntv.core.brand.AppIconSwitcher
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.launcher.LauncherDeepLink
-import tv.own.owntv.core.tv.LiveLogoPosterArt
 
 /** The system TV provider, as [HomeRowsSync] uses it. [HomeChannels] is the real one. */
 interface HomeProvider {
@@ -44,27 +43,13 @@ interface HomeProvider {
     fun apply(channelId: Long, diff: HomeDiff)
 }
 
-/** Core's fitted 16:9 logos, by raw logo URL. [CoreLogoArt] is the real one. */
+/** The 16:9 logo cards, by raw logo URL. [HomeLogoArt] is the real one. */
 interface HomeArt {
-    /** The fitted logo once it exists, null before. */
+    /** The card's `content://` URI once its file exists, null before. */
     fun fitted(raw: String): String?
 
-    /** Starts writing the missing fitted logos; [onReady] runs once at least one was written. */
+    /** Starts writing the missing cards off the main thread; [onReady] runs once at least one was written. */
     fun prepare(raws: List<String>, onReady: suspend () -> Unit)
-}
-
-/** [HomeArt] over Core's [LiveLogoPosterArt]. */
-class CoreLogoArt(private val art: LiveLogoPosterArt) : HomeArt {
-    override fun fitted(raw: String): String? = art.cached(Uri.parse(raw), ASPECT_16_9)?.toString()
-
-    override fun prepare(raws: List<String>, onReady: suspend () -> Unit) {
-        art.prepare(raws.map(Uri::parse), ASPECT_16_9) { onReady() }
-    }
-
-    private companion object {
-        /** LiveLogoPosterArt's aspect ratio code for 16:9, the same as the provider's. */
-        const val ASPECT_16_9 = TvContractCompat.PreviewPrograms.ASPECT_RATIO_16_9
-    }
 }
 
 /**
