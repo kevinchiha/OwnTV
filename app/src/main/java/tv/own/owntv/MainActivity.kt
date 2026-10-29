@@ -123,6 +123,10 @@ open class MainActivity : ComponentActivity() {
         setIntent(intent)
         pendingDeepLink = LauncherDeepLink.parse(intent.data)
         Log.d(TAG, "onNewIntent deepLinkHost=${intent.data?.host} deepLinkType=${pendingDeepLink?.javaClass?.simpleName ?: "none"}")
+        // KevBox: this activity is singleTop, so Setup's launch can reach an app already in front
+        // here without an onResume. Look for the login file then too; a check that overlaps
+        // onResume's does nothing.
+        get<tv.own.owntv.kevbox.session.LoginFileSignIn>().check()
     }
 
     override fun onStop() {

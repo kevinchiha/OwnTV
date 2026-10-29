@@ -3,6 +3,7 @@ package tv.own.owntv.kevbox.session
 import java.io.File
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -51,11 +53,21 @@ class LoginFileSignInTest {
 
     private fun files() = folder.root.list()!!.sorted()
 
-    private fun test(deadlineMs: Long = 5_000, block: suspend CoroutineScope.(LoginFileSignIn) -> Unit) = runBlocking {
+    /** How many times a check looked for the folder: one per check that ran. */
+    private val looks = AtomicInteger(0)
+
+    private fun test(
+        deadlineMs: Long = 5_000,
+        toJson: (String) -> JSONObject = ::JSONObject,
+        block: suspend CoroutineScope.(LoginFileSignIn) -> Unit,
+    ) = runBlocking {
         val scope = CoroutineScope(coroutineContext + SupervisorJob(coroutineContext[Job]))
         try {
             val subject = LoginFileSignIn(
-                dir = { folder.root },
+                dir = {
+                    looks.incrementAndGet()
+                    folder.root
+                },
                 now = { clock },
                 signedInEmail = { signedIn },
                 signOut = {
@@ -69,6 +81,7 @@ class LoginFileSignInTest {
                 scope = scope,
                 io = Dispatchers.IO,
                 deadlineMs = deadlineMs,
+                toJson = toJson,
             )
             scope.block(subject)
         } finally {
@@ -127,6 +140,23 @@ class LoginFileSignInTest {
     }
 
     @Test
+    fun `deeply nested JSON is deleted with no sign-in and no result, even when the parse overflows the stack`() {
+        // The JVM's org.json stops deep nesting with an exception. The device's recurses once per
+        // level and overflows the stack, which the second parser stands in for.
+        val parsers = listOf<(String) -> JSONObject>(::JSONObject, { text -> throw StackOverflowError(text.take(10)) })
+        for (toJson in parsers) {
+            test(toJson = toJson) { subject ->
+                leave("[".repeat(60 * 1024))
+
+                subject.checkNow()
+
+                assertTrue(events.isEmpty())
+                assertEquals(emptyList<String>(), files())
+            }
+        }
+    }
+
+    @Test
     fun `a missing or wrongly typed key is deleted with no sign-in and no result`() {
         val texts = listOf(
             login(email = null),
@@ -171,6 +201,33 @@ class LoginFileSignInTest {
         subject.checkNow()
 
         assertEquals(false, fileThere)
+    }
+
+    @Test
+    fun `an old result file is gone before the sign-in call starts`() = test { subject ->
+        resultFile.writeText("""{"ok":false,"error":"Wrong email or password"}""")
+        var resultThere: Boolean? = null
+        server = { email, _, onAnswer ->
+            resultThere = resultFile.exists()
+            SignInResult.Success(email).also(onAnswer)
+        }
+        leave(login())
+
+        subject.checkNow()
+
+        assertEquals(false, resultThere)
+        assertEquals("""{"ok":true}""", result())
+    }
+
+    @Test
+    fun `a stale file leaves an old result file alone`() = test { subject ->
+        val old = """{"ok":true}"""
+        resultFile.writeText(old)
+        leave(login(requestedAt = NOW - 600_001))
+
+        subject.checkNow()
+
+        assertEquals(old, result())
     }
 
     @Test
@@ -245,7 +302,7 @@ class LoginFileSignInTest {
     }
 
     @Test
-    fun `a check while a file sign-in runs does nothing, and the next file is read once it ends`() = test(deadlineMs = 100) { subject ->
+    fun `a check while a file sign-in runs does nothing, and a file pushed meanwhile is read once it ends`() = test(deadlineMs = 100) { subject ->
         val gate = CompletableDeferred<Unit>()
         server = { email, _, onAnswer ->
             gate.await()
@@ -262,14 +319,40 @@ class LoginFileSignInTest {
         assertTrue(loginFile.exists())
         assertEquals(1, events.size)
 
+        // No further check from the activity: the end of the first sign-in looks again by itself.
         gate.complete(Unit)
-        resultFile.delete()
-        waitFor {
-            subject.check()
-            !loginFile.exists() && resultFile.exists()
+        waitFor { result() == """{"ok":true}""" }
+        assertEquals(listOf("signIn member@example.com pw", "signIn second@example.com pw"), events.toList())
+        assertFalse(loginFile.exists())
+    }
+
+    @Test
+    fun `a file that will not delete is looked at once after a sign-in ends, not again and again`() = test(deadlineMs = 100) { subject ->
+        val gate = CompletableDeferred<Unit>()
+        server = { email, _, onAnswer ->
+            gate.await()
+            SignInResult.Success(email).also(onAnswer)
         }
-        assertEquals("signIn second@example.com pw", events.last())
-        assertEquals("""{"ok":true}""", result())
+        leave(login())
+        subject.checkNow() // times out; the call is still out
+        leave(login(email = "second@example.com"))
+        folder.root.setWritable(false) // its files cannot be deleted now
+        try {
+            assumeTrue("a read-only folder still lets this user delete", loginFile.exists() && !loginFile.delete())
+            val before = looks.get()
+
+            gate.complete(Unit)
+            waitFor { looks.get() > before }
+            delay(200)
+            val settled = looks.get()
+            delay(300)
+
+            assertEquals(settled, looks.get())
+            assertEquals(1, events.size)
+            assertTrue(loginFile.exists())
+        } finally {
+            folder.root.setWritable(true)
+        }
     }
 
     // --- accounts ------------------------------------------------------------------------------

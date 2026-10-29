@@ -18,10 +18,13 @@ import tv.own.owntv.kevbox.supabase.SignInResult
  * Signs in from the login file KevBox Setup leaves in the app's external files folder
  * (kevbox-setup's docs/login-file.md).
  *
- * The file is deleted before the sign-in starts. A stale, unreadable or incomplete file is deleted
- * and nothing else happens. Otherwise one result file is written: as soon as the server answers,
- * or with the timeout text after [deadlineMs]. Nothing here logs, and a parse error is dropped
- * without its message, since org.json quotes the input in it.
+ * The file is deleted before the sign-in starts, and so is an old result file. A stale, unreadable
+ * or incomplete file is deleted and nothing else happens. Otherwise one result file is written: as
+ * soon as the server answers, or with the timeout text after [deadlineMs]. Nothing here logs, and a
+ * parse error is dropped without its message, since org.json quotes the input in it.
+ *
+ * [toJson] is there for tests: the JVM's org.json stops deep nesting with an exception, while the
+ * device's recurses until the stack overflows.
  */
 class LoginFileSignIn(
     private val dir: () -> File?,
@@ -32,11 +35,12 @@ class LoginFileSignIn(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val deadlineMs: Long = 20_000,
+    private val toJson: (String) -> JSONObject = ::JSONObject,
 ) {
     // Held from the file read until the sign-in call returns, which may be after the result.
     private val busy = AtomicBoolean(false)
 
-    /** From MainActivity.onResume. Returns at once; does nothing while a file sign-in runs. */
+    /** From MainActivity.onResume and onNewIntent. Returns at once; does nothing while a file sign-in runs. */
     fun check() {
         if (!busy.compareAndSet(false, true)) return
         scope.launch(io) { guarded() }
@@ -58,8 +62,24 @@ class LoginFileSignIn(
             // A file or folder error: Setup reports its own timeout. The message is not kept.
         } finally {
             val job = signing
-            if (job == null) busy.set(false) else job.invokeOnCompletion { busy.set(false) }
+            if (job == null) {
+                busy.set(false)
+            } else {
+                // A file Setup pushed while this sign-in ran (after a timeout) gets no check of its
+                // own, so look once more. Only after a sign-in that ran to its end: a file that will
+                // not delete starts no sign-in, so it cannot bring this back round.
+                job.invokeOnCompletion { cause ->
+                    busy.set(false)
+                    if (cause == null && loginFileWaiting()) check()
+                }
+            }
         }
+    }
+
+    private fun loginFileWaiting(): Boolean = try {
+        dir()?.let { File(it, LOGIN_FILE).exists() } == true
+    } catch (_: Exception) {
+        false
     }
 
     /** Returns the sign-in job when one started, so the busy flag can wait for it. */
@@ -76,6 +96,8 @@ class LoginFileSignIn(
             writeResult(folder, FAILED)
             return null
         }
+        // Setup deletes it too before pushing; a result left from an earlier file must not pass for this one's.
+        File(folder, RESULT_FILE).delete()
 
         val answer = CompletableDeferred<SignInResult>()
         val job = scope.launch(io) {
@@ -108,10 +130,13 @@ class LoginFileSignIn(
         }
     } catch (_: Exception) {
         null
+    } catch (_: StackOverflowError) {
+        // Deep nesting such as 60 KB of "[": the device's org.json recurses once per level.
+        null
     }
 
     private fun parse(text: String): Login? {
-        val json = JSONObject(text)
+        val json = toJson(text)
         val email = (json.opt(EMAIL) as? String)?.takeIf { it.isNotBlank() } ?: return null
         val password = json.opt(PASSWORD) as? String ?: return null
         val requestedAt = (json.opt(REQUESTED_AT) as? Number)?.toLong() ?: return null
