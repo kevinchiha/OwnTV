@@ -15,6 +15,7 @@ class SilentUpdatePrefsTest {
     /** In-memory SharedPreferences: the JVM's android.jar stub would silently drop every write. */
     private class MemoryPrefs : SharedPreferences {
         val values = mutableMapOf<String, Any?>()
+        var commits = 0
 
         override fun getAll(): MutableMap<String, *> = values.toMutableMap()
         override fun getString(key: String, defValue: String?) = values[key] as String? ?: defValue
@@ -43,6 +44,7 @@ class SilentUpdatePrefsTest {
             override fun remove(key: String) = apply { removed += key }
             override fun clear() = apply { removed += values.keys }
             override fun commit(): Boolean {
+                commits++
                 removed.forEach { values.remove(it) }
                 values.putAll(pending)
                 return true
@@ -132,28 +134,75 @@ class SilentUpdatePrefsTest {
         assertFalse(prefs.skips("5.2.1.4"))
     }
 
+    private val hour = 60 * 60 * 1000L
+
     @Test
-    fun `a seen release still not installed after 7 days brings the card back`() {
+    fun `a seen release with a block brings the card back 72 hours after its after`() {
         val store = MemoryPrefs()
-        val published = 1_000 * day
-        SilentUpdatePrefs(store).seen("5.2.1.3", published)
+        val afterBox = 1_000 * day
+        SilentUpdatePrefs(store).seen("5.2.1.3", hasSilent = true, afterBoxMs = afterBox)
 
         val prefs = SilentUpdatePrefs(store)
-        assertFalse(prefs.fallbackNeeded("5.2.1.2", boxNowMs = published + 7 * day))
-        assertTrue(prefs.fallbackNeeded("5.2.1.2", boxNowMs = published + 7 * day + 1))
-        assertFalse(prefs.fallbackNeeded("5.2.1.3", boxNowMs = published + 30 * day))
+        assertFalse(prefs.fallbackNeeded("5.2.1.2", boxNowMs = afterBox + 72 * hour - 1))
+        assertTrue(prefs.fallbackNeeded("5.2.1.2", boxNowMs = afterBox + 72 * hour))
+        assertFalse(prefs.fallbackNeeded("5.2.1.3", boxNowMs = afterBox + 30 * day))
+    }
+
+    @Test
+    fun `a seen release without a block brings the card back at once`() {
+        val store = MemoryPrefs()
+        SilentUpdatePrefs(store).seen("5.2.1.3", hasSilent = false, afterBoxMs = null)
+
+        val prefs = SilentUpdatePrefs(store)
+        assertTrue(prefs.fallbackNeeded("5.2.1.2", boxNowMs = 0L))
+        assertFalse(prefs.fallbackNeeded("5.2.1.3", boxNowMs = 0L))
+    }
+
+    @Test
+    fun `finding the block later replaces the no-block record of the same version, and back`() {
+        val store = MemoryPrefs()
+        val prefs = SilentUpdatePrefs(store)
+        prefs.seen("5.2.1.3", hasSilent = false, afterBoxMs = null)
+        assertTrue(prefs.fallbackNeeded("5.2.1.2", boxNowMs = 100 * day))
+
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = 100 * day)
+        assertFalse(SilentUpdatePrefs(store).fallbackNeeded("5.2.1.2", boxNowMs = 100 * day))
+
+        // The same version with a moved `after` (the box clock was set right) is stored too.
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = 90 * day)
+        assertTrue(SilentUpdatePrefs(store).fallbackNeeded("5.2.1.2", boxNowMs = 93 * day))
+
+        prefs.seen("5.2.1.3", hasSilent = false, afterBoxMs = null)
+        assertTrue(SilentUpdatePrefs(store).fallbackNeeded("5.2.1.2", boxNowMs = 0L))
     }
 
     @Test
     fun `the latest seen release replaces the one before`() {
         val store = MemoryPrefs()
         val prefs = SilentUpdatePrefs(store)
-        prefs.seen("5.2.1.3", 0L)
-        prefs.seen("5.2.1.4", 100 * day)
+        prefs.seen("5.2.1.3", hasSilent = false, afterBoxMs = null)
+        prefs.seen("5.2.1.4", hasSilent = true, afterBoxMs = 100 * day)
 
-        assertFalse(prefs.fallbackNeeded("5.2.1.3", boxNowMs = 100 * day + 7 * day))
-        assertTrue(prefs.fallbackNeeded("5.2.1.3", boxNowMs = 100 * day + 8 * day))
+        assertFalse(prefs.fallbackNeeded("5.2.1.3", boxNowMs = 100 * day + 72 * hour - 1))
+        assertTrue(prefs.fallbackNeeded("5.2.1.3", boxNowMs = 100 * day + 72 * hour))
         assertFalse(prefs.fallbackNeeded("5.2.1.4", boxNowMs = 100 * day + 8 * day))
+    }
+
+    @Test
+    fun `an unchanged record is not written again, and the old publish time goes`() {
+        val store = MemoryPrefs()
+        store.values["seen_published_at"] = 5L
+        val prefs = SilentUpdatePrefs(store)
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = 100 * day)
+        assertFalse(store.contains("seen_published_at"))
+
+        val commits = store.commits
+        prefs.seen("5.2.1.3", hasSilent = true, afterBoxMs = 100 * day)
+        assertEquals(commits, store.commits)
+        prefs.seen("5.2.1.3", hasSilent = false, afterBoxMs = null)
+        assertEquals(commits + 1, store.commits)
+        prefs.seen("5.2.1.3", hasSilent = false, afterBoxMs = null)
+        assertEquals(commits + 1, store.commits)
     }
 
     @Test

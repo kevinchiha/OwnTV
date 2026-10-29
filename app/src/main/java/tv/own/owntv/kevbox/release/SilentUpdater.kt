@@ -30,7 +30,8 @@ import tv.own.owntv.core.CoreBuildInfo
 /**
  * Installs a newer release with no prompt, on Android 12 and later, while nobody watches.
  *
- * Each [run] reads the latest release, applies [SilentUpdateRules] (newer, rollout, idle), downloads
+ * Each [run] reads the latest release and its [SilentBlock] (the `kevbox-silent.json` asset; a release
+ * without one is never installed here), applies [SilentUpdateRules] (newer, rollout, idle), downloads
  * the APK and its profile into `filesDir/silent-update/`, checks the APK, and commits one
  * [PackageInstaller] session that asks for no user action, after a last idle check. [SilentUpdateReceiver]
  * gets the result. Core's own updater is left alone: its session cannot skip the prompt.
@@ -48,7 +49,8 @@ class SilentUpdater(
     private val context: Context,
     client: OkHttpClient,
     private val prefs: SilentUpdatePrefs,
-    private val signedInEmail: () -> String?,
+    /** The signed-in Supabase user id, matched against the block's early users. Never logged. */
+    private val signedInUserId: () -> String?,
     private val activityStarted: () -> Boolean,
     private val playing: () -> Boolean,
     private val lastPressElapsedMs: () -> Long,
@@ -115,9 +117,6 @@ class SilentUpdater(
         }
         val release = SilentUpdateRules.parse(body, wantX86, Build.VERSION.SDK_INT) ?: return "no-release"
         found(release.version)
-        // Stored on the box's own clock (publish time moved by the box's offset from the server), so the
-        // 7-day rule, which reads the box clock, works on a box whose date is wrong.
-        prefs.seen(release.version, release.publishedAtMs + (now() - serverNow))
         val files = VersionFiles(File(context.filesDir, DIR), release.version)
         if (!SilentUpdateRules.isNewer(release.version, BuildConfig.VERSION_NAME)) {
             files.clearAll()
@@ -127,7 +126,13 @@ class SilentUpdater(
             files.clearAll()
             return "skipped"
         }
-        if (!SilentUpdateRules.rolloutDue(release, signedInEmail(), serverNow)) return "waiting"
+        // A missing asset, a failed fetch and a malformed file all mean "no block": Core's card takes over.
+        val block = release.silentUrl?.let { fetchBlock(it) }
+        // `after` stored on the box's own clock (moved by the box's offset from the server), so the
+        // 72-hour net, which reads the box clock, works on a box whose date is wrong.
+        prefs.seen(release.version, hasSilent = block != null, afterBoxMs = block?.let { it.afterMs + (now() - serverNow) })
+        if (block == null) return "no-silent"
+        if (!SilentUpdateRules.rolloutDue(block, signedInUserId(), serverNow)) return "waiting"
         // Without "install unknown apps" Android shows a prompt whatever the session asks; Core's
         // card and its own install path ask the person to allow it.
         if (!context.packageManager.canRequestPackageInstalls()) {
@@ -174,6 +179,20 @@ class SilentUpdater(
         if (dm == null) files.dm.delete()
         if (!idle()) return "in-use"
         return install(files, dm, release.version)
+    }
+
+    /** The release's [SilentBlock], or null when the fetch fails, the file passes [MAX_SILENT_BYTES] or does not parse. */
+    private fun fetchBlock(url: String): SilentBlock? {
+        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
+        val bytes = try {
+            http.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful || resp.body.contentLength() > MAX_SILENT_BYTES) return null
+                resp.body.byteStream().use { SilentUpdateDownload.readAtMost(it, MAX_SILENT_BYTES) }
+            }
+        } catch (e: IOException) {
+            null
+        } ?: return null
+        return SilentBlock.parse(String(bytes, Charsets.UTF_8))
     }
 
     /**
@@ -389,6 +408,7 @@ class SilentUpdater(
         private const val SESSION_DM_ENTRY = "kevbox-update.dm"
         private const val PROFILE_ENTRY = "primary.prof"
         private const val MAX_PROFILE_BYTES = 4 * 1024 * 1024
+        private const val MAX_SILENT_BYTES = 64 * 1024
         private const val APK_OTHER_KEY = "apk-other-key"
         private const val RETRY = "retry"
         private val UNSAFE_NAME = Regex("[^0-9A-Za-z._-]")

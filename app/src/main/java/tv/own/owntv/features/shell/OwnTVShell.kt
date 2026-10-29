@@ -2174,7 +2174,8 @@ fun OwnTVShell(
         val settingsRepo = koinInject<tv.own.owntv.core.settings.SettingsRepository>()
         val updateCheckOnStart by settingsRepo.updateCheckOnStart.collectAsStateWithLifecycle(initialValue = false)
         // KevBox: Android 12+ installs releases silently, so the card runs only below 12, or once the
-        // silent path gave a release up or left it uninstalled for 7 days (SilentUpdatePrefs.fallbackNeeded).
+        // silent path gave a release up, the release has no silent block, or it is still not installed
+        // 72 h after the block's "after" (SilentUpdatePrefs.fallbackNeeded).
         val silentUpdatePrefs = koinInject<tv.own.owntv.kevbox.release.SilentUpdatePrefs>()
         LaunchedEffect(updateCheckOnStart) {
             // Once per launch: a rebuilt shell must not bring the "latest version" card back.

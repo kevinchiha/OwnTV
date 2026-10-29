@@ -16,6 +16,7 @@ class SilentUpdateRulesTest {
         "KevBoxLive-x86_64.apk",
         "KevBoxLive-x86_64.dm",
         "KevBoxLive-x86_64-api28.dm",
+        "kevbox-silent.json",
     )
 
     /** 2026-10-28T12:27:32Z */
@@ -38,8 +39,10 @@ class SilentUpdateRulesTest {
         return "{" + fields.joinToString(",") + "}"
     }
 
-    private fun release(published: Long = this.published) =
-        SilentRelease("5.2.1.3", published, "$base/KevBoxLive.apk", "$base/KevBoxLive.dm")
+    /** Kevin's Supabase user id, in the shape release.sh checks. */
+    private val kevin = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    private val after = published + 24 * hour
+    private val block = SilentBlock(after, listOf(kevin, "7c9e6679-7425-40de-944b-e07fc1f90ae7"))
 
     @Test
     fun `an arm box takes the plain APK and the Android 12 profile`() {
@@ -48,6 +51,20 @@ class SilentUpdateRulesTest {
         assertEquals(published, r.publishedAtMs)
         assertEquals("$base/KevBoxLive.apk", r.apkUrl)
         assertEquals("$base/KevBoxLive.dm", r.dmUrl)
+        assertEquals("$base/kevbox-silent.json", r.silentUrl)
+    }
+
+    @Test
+    fun `a release published with --no-silent has no silent block URL`() {
+        val r = SilentUpdateRules.parse(body(assets = names - "kevbox-silent.json"), false, 33)!!
+        assertEquals("$base/KevBoxLive.apk", r.apkUrl)
+        assertNull(r.silentUrl)
+    }
+
+    @Test
+    fun `only the exact asset name counts as the silent block`() {
+        val r = SilentUpdateRules.parse(body(assets = listOf("KevBoxLive.apk", "old-kevbox-silent.json")), false, 33)!!
+        assertNull(r.silentUrl)
     }
 
     @Test
@@ -102,20 +119,78 @@ class SilentUpdateRulesTest {
     }
 
     @Test
-    fun `an early email gets the release at once`() {
-        assertTrue(SilentUpdateRules.rolloutDue(release(), "kevin.chiha@gmail.com", published))
-        assertTrue(SilentUpdateRules.rolloutDue(release(), "  Kevin.Chiha@Gmail.com ", published + 1))
+    fun `an early user id gets the release at once`() {
+        assertTrue(SilentUpdateRules.rolloutDue(block, kevin, published))
+        assertTrue(SilentUpdateRules.rolloutDue(block, "7C9E6679-7425-40DE-944B-E07FC1F90AE7", published))
     }
 
     @Test
-    fun `everyone else waits 24 hours after publishing`() {
-        val dayLater = published + SilentUpdateRules.ROLLOUT_DELAY_MS
-        assertEquals(24 * hour, SilentUpdateRules.ROLLOUT_DELAY_MS)
-        assertFalse(SilentUpdateRules.rolloutDue(release(), "someone@example.com", dayLater - 1))
-        assertTrue(SilentUpdateRules.rolloutDue(release(), "someone@example.com", dayLater))
-        assertFalse(SilentUpdateRules.rolloutDue(release(), null, dayLater - 1))
-        assertTrue(SilentUpdateRules.rolloutDue(release(), null, dayLater))
-        assertFalse(SilentUpdateRules.rolloutDue(release(), "", published))
+    fun `early users match trimmed on both sides, case ignored`() {
+        assertTrue(SilentUpdateRules.rolloutDue(block, "  ${kevin.uppercase()} ", published))
+        val spaced = SilentBlock(after, listOf("  ${kevin.uppercase()}\t"))
+        assertTrue(SilentUpdateRules.rolloutDue(spaced, kevin, published))
+    }
+
+    @Test
+    fun `anyone else is not early, signed out and blank included`() {
+        assertFalse(SilentUpdateRules.rolloutDue(block, "11111111-2222-3333-4444-555555555555", after - 1))
+        assertFalse(SilentUpdateRules.rolloutDue(block, null, after - 1))
+        assertFalse(SilentUpdateRules.rolloutDue(block, "", after - 1))
+        assertFalse(SilentUpdateRules.rolloutDue(block, "  ", after - 1))
+        // A blank entry never matches a blank id.
+        assertFalse(SilentUpdateRules.rolloutDue(SilentBlock(after, listOf(" ")), " ", after - 1))
+        // Emails no longer count.
+        assertFalse(SilentUpdateRules.rolloutDue(block, "kevin.chiha@gmail.com", after - 1))
+    }
+
+    @Test
+    fun `everyone is due from after, on the server's clock`() {
+        assertFalse(SilentUpdateRules.rolloutDue(block, null, after - 1))
+        assertTrue(SilentUpdateRules.rolloutDue(block, null, after))
+        assertTrue(SilentUpdateRules.rolloutDue(block, "11111111-2222-3333-4444-555555555555", after + 1))
+        assertTrue(SilentUpdateRules.rolloutDue(SilentBlock(after, emptyList()), null, after))
+    }
+
+    @Test
+    fun `a valid silent block parses`() {
+        assertEquals(
+            SilentBlock(1_793_276_852_000L, listOf(kevin, " ABC ")),
+            SilentBlock.parse("""{"after": 1793276852000, "earlyUsers": ["$kevin", " ABC "]}"""),
+        )
+        assertEquals(SilentBlock(5L, emptyList()), SilentBlock.parse("""{"after": 5, "earlyUsers": []}"""))
+        assertEquals(SilentBlock(5L, emptyList()), SilentBlock.parse("""{"after": 5}"""))
+        assertEquals(SilentBlock(5L, emptyList()), SilentBlock.parse("""{"after": 5, "earlyUsers": null}"""))
+        assertEquals(SilentBlock(5L, emptyList()), SilentBlock.parse("""{"after": 5, "earlyUsers": [], "later": true}"""))
+    }
+
+    @Test
+    fun `a bad after means no silent block`() {
+        assertNull(SilentBlock.parse("""{"after": "x"}"""))
+        assertNull(SilentBlock.parse("""{"after": "1793276852000"}"""))
+        assertNull(SilentBlock.parse("""{"after": 0}"""))
+        assertNull(SilentBlock.parse("""{"after": -5}"""))
+        assertNull(SilentBlock.parse("""{"after": 1.5}"""))
+        assertNull(SilentBlock.parse("""{"after": null}"""))
+        assertNull(SilentBlock.parse("""{"after": {"ms": 5}}"""))
+        assertNull(SilentBlock.parse("""{"after": 99999999999999999999}"""))
+        assertNull(SilentBlock.parse("""{"earlyUsers": []}"""))
+    }
+
+    @Test
+    fun `bad early users mean no silent block`() {
+        assertNull(SilentBlock.parse("""{"after": 5, "earlyUsers": "$kevin"}"""))
+        assertNull(SilentBlock.parse("""{"after": 5, "earlyUsers": 7}"""))
+        assertNull(SilentBlock.parse("""{"after": 5, "earlyUsers": {"a": "b"}}"""))
+        assertNull(SilentBlock.parse("""{"after": 5, "earlyUsers": ["$kevin", 7]}"""))
+        assertNull(SilentBlock.parse("""{"after": 5, "earlyUsers": ["$kevin", null]}"""))
+    }
+
+    @Test
+    fun `a file that is not a JSON object means no silent block`() {
+        assertNull(SilentBlock.parse(""))
+        assertNull(SilentBlock.parse("not json"))
+        assertNull(SilentBlock.parse("[5]"))
+        assertNull(SilentBlock.parse("<html>Not Found</html>"))
     }
 
     @Test
@@ -149,26 +224,51 @@ class SilentUpdateRulesTest {
         assertFalse(SilentUpdateRules.idle(true, playing = true, lastPressMs = now, nowMs = now))
     }
 
+    private fun fallback(
+        gaveUp: String? = null,
+        seen: String? = null,
+        hasSilent: Boolean = true,
+        afterBoxMs: Long? = after,
+        installed: String = "5.2.1.2",
+        boxNowMs: Long = published,
+    ) = SilentUpdateRules.fallbackNeeded(gaveUp, seen, hasSilent, afterBoxMs, installed, boxNowMs)
+
     @Test
     fun `fallback when the box gave up on a newer version, until that version is installed`() {
-        assertTrue(SilentUpdateRules.fallbackNeeded("5.2.1.3", null, 0L, installedVersion = "5.2.1.2", boxNowMs = 0L))
-        assertFalse(SilentUpdateRules.fallbackNeeded("5.2.1.3", null, 0L, installedVersion = "5.2.1.3", boxNowMs = 0L))
-        assertFalse(SilentUpdateRules.fallbackNeeded("5.2.1.3", null, 0L, installedVersion = "99.99.99.99", boxNowMs = 0L))
+        assertTrue(fallback(gaveUp = "5.2.1.3", installed = "5.2.1.2"))
+        assertFalse(fallback(gaveUp = "5.2.1.3", installed = "5.2.1.3"))
+        assertFalse(fallback(gaveUp = "5.2.1.3", installed = "99.99.99.99"))
     }
 
     @Test
-    fun `fallback when a seen release is more than 7 days old and still not installed`() {
-        val week = SilentUpdateRules.FALLBACK_AFTER_MS
-        assertEquals(7 * 24 * hour, week)
-        assertFalse(SilentUpdateRules.fallbackNeeded(null, "5.2.1.3", published, "5.2.1.2", boxNowMs = published + week))
-        assertTrue(SilentUpdateRules.fallbackNeeded(null, "5.2.1.3", published, "5.2.1.2", boxNowMs = published + week + 1))
-        assertFalse(SilentUpdateRules.fallbackNeeded(null, "5.2.1.3", published, "5.2.1.3", boxNowMs = published + 2 * week))
-        assertFalse(SilentUpdateRules.fallbackNeeded(null, null, 0L, "5.2.1.2", boxNowMs = published))
+    fun `fallback at once when the newest release has no silent block`() {
+        assertTrue(fallback(seen = "5.2.1.3", hasSilent = false, afterBoxMs = null))
+        // A block flag with no stored time counts as no block.
+        assertTrue(fallback(seen = "5.2.1.3", hasSilent = true, afterBoxMs = null))
+        assertFalse(fallback(seen = "5.2.1.3", hasSilent = false, afterBoxMs = null, installed = "5.2.1.3"))
+    }
+
+    @Test
+    fun `fallback 72 hours after the block's after, on a box clock a year behind`() {
+        assertEquals(72 * hour, SilentUpdateRules.SAFETY_NET_MS)
+        // release.sh wrote `after` on the server clock; the updater stored it moved by the box's offset.
+        val boxBehind = 365 * 24 * hour
+        val afterBox = after - boxBehind
+        assertFalse(fallback(seen = "5.2.1.3", afterBoxMs = afterBox, boxNowMs = afterBox))
+        assertFalse(fallback(seen = "5.2.1.3", afterBoxMs = afterBox, boxNowMs = afterBox + 72 * hour - 1))
+        assertTrue(fallback(seen = "5.2.1.3", afterBoxMs = afterBox, boxNowMs = afterBox + 72 * hour))
+    }
+
+    @Test
+    fun `no card once the installed version catches up, or with nothing seen`() {
+        assertFalse(fallback(seen = "5.2.1.3", installed = "5.2.1.3", boxNowMs = after + 30 * 24 * hour))
+        assertFalse(fallback(seen = "5.2.1.3", installed = "5.2.1.4", hasSilent = false, afterBoxMs = null))
+        assertFalse(fallback(seen = null, boxNowMs = Long.MAX_VALUE))
     }
 
     @Test
     fun `an older given-up version brings no card back`() {
-        assertFalse(SilentUpdateRules.fallbackNeeded("5.2.1.1", "5.2.1.2", published, "5.2.1.2", boxNowMs = published))
+        assertFalse(fallback(gaveUp = "5.2.1.1", seen = "5.2.1.2", installed = "5.2.1.2"))
     }
 
     @Test

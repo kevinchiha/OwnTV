@@ -11,7 +11,8 @@ import androidx.core.content.edit
  * - the version it gave up installing silently (Android wanted a prompt, the version failed
  *   [MAX_FAILURES] times, the APK came with another key, or the box may not install apps). That
  *   brings back Core's startup update card until the installed version reaches it;
- * - the newest release a check read, for the 7-day rule in [SilentUpdateRules.fallbackNeeded];
+ * - the newest release a check read, whether it had a silent block and that block's `after` on the
+ *   box's own clock, for [SilentUpdateRules.fallbackNeeded];
  * - how often the latest failing version failed (a newer one starts again from zero), and whether
  *   that version must install without its profile.
  */
@@ -26,19 +27,33 @@ class SilentUpdatePrefs(private val prefs: SharedPreferences) {
     fun fallbackNeeded(installedVersion: String, boxNowMs: Long): Boolean = SilentUpdateRules.fallbackNeeded(
         gaveUpVersion = gaveUpVersion,
         seenVersion = prefs.getString(KEY_SEEN_VERSION, null),
-        seenPublishedAtMs = prefs.getLong(KEY_SEEN_PUBLISHED_AT, 0L),
+        seenHasSilent = prefs.getBoolean(KEY_SEEN_HAS_SILENT, false),
+        seenAfterBoxMs = seenAfterBoxMs(),
         installedVersion = installedVersion,
         boxNowMs = boxNowMs,
     )
 
-    /** The latest release a check read. Written on every successful check. */
-    fun seen(version: String, publishedAtMs: Long) {
+    private fun seenAfterBoxMs(): Long? =
+        if (prefs.contains(KEY_SEEN_AFTER)) prefs.getLong(KEY_SEEN_AFTER, 0L) else null
+
+    /**
+     * The newest release a check read, whether it had a silent block ([hasSilent]) and the block's
+     * `after` moved to the box's own clock ([afterBoxMs], null without a block). Written on every
+     * check that gets as far as the block; a later check that finds the block replaces a "no block"
+     * record of the same version, and the other way round.
+     */
+    fun seen(version: String, hasSilent: Boolean, afterBoxMs: Long?) {
         val same = prefs.getString(KEY_SEEN_VERSION, null) == version &&
-            prefs.getLong(KEY_SEEN_PUBLISHED_AT, 0L) == publishedAtMs
+            prefs.getBoolean(KEY_SEEN_HAS_SILENT, false) == hasSilent &&
+            seenAfterBoxMs() == afterBoxMs &&
+            !prefs.contains(KEY_SEEN_PUBLISHED_AT)
         if (same) return
         prefs.edit {
             putString(KEY_SEEN_VERSION, version)
-            putLong(KEY_SEEN_PUBLISHED_AT, publishedAtMs)
+            putBoolean(KEY_SEEN_HAS_SILENT, hasSilent)
+            if (afterBoxMs != null) putLong(KEY_SEEN_AFTER, afterBoxMs) else remove(KEY_SEEN_AFTER)
+            // The publish time the 7-day rule kept before the silent block existed.
+            remove(KEY_SEEN_PUBLISHED_AT)
         }
     }
 
@@ -78,6 +93,8 @@ class SilentUpdatePrefs(private val prefs: SharedPreferences) {
         const val MAX_FAILURES = 3
         private const val KEY_GAVE_UP_VERSION = "gave_up_version"
         private const val KEY_SEEN_VERSION = "seen_version"
+        private const val KEY_SEEN_HAS_SILENT = "seen_has_silent"
+        private const val KEY_SEEN_AFTER = "seen_after_box_ms"
         private const val KEY_SEEN_PUBLISHED_AT = "seen_published_at"
         private const val KEY_FAILED_VERSION = "failed_version"
         private const val KEY_FAILED_COUNT = "failed_count"

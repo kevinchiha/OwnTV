@@ -256,7 +256,8 @@ val kevboxModule = module {
             context = androidContext(),
             client = get(),
             prefs = get(),
-            signedInEmail = { auth.email.value },
+            // The Supabase user id, the value release.sh's SILENT_EARLY_USERS lists.
+            signedInUserId = { auth.userId.value },
             activityStarted = scheduler.activityStarted,
             playing = { session.active.value },
             // Idle on the monotonic clock; the wall clock only stands in for a missing server Date.
