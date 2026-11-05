@@ -5,6 +5,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -25,17 +26,47 @@ import tv.own.owntv.kevbox.supabase.SupabaseApi
  * Built over a store that already holds a session, it starts signed in without a call, so a
  * restart or reboot needs no password. A refused refresh is reported as SessionRejected and the
  * store is left alone: the caller's sign-out path clears it in one place. Nothing here logs.
+ *
+ * The starting member comes from [initial], which the app reads off the main thread (see
+ * [SessionPreload]). Until it ends, [loaded] is false and [email] and [userId] are null without
+ * meaning "signed out": a reader that would act on "signed out" waits with [awaitLoaded] first.
  */
 class KevBoxAuth(
     private val api: SupabaseApi,
     private val store: SessionStore,
+    initial: SessionPreload = SessionPreload.now(store),
     private val now: () -> Long,
 ) {
-    // One read: two could disagree (a decrypt failing the second time) and split the signed-in state.
-    private val initial = store.load()
-    private val _email = MutableStateFlow(initial?.email)
-    private val _userId = MutableStateFlow(initial?.userId)
+    private val _email = MutableStateFlow<String?>(null)
+    private val _userId = MutableStateFlow<String?>(null)
     private val _sessionVersion = MutableStateFlow(0L)
+    private val _loaded = MutableStateFlow(false)
+
+    // Guards the member fields against the start-up read ending late: a sign-in, refresh or
+    // sign-out that already set them wins over what the read found before it.
+    private val memberLock = Any()
+    private var memberSet = false
+
+    init {
+        // One read: two could disagree (a decrypt failing the second time) and split the signed-in state.
+        initial.whenDone { session ->
+            synchronized(memberLock) {
+                if (!memberSet) {
+                    _email.value = session?.email
+                    _userId.value = session?.userId
+                }
+                _loaded.value = true
+            }
+        }
+    }
+
+    /** False until the stored session has been read; [email] and [userId] mean nothing before. */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
+    /** Returns once the stored session has been read. */
+    suspend fun awaitLoaded() {
+        loaded.first { it }
+    }
 
     /** The signed-in member's email; null when signed out. */
     val email: StateFlow<String?> = _email.asStateFlow()
@@ -78,8 +109,7 @@ class KevBoxAuth(
                 val saved = refreshLock.withLock {
                     trySave(session).also {
                         if (it) {
-                            _email.value = session.email
-                            _userId.value = session.userId
+                            setMember(session.email, session.userId)
                             _sessionVersion.value++
                         }
                     }
@@ -124,8 +154,7 @@ class KevBoxAuth(
         // Under the lock: a refresh in flight finishes first, then this clear wins.
         refreshLock.withLock {
             store.clear()
-            _email.value = null
-            _userId.value = null
+            setMember(null, null)
             _sessionVersion.value++
         }
     }
@@ -180,8 +209,7 @@ class KevBoxAuth(
                     ?: return@withLock Fetch.Failed
                 // A Keystore failure here reads as a failed fetch, never a crash.
                 if (!trySave(renewed)) return@withLock Fetch.Failed
-                _email.value = renewed.email
-                _userId.value = renewed.userId
+                setMember(renewed.email, renewed.userId)
                 _sessionVersion.value++
                 Fetch.Ok(renewed)
             }
@@ -191,6 +219,12 @@ class KevBoxAuth(
                 if (isRefreshRejected(response.body)) Fetch.SessionRejected else Fetch.Failed
             else -> Fetch.Failed
         }
+    }
+
+    private fun setMember(email: String?, userId: String?) = synchronized(memberLock) {
+        memberSet = true
+        _email.value = email
+        _userId.value = userId
     }
 
     /**

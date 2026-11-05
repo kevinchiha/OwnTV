@@ -552,6 +552,23 @@ class KevBoxCoordinatorTest {
     }
 
     @Test
+    fun `while the stored session is still loading the gate shows Starting, never the sign-in screen`() {
+        // KEVBOX-LIVE-5, -6, -7: the session now loads off the main thread, so "no email yet" is not "signed out".
+        assertEquals(
+            GateState.Starting,
+            KevBoxCoordinator.gateOf(loaded = false, signedIn = false, locked = false, screen = null, storedPick = false),
+        )
+        assertEquals(
+            GateState.Starting,
+            KevBoxCoordinator.gateOf(loaded = false, signedIn = true, locked = true, screen = PlaylistScreen.Home, storedPick = true),
+        )
+        assertEquals(
+            GateState.SignedOut,
+            KevBoxCoordinator.gateOf(loaded = true, signedIn = false, locked = false, screen = null, storedPick = false),
+        )
+    }
+
+    @Test
     fun `a refused sign-in hands its answer to onAnswer too`() = harness {
         server.always(TOKEN, Canned(400, """{"error":"invalid_grant"}"""))
         start()

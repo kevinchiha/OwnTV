@@ -29,7 +29,8 @@ import tv.own.owntv.kevbox.supabase.SignInResult
 class LoginFileSignIn(
     private val dir: () -> File?,
     private val now: () -> Long,
-    private val signedInEmail: () -> String?,
+    /** Suspends while the stored session is still loading, so "not loaded" never reads as signed out. */
+    private val signedInEmail: suspend () -> String?,
     private val signOut: suspend () -> Unit,
     private val signIn: suspend (email: String, password: String, onAnswer: (SignInResult) -> Unit) -> SignInResult,
     private val scope: CoroutineScope,

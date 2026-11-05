@@ -12,11 +12,15 @@ import io.sentry.protocol.Response
 import io.sentry.protocol.SentryException
 import io.sentry.protocol.SentryThread
 import io.sentry.protocol.User
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tv.own.owntv.kevbox.session.SessionPreload
+import tv.own.owntv.kevbox.session.StoredSession
 
 class KevBoxSentryTest {
 
@@ -44,31 +48,65 @@ class KevBoxSentryTest {
     }
 
     @Test
-    fun `a key fills the secret words from the stored session before Sentry starts`() {
-        var seenAtInit: Set<String>? = null
-        val started = KevBoxSentry.start(
-            ContextWrapper(null),
-            DSN,
-            init = { _, _ -> seenAtInit = SecretWords.current() },
-            startupSecrets = { setOf("startup-refresh-token") },
-        )
-
-        assertTrue(started)
-        assertTrue(seenAtInit.orEmpty().contains("startup-refresh-token"))
-    }
-
-    @Test
-    fun `a failing secret read never stops Sentry from starting`() {
+    fun `a key starts Sentry without waiting for the stored session, and its words arrive once it loads`() {
+        // KEVBOX-LIVE-7: the session read waited on the key store on the main thread and froze start-up.
+        val release = CountDownLatch(1)
+        val preload = SessionPreload({
+            release.await(5, TimeUnit.SECONDS)
+            StoredSession("user-1", "member@example.com", "startup-access", "startup-refresh-token", 1L)
+        })
         var calls = 0
         val started = KevBoxSentry.start(
             ContextWrapper(null),
             DSN,
+            startupSession = { preload },
             init = { _, _ -> calls++ },
-            startupSecrets = { throw IllegalStateException("keystore") },
         )
 
         assertTrue(started)
         assertEquals(1, calls)
+        assertFalse(preload.isDone)
+        release.countDown()
+        SecretWords.awaitStartup(5_000)
+        assertTrue(SecretWords.current().contains("startup-refresh-token"))
+    }
+
+    @Test
+    fun `a send waits for the startup words, but only up to the limit`() {
+        val release = CountDownLatch(1)
+        val preload = SessionPreload({
+            release.await(5, TimeUnit.SECONDS)
+            StoredSession("user-1", "member@example.com", "a", "late-refresh-token", 1L)
+        })
+        KevBoxSentry.start(ContextWrapper(null), DSN, startupSession = { preload }, init = { _, _ -> })
+
+        val began = System.nanoTime()
+        SecretWords.awaitStartup(100)
+        val waitedMs = (System.nanoTime() - began) / 1_000_000
+        assertTrue("waited $waitedMs ms", waitedMs >= 90)
+        // Gave up once: later sends do not wait again.
+        val again = System.nanoTime()
+        SecretWords.awaitStartup(1_000)
+        assertTrue((System.nanoTime() - again) / 1_000_000 < 500)
+        release.countDown()
+    }
+
+    @Test
+    fun `a failing session read never stops Sentry from starting`() {
+        var calls = 0
+        val started = KevBoxSentry.start(
+            ContextWrapper(null),
+            DSN,
+            startupSession = { throw IllegalStateException("keystore") },
+            init = { _, _ -> calls++ },
+        )
+
+        assertTrue(started)
+        assertEquals(1, calls)
+        // Nothing to wait for: a send goes at once.
+        val began = System.nanoTime()
+        SecretWords.awaitStartup(2_000)
+        assertTrue((System.nanoTime() - began) / 1_000_000 < 500)
     }
 
     @Test

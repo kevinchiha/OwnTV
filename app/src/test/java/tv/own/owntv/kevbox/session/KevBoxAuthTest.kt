@@ -24,6 +24,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -525,6 +526,56 @@ class KevBoxAuthTest {
             assertNull(keyLost.email.value)
             assertEquals(Fetch.SignedOut, keyLost.playlists())
         }
+
+    // --- a slow start-up read (KEVBOX-LIVE-5, -6, -7) ---------------------------------------------
+
+    /** A preload whose read waits until the test calls the returned runner, as a stuck key store would. */
+    private fun heldPreload(): Pair<SessionPreload, () -> Unit> {
+        var pending: Runnable? = null
+        val preload = SessionPreload(store::load) { pending = it }
+        return preload to { pending!!.run() }
+    }
+
+    @Test
+    fun `building KevBoxAuth never waits for the stored session`() {
+        storeSession(expiresAtMs = clock + 3_600_000)
+        val (preload, finish) = heldPreload()
+
+        val auth = KevBoxAuth(api(), store, initial = preload) { clock }
+
+        assertFalse(auth.loaded.value)
+        assertNull(auth.email.value)
+        finish()
+        assertTrue(auth.loaded.value)
+        assertEquals("member@example.com", auth.email.value)
+        assertEquals("user-1", auth.userId.value)
+    }
+
+    @Test
+    fun `awaitLoaded waits for the stored session`() = runBlocking {
+        storeSession(expiresAtMs = clock + 3_600_000)
+        val (preload, finish) = heldPreload()
+        val auth = KevBoxAuth(api(), store, initial = preload) { clock }
+
+        assertNull(withTimeoutOrNull(50) { auth.awaitLoaded() })
+        finish()
+        assertNotNull(withTimeoutOrNull(1_000) { auth.awaitLoaded() })
+    }
+
+    @Test
+    fun `a sign-in that lands before the slow read is not undone by it`() = runBlocking {
+        val (preload, finish) = heldPreload()
+        val auth = KevBoxAuth(api(), store, initial = preload) { clock }
+        server.on(TOKEN, Canned(200, tokenBody("a1", "r1")))
+
+        auth.signIn("member@example.com", "secret")
+        // The read started before the sign-in saved anything: it found no session.
+        store.clear()
+        finish()
+
+        assertTrue(auth.loaded.value)
+        assertEquals("member@example.com", auth.email.value)
+    }
 
     @Test
     fun `the session is stored as one encrypted blob`() {

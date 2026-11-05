@@ -58,7 +58,16 @@ val kevboxModule = module {
     single<SessionStore> {
         PrefsSessionStore(androidContext().prefs(PrefsSessionStore.PREFS_NAME), KeystoreTokenCipher())
     }
-    single { KevBoxAuth(get(), get(), now = System::currentTimeMillis) }
+    // The start-up read of the stored session runs off the main thread and is shared with the Sentry
+    // scrubber (KEVBOX-LIVE-5, -6, -7: a slow key store froze start-up).
+    single {
+        KevBoxAuth(
+            get(),
+            get(),
+            initial = tv.own.owntv.kevbox.session.SessionPreload.forApp(androidContext()),
+            now = System::currentTimeMillis,
+        )
+    }
     single { tv.own.owntv.kevbox.errors.DeviceId(androidContext().prefs(tv.own.owntv.kevbox.errors.DeviceId.PREFS_NAME)) }
     single {
         tv.own.owntv.kevbox.usage.LiveCheckin(
@@ -317,7 +326,7 @@ val kevboxModule = module {
         tv.own.owntv.kevbox.session.LoginFileSignIn(
             dir = { context.getExternalFilesDir(null) },
             now = System::currentTimeMillis,
-            signedInEmail = { auth.email.value },
+            signedInEmail = { auth.awaitLoaded(); auth.email.value },
             signOut = coordinator::signOut,
             signIn = coordinator::signIn,
             scope = get(),

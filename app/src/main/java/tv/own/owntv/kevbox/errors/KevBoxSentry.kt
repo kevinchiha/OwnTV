@@ -15,6 +15,7 @@ import java.util.Date
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import tv.own.owntv.kevbox.session.KevBoxAuth
+import tv.own.owntv.kevbox.session.SessionPreload
 
 /**
  * Crashes, freezes (ANRs) and native crashes go to the KevBox Live Sentry project, and nothing
@@ -31,25 +32,38 @@ object KevBoxSentry {
     /** The reporter's last entries; with every automatic source off, these are all Sentry keeps. */
     private const val MAX_BREADCRUMBS = 20
 
+    /** How long a send waits for the start-up words before it goes with the patterns alone. */
+    private const val STARTUP_WAIT_MS = 3_000L
+
     /**
      * Starts Sentry with [dsn]. Returns false, without calling [init], when [dsn] is blank (a
      * keyless build), and false when [init] throws, so start-up carries on either way.
      *
-     * Before [init] it fills [SecretWords] from [startupSecrets]: Sentry sends the last run's
-     * freezes and native crashes while it starts, long before the reporter fills the set.
+     * The stored session's words go into [SecretWords] when [startupSession]'s read ends, which may
+     * be after [init]: the read waits on the key store, and the main thread must not
+     * (KEVBOX-LIVE-7). Sentry sends the last run's freezes and native crashes while it starts, so
+     * each send waits up to [STARTUP_WAIT_MS] for those words (see [configure]).
      */
     fun start(
         context: Context,
         dsn: String,
         // Before init, so a trailing lambda still means init.
-        startupSecrets: (Context) -> Set<String> = ::startupSecretWords,
+        startupSession: (Context) -> SessionPreload = SessionPreload::forApp,
         init: (Context, Sentry.OptionsConfiguration<SentryAndroidOptions>) -> Unit = SentryAndroid::init,
     ): Boolean {
         if (dsn.isBlank()) return false
+        val wordsIn = SecretWords.expectStartup()
         try {
-            SecretWords.set(startupSecrets(context))
+            startupSession(context).whenDone { session ->
+                try {
+                    SecretWords.add(secretWordsOf(source = null, email = null, session = session))
+                } finally {
+                    wordsIn()
+                }
+            }
         } catch (_: Exception) {
             // Patterns still scrub addresses, tokens and emails; the reporter fills the set later.
+            wordsIn()
         }
         return try {
             init(context, Sentry.OptionsConfiguration { options -> configure(options, dsn) })
@@ -94,9 +108,12 @@ object KevBoxSentry {
         options.isEnableUserInteractionBreadcrumbs = false
         options.maxBreadcrumbs = MAX_BREADCRUMBS
 
-        // Scrub at send time, with the secrets kept in memory (no disk read on a crash): filled by
-        // start from the stored session, then kept current by the reporter.
-        options.beforeSend = SentryOptions.BeforeSendCallback { event, _ -> scrub(event, SecretWords.current()) }
+        // Scrub at send time, with the secrets kept in memory (no disk read on a crash): filled from
+        // the stored session once start's read ends, then kept current by the reporter.
+        options.beforeSend = SentryOptions.BeforeSendCallback { event, _ ->
+            SecretWords.awaitStartup(STARTUP_WAIT_MS)
+            scrub(event, SecretWords.current())
+        }
         options.beforeBreadcrumb = SentryOptions.BeforeBreadcrumbCallback { breadcrumb, _ ->
             scrubBreadcrumb(breadcrumb, SecretWords.current())
         }

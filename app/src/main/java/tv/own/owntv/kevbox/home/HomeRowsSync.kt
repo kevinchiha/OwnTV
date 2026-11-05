@@ -209,6 +209,9 @@ class CoreHomeReads(
             }
 
     override suspend fun inputs(): HomeInputs? {
+        // A start-up read still running is not "signed out": emptying the rows then would wipe them
+        // from the TV home screen until the next sync.
+        auth.awaitLoaded()
         if (auth.email.value == null) return null
         val sources = active.first()
         val pid = sources.profileId

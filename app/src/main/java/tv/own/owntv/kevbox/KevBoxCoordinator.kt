@@ -28,6 +28,8 @@ import tv.own.owntv.kevbox.supabase.SignInResult
 
 /** Which screen KevBox Live puts in front of the app. */
 sealed interface GateState {
+    /** The stored session is still being read at start-up; whether anyone is signed in is not known yet. */
+    data object Starting : GateState
     data object SignedOut : GateState
     data object Locked : GateState
     data class ChoosePlaylist(val rows: List<PlaylistRow>) : GateState
@@ -85,12 +87,18 @@ class KevBoxCoordinator(
         .stateIn(scope, SharingStarted.Eagerly, reconciler.screen.value != null)
 
     val gate: StateFlow<GateState> =
-        combine(auth.email, access.locked, reconciler.screen, storedPick) { email, locked, screen, picked ->
-            gateOf(signedIn = email != null, locked = locked, screen = screen, storedPick = picked)
+        combine(auth.loaded, auth.email, access.locked, reconciler.screen, storedPick) { loaded, email, locked, screen, picked ->
+            gateOf(loaded = loaded, signedIn = email != null, locked = locked, screen = screen, storedPick = picked)
         }.stateIn(
             scope,
             SharingStarted.Eagerly,
-            gateOf(auth.email.value != null, access.locked.value, reconciler.screen.value, storedPick.value),
+            gateOf(
+                loaded = auth.loaded.value,
+                signedIn = auth.email.value != null,
+                locked = access.locked.value,
+                screen = reconciler.screen.value,
+                storedPick = storedPick.value,
+            ),
         )
 
     private val playlistFlight = SingleFlight(scope) { startedIn -> runPlaylistCheck(startedIn) }
@@ -304,8 +312,12 @@ class KevBoxCoordinator(
         const val PLAYLIST_INTERVAL_MS = 15 * 60_000L
         const val VERDICT_INTERVAL_MS = 5 * 60_000L
 
-        /** Gate priority: no session, then the lock, then what the playlist rows say (AC-10). */
-        fun gateOf(signedIn: Boolean, locked: Boolean, screen: PlaylistScreen?, storedPick: Boolean): GateState = when {
+        /**
+         * Gate priority: the session still loading, no session, then the lock, then what the
+         * playlist rows say (AC-10).
+         */
+        fun gateOf(loaded: Boolean, signedIn: Boolean, locked: Boolean, screen: PlaylistScreen?, storedPick: Boolean): GateState = when {
+            !loaded -> GateState.Starting
             !signedIn -> GateState.SignedOut
             locked -> GateState.Locked
             screen is PlaylistScreen.ChooseFirst -> GateState.ChoosePlaylist(screen.rows)

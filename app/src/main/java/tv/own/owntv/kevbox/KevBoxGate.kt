@@ -56,6 +56,8 @@ fun KevBoxGate(onExit: () -> Unit, onStopPlayback: () -> Unit, content: @Composa
     }
 
     when (val state = gate) {
+        // The stored session is still being read (a slow key store): the bare mark, never sign-in.
+        GateState.Starting -> MarkOnly()
         GateState.SignedOut -> {
             val signIn by vm.signIn.collectAsStateWithLifecycle()
             SignInScreen(signIn, onSubmit = vm::submitSignIn, modifier = Modifier.fillMaxSize())
