@@ -12,7 +12,7 @@ launch themes and BrandLockup.kt keep their references and pick up the new art w
     python3 tools/kevbox/rebrand-art.py --masters  # rebuild the masters from the real logo first
 
 The masters live in tools/kevbox/art/. --masters rebuilds them from the KevBox logo
-(kevbox-support/public/Logo/KEVbox.png) and Poppins Bold: the logo pixels always come from that
+(~/projects/_reference/kevbox-logo/KEVbox.png) and Poppins Bold: the logo pixels always come from that
 file, and the "LIVE" badge is drawn here. Every step is plain Pillow, so the output is the same
 on every run.
 
@@ -49,7 +49,7 @@ from core_res import core_pin, core_res_dir  # noqa: E402
 REPO = Path(__file__).resolve().parents[2]
 RES = REPO / "app" / "src" / "main" / "res"
 ART = REPO / "tools" / "kevbox" / "art"
-LOGO = Path("/home/kevin/projects/kevbox-support/public/Logo/KEVbox.png")
+LOGO = Path("/home/kevin/projects/_reference/kevbox-logo/KEVbox.png")
 FONT = RES / "font" / "poppins_bold.ttf"
 
 MARK = ART / "kevbox_live_mark.png"
