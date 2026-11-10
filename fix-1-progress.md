@@ -1,1 +1,0 @@
-fix-1: done. Items 1-5 fixed with regression tests. Interfaces deviation: LocalRelay gains an internal primary constructor (trust, lookup, preferredPort, newListener) so tests can hand in a failing listener; the public constructor LocalRelay(trust, lookup, preferredPort = RELAY_PORT) is unchanged and delegates to it.
