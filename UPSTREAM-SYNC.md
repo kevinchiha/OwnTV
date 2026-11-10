@@ -828,7 +828,9 @@ Premiumize login.
 A KevBox Live TV whose VPS proxy is on reaches persovps's Squid over TLS (`northcache.uk`, port 443
 on `45.146.255.87`) instead of plain HTTP on 38129. The players only speak plain HTTP proxies, so a
 small relay on the TV listens on `127.0.0.1` and wraps each connection in TLS. 0.7 changes no
-upstream file: everything is fork-only code under `kevbox/`, and the table above has no new row.
+upstream file apart from the exempt `tools/i18n/safe_literals.txt` (18 added lines, the new
+classified literals): everything else is fork-only code under `kevbox/`, and the table above has no
+new row.
 
 ### Where it lives
 
