@@ -4,8 +4,10 @@
 # Test for the release pre-flight checks in tools/kevbox/release-checks.sh (AC-7's refusals).
 # Builds a throwaway git repo under mktemp -d with tags v5.0.4, v5.1.0 and a later v5.1.0.1, runs
 # every check against it and asserts the exit code of each case, then the argument rule, the
-# early-user check, kevbox-silent.json and reading release.env (throwaway files), which need no repo. A second throwaway repo checks
-# that tools/kevbox/check-divergence.sh fails when its git diff fails. Removes only that directory.
+# early-user check, kevbox-silent.json and reading release.env (throwaway files), which need no repo.
+# kevbox's RELAY_MIN_VERSION is checked against a throwaway liveVersion.ts and a tag that holds the
+# relay. A second throwaway repo checks that tools/kevbox/check-divergence.sh fails when its git diff
+# fails. Removes only that directory.
 #
 #   bash tools/kevbox/test-release-checks.sh
 set -euo pipefail
@@ -92,6 +94,45 @@ rm "$tmp/kevbox/src/lib/live-error-codes.json"
 expect 0 "a missing kevbox list warns and passes"    check_error_codes_match "$tmp/kevbox"
 warning="$(check_error_codes_match "$tmp/kevbox" 2>&1 >/dev/null)"
 expect 0 "the missing-list case prints a warning"    test -n "$warning"
+
+# kevbox's RELAY_MIN_VERSION against this release. v5.1.0.1 holds no relay; v5.2.1.8, committed
+# here, holds LocalRelay.kt. The kevbox file lives in a throwaway folder under $tmp.
+live_version="$tmp/kevbox/packages/core/src/liveVersion.ts"
+relay_min_is() {
+  mkdir -p "$(dirname "$live_version")"
+  printf 'export const USAGE_MIN_VERSION = "5.1.0.16";\nexport const RELAY_MIN_VERSION = "%s";\n' "$1" > "$live_version"
+}
+expect 0 "no kevbox liveVersion.ts warns and passes"  check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox"
+relay_warning="$(check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox" 2>&1 >/dev/null)"
+expect 0 "the missing-file case prints a warning"    test -n "$relay_warning"
+mkdir -p "$(dirname "$live_version")"
+printf 'export const USAGE_MIN_VERSION = "5.1.0.16";\n' > "$live_version"
+expect 1 "liveVersion.ts without the line refused"   check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox"
+behind_message="$(check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox" 2>&1 >/dev/null || true)"
+expect 0 "that refusal says to bring 0.7's kevbox code" grep -q "bring 0.7's kevbox code" <<<"$behind_message"
+relay_min_is 5.2.1.8
+expect 0 "first relay release equal to it passes"    check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox"
+expect 1 "first relay release above it refused"      check_relay_min_version 5.2.1.9 v5.1.0.1 "$tmp/kevbox"
+expect 1 "first relay release below it refused"      check_relay_min_version 5.2.1.7 v5.1.0.1 "$tmp/kevbox"
+expect 0 "no release yet, equal passes"              check_relay_min_version 5.2.1.8 "" "$tmp/kevbox"
+expect 1 "no release yet, different refused"         check_relay_min_version 5.2.1.9 "" "$tmp/kevbox"
+first_message="$(check_relay_min_version 5.2.1.9 v5.1.0.1 "$tmp/kevbox" 2>&1 >/dev/null || true)"
+expect 0 "the first-release refusal names both"      grep -q '5\.2\.1\.8.*5\.2\.1\.9' <<<"$first_message"
+expect 1 "a latest tag missing from the clone refused" check_relay_min_version 5.2.1.9 v5.2.1.7 "$tmp/kevbox"
+fetch_message="$(check_relay_min_version 5.2.1.9 v5.2.1.7 "$tmp/kevbox" 2>&1 >/dev/null || true)"
+expect 0 "that refusal says to fetch the tags"       grep -q 'git fetch --tags origin' <<<"$fetch_message"
+mkdir -p app/src/main/java/tv/own/owntv/kevbox/network
+echo "relay" > app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt
+git_q add app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt
+git_q commit -q -m "kevbox 5.2.1.8"; git_q tag v5.2.1.8
+expect 0 "later release above it passes"             check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox"
+expect 0 "later release at it passes"                check_relay_min_version 5.2.1.8 v5.2.1.8 "$tmp/kevbox"
+relay_min_is 5.2.1.10
+expect 1 "later release below it refused"            check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox"
+later_message="$(check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox" 2>&1 >/dev/null || true)"
+expect 0 "the later-release refusal names both"      grep -q '5\.2\.1\.10.*5\.2\.1\.9' <<<"$later_message"
+relay_min_is 5.2.1
+expect 1 "a RELAY_MIN_VERSION that is not A.B.C.K refused" check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox"
 
 expect 0 "no Sentry token needs no org or project"   check_sentry_settings "" "" ""
 expect 0 "token with org and project passes"         check_sentry_settings tok org proj

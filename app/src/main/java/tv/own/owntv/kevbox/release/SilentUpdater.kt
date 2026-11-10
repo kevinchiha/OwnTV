@@ -60,8 +60,11 @@ class SilentUpdater(
     private val now: () -> Long,
     private val feedUrl: String,
 ) {
-    /** No idle connections kept, for the same reason as UpdateProfileAttacher's client. */
-    private val http = client.newBuilder()
+    /**
+     * Direct ([directClient]): a proxy that is down or fails closed must not block the update that
+     * fixes it. No idle connections kept, for the same reason as UpdateProfileAttacher's client.
+     */
+    private val http = directClient(client).newBuilder()
         .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
         .build()
 
