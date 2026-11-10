@@ -144,4 +144,6 @@
     <!-- The TV home screen's two KevBox Live rows (kevbox/home/HomeChannels.kt). -->
     <string name="kevbox_home_row_recent">Recent channels</string>
     <string name="kevbox_home_row_favorites">Favorites</string>
+    <!-- Name of the notification channels the OpenVPN engine posts its foreground notification to (kevbox/vpn/IcsVpnEngine.kt). -->
+    <string name="kevbox_vpn_channel">VPN status</string>
 </resources>

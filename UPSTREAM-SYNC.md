@@ -149,8 +149,9 @@ keep one file per row, with its full path.
 
 | File | Proof the change survived |
 | --- | --- |
-| `app/build.gradle.kts` | `grep -n 'tv.kevbox.live' app/build.gradle.kts && grep -n 'id("io.sentry.android.gradle") version "6.23.0"' app/build.gradle.kts && grep -n 'io.sentry:sentry-android-ndk:8.60.0' app/build.gradle.kts && grep -n 'kevbox.sentryDsnDebug' app/build.gradle.kts && grep -n 'ignoredBuildTypes.set(setOf("debug"))' app/build.gradle.kts && grep -n 'kevbox.updateFeed' app/build.gradle.kts && grep -n '"KEVBOX_UPDATE_FEED", javaString("")' app/build.gradle.kts` (the KevBox package name; Sentry plugin, SDK, `SENTRY_DSN` and the `sentry { }` block, 0.3; the silent updater's `KEVBOX_UPDATE_FEED`, blank in release) |
-| `app/src/main/AndroidManifest.xml` | `grep -n 'io.sentry.auto-init' app/src/main/AndroidManifest.xml && grep -n 'SentryTestReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:permission="android.permission.DUMP"' app/src/main/AndroidManifest.xml && grep -n 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' app/src/main/AndroidManifest.xml && grep -n 'SilentUpdateReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.home.HomeRowsBootReceiver"' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.home.HomeLogoArtProvider"' app/src/main/AndroidManifest.xml` (Sentry starts by hand after CrashRecorder; the shell-only Sentry test receiver, 0.3; the silent self-update permission and its result receiver; the home screen rows' receiver for boot and `INITIALIZE_PROGRAMS`, declared after `SilentUpdateReceiver`, and the rows' read-only logo card provider right after it) |
+| `app/build.gradle.kts` | `grep -n 'tv.kevbox.live' app/build.gradle.kts && grep -n 'id("io.sentry.android.gradle") version "6.23.0"' app/build.gradle.kts && grep -n 'io.sentry:sentry-android-ndk:8.60.0' app/build.gradle.kts && grep -n 'kevbox.sentryDsnDebug' app/build.gradle.kts && grep -n 'ignoredBuildTypes.set(setOf("debug"))' app/build.gradle.kts && grep -n 'kevbox.updateFeed' app/build.gradle.kts && grep -n '"KEVBOX_UPDATE_FEED", javaString("")' app/build.gradle.kts && grep -n 'useLegacyPackaging = true' app/build.gradle.kts && grep -n 'extras/openvpn/ics-openvpn-v0.7.64-skeleton-ovpn2.aar' app/build.gradle.kts` (the KevBox package name; Sentry plugin, SDK, `SENTRY_DSN` and the `sentry { }` block, 0.3; the silent updater's `KEVBOX_UPDATE_FEED`, blank in release; the OpenVPN engine AAR and extracted native libraries, 0.6) |
+| `app/src/main/AndroidManifest.xml` | `grep -n 'io.sentry.auto-init' app/src/main/AndroidManifest.xml && grep -n 'SentryTestReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:permission="android.permission.DUMP"' app/src/main/AndroidManifest.xml && grep -n 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' app/src/main/AndroidManifest.xml && grep -n 'SilentUpdateReceiver' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.home.HomeRowsBootReceiver"' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.home.HomeLogoArtProvider"' app/src/main/AndroidManifest.xml && grep -n 'android:name="de.blinkt.openvpn.core.OpenVPNService"' app/src/main/AndroidManifest.xml && grep -n 'android:name="de.blinkt.openvpn.core.keepVPNAlive" tools:node="remove"' app/src/main/AndroidManifest.xml && grep -n 'QUERY_ALL_PACKAGES' app/src/main/AndroidManifest.xml && grep -n 'android:name=".kevbox.vpn.VpnConsentActivity"' app/src/main/AndroidManifest.xml` (the OpenVPN engine's VPN service, every other engine component removed, and the engine's `QUERY_ALL_PACKAGES` dropped, 0.6; the translucent, non-exported `VpnConsentActivity` for Android's one-time VPN prompt, after the logo card provider, 0.6; Sentry starts by hand after CrashRecorder; the shell-only Sentry test receiver, 0.3; the silent self-update permission and its result receiver; the home screen rows' receiver for boot and `INITIALIZE_PROGRAMS`, declared after `SilentUpdateReceiver`, and the rows' read-only logo card provider right after it) |
+| `app/proguard-rules.pro` | `grep -n -- '-keep class de.blinkt.openvpn.\*\* { \*; }' app/proguard-rules.pro` (R8 keeps the OpenVPN engine whole: JNI, AIDL binders, its serialised profile, 0.6) |
 | `app/src/main/java/tv/own/owntv/MainActivity.kt` | `grep -n 'kevbox.onForeground()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'kevbox.ui.QuietAccessibility.install(this)' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -c 'KevBoxAutoSetup(' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'LaunchedEffect(profile) { gateSession.authenticateProfile(profile) }' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'get<tv.own.owntv.kevbox.usage.LastPress>().press()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -n 'get<tv.own.owntv.kevbox.session.LoginFileSignIn>().check()' app/src/main/java/tv/own/owntv/MainActivity.kt && grep -A8 'override fun onNewIntent' app/src/main/java/tv/own/owntv/MainActivity.kt | grep 'LoginFileSignIn>().check()'` (the count must be 2. 0.5: `dispatchKeyEvent`, added after `onStart`, stamps every key down as the watching diary's last press; `onUserInteraction` is not used because Android calls it on Home too. Login file: `onResume`, which upstream does not override, and upstream's `onNewIntent` check KevBox Setup's login file; see below) |
 | `app/src/main/java/tv/own/owntv/OwnTVApp.kt` | `grep -n 'releaseRepo = "kevinchiha/OwnTV"' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'epg.GuideFeeds>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.UpdateProfileAttacher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'network.DnsDefault>().applyOnce()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'refresh.PlaylistRefreshSetting>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.start(this, BuildConfig.SENTRY_DSN)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.LiveCheckin>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'errors.ErrorWatchers>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'KevBoxSentry.bind(GlobalContext.get().get(), GlobalContext.get().get(), appScope)' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.PlayWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'usage.DiaryWatcher>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'sports.SportsDefaults>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'release.SilentUpdateScheduler>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt && grep -n 'home.HomeRowsSync>().start()' app/src/main/java/tv/own/owntv/OwnTVApp.kt` (0.3: Sentry starts on the line after `CrashRecorder.install(this)`; the usage check-in; the error watchers, which start the reporter; Sentry's user and breadcrumbs, bound on the line before the watchers start so the reporter's first entries become breadcrumbs too. 0.4: the play watcher, on the line before the error watchers start, so the reporter's first failure already reaches the play notes. 0.5: the watching diary, on the line after the play watcher starts. Sports: SportsDefaults starts every profile on Any commentary language unless it picked its own, 2026-10-28. Home screen rows: HomeRowsSync starts on the line after SilentUpdateScheduler, 2026-10-29) |
 | `app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` | `grep -n 'LiveOnly.sectionToOpen(section)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'LiveOnly.menuSections(it)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.ACCENT_HEX)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt && grep -n 'flowOf(tv.own.owntv.kevbox.settings.LiveOnlySettings.FOCUS_HIGHLIGHT_HEX)' app/src/main/java/tv/own/owntv/features/shell/ShellViewModel.kt` |
@@ -723,6 +724,104 @@ how the guide shows a channel name (no longer `ProviderTags.parse(name).name`), 
 `HomeRows.title` to match. If Core changes `LauncherDeepLink`'s format, or the shell stops
 handling it, the cards stop opening their channel. If upstream changes `ChannelLogoTile`'s plate
 rule or colours, copy the change into `HomeLogoPlate.kt`.
+
+## Premiumize VPN (0.6)
+
+KevBox Live opens a Premiumize VPN for members whose provider blocks their country. kevbox.dev
+switches it on per playlist row (`member_playlist.vpn_*`, migration 0023 in kevbox); the TV hears
+the change through Supabase Realtime, asks Android's VPN permission once, and sends only its own
+traffic through the tunnel. Everything on the TV lives in fork-only code under `kevbox/vpn/` and
+`kevbox/realtime/`; the upstream files it touches are `app/build.gradle.kts`,
+`app/proguard-rules.pro` and `AndroidManifest.xml`, each with a row in the table above.
+
+### Where the engine comes from, and how to rebuild it
+
+- The engine is ics-openvpn ("OpenVPN for Android": OpenVPN 2.x core, skeleton + ovpn2 flavours,
+  no OpenVPN 3). The artifact is `extras/openvpn/ics-openvpn-v0.7.64-skeleton-ovpn2.aar`, a local
+  file dependency in `app/build.gradle.kts`. Gradle never builds the engine, so NDK and CMake stay
+  out of every app build. Rebuild it only with the script below, and never take a prebuilt engine
+  from Maven Central or JitPack.
+- `bash tools/kevbox/openvpn/build-engine.sh [work-folder]` rebuilds it: it clones
+  `github.com/schwabe/ics-openvpn` at the pinned tag `v0.7.64` (commit `73ce3c99`, OpenVPN core
+  2.7_rc6+1, OpenSSL 3.6.1) into `~/.cache/kevbox-openvpn` by default, fetches only the openvpn,
+  openssl, lz4 and fmt submodules, applies the patches, builds `:main:assembleSkeletonOvpn2Release`
+  and copies the AAR and the licence into `extras/openvpn/`. It needs JDK 17+, NDK 29.0.14206865
+  and CMake 3.22.1. No ics-openvpn tag after 2022 ships a 2.6.x core; v0.7.64 is the newest before
+  the 2.8 development core.
+- The library patch, `tools/kevbox/openvpn/0001-engine-as-library.patch`, turns the engine's app
+  module into an Android library: library plugin, no application id, version or signing, no
+  Application class, no `android:process` on any component, only arm64-v8a, armeabi-v7a and
+  x86_64, the skeleton flavour passed to CMake (`-DOVPN_SKELETON=ON`) and to `NativeUtils`, no
+  OpenVPN 3 SWIG step, and version-catalog names written inline.
+  `0002-no-tv-toast-no-keepalive-job.patch` removes the engine's status toasts on a TV (AC-34) and
+  its keep-alive job. Bumping the engine means a new tag in the script and patches that still
+  apply.
+- GPL source note: the engine is GPLv2 with additional terms and the app is GPLv3; Kevin accepted
+  that mismatch (0.6 spec, Decisions). `extras/openvpn/SOURCE.txt` (upstream URL, tag, commit,
+  submodule commits, patches, the exact build command and the AAR's sha256) and
+  `LICENSE-ics-openvpn.txt` (copied unchanged from the tag) are the source offer. Any rebuilt AAR
+  is committed together with an updated `SOURCE.txt`.
+
+### Manifest entries
+
+- The engine's `OpenVPNService` is declared with
+  `android:permission="android.permission.BIND_VPN_SERVICE"`, the `android.net.VpnService` intent
+  filter and `foregroundServiceType="specialUse"`, as the engine's own manifest has it.
+- It stays in the app's main process. The plan asked for `tools:remove="android:process"` on each
+  merged engine component; the library patch already drops every `android:process` from the
+  engine's manifest, so the app's manifest needs no `tools:remove`. Check after any engine bump that
+  the merged release manifest (`app/build/intermediates/merged_manifests/standardRelease/`) still
+  has no `android:process` except Core's restart activity. One process means one VPN controller,
+  one event queue and one fall-back store, and a killed app takes its tunnel with it. It is also
+  why `OwnTVApp.kt` needs no process guard: in a process of its own, `OwnTVApp.onCreate` would run
+  again and start a second coordinator against the same engine.
+- Every other engine component is removed with `tools:node="remove"`: its activities and aliases,
+  its boot receiver, its external-control API service, its cross-process status service, its
+  keep-alive job service and its `APP_RESTRICTIONS` meta-data. The engine's `QUERY_ALL_PACKAGES`
+  permission is removed too.
+- `VpnConsentActivity` (translucent, not exported, out of recents) hosts Android's one-time VPN
+  prompt, so the channel keeps playing behind it (AC-26).
+
+### R8 and the fork-only engine code
+
+- `app/proguard-rules.pro` keeps `de.blinkt.openvpn.**` whole (JNI, AIDL binders, its serialised
+  profile).
+- Fork-only code: `kevbox/vpn/VpnEngine.kt` (the seam), `IcsVpnEngine.kt` (the real engine) and
+  `OvpnConfig.kt` (`prepareOvpn`, Premiumize's file adapted to the app's retry rules).
+
+### Native libraries
+
+`packaging.jniLibs.useLegacyPackaging = true` in `app/build.gradle.kts`. The OpenVPN 2.x engine
+runs `libovpnexec.so` as a program from the app's native library folder, which only exists when
+libraries are extracted at install. Without it every connect fails. Side effect: native libraries
+are now compressed in the APK, so the APK shrank (standard release 61,759,871 to about 45.8 MB)
+and the installed app grew. AC-22's limit (76,776,028 bytes) is measured on the APK after the
+switch. After an upstream merge, check the merged manifest has no `extractNativeLibs="false"`.
+
+### Core members the channel restart reads
+
+`kevbox/vpn/ChannelRestarter.kt` re-tunes the playing channel after a VPN or proxy change (AC-40)
+through three public Core members, pinned with typed references in
+`kevbox/errors/CoreContractTest.kt`:
+`LivePreviewEngine::onAppBackgrounded` and `LivePreviewEngine::onAppForegrounded` (Core's own pair
+that re-tunes the Live engine's channel at the live edge) and `OwnTVPlayer::retry` (the full-screen
+player reloads its stream). A Core bump that renames or retypes one stops that test compiling. The
+test cannot see a change in what the pair does: if Core's notes touch background restore, play a
+channel on the emulator, change the proxy in kevbox.dev (or on a local stack) and check the channel
+comes back by itself within 3 seconds.
+
+### What stays upstream's
+
+`gradle/libs.versions.toml` is untouched (see its row above): the engine is a local AAR named
+inline in `app/build.gradle.kts`, and its runtime needs (androidx.annotation, androidx.core) already
+come with the app. `OwnTVApp.kt` gained nothing for the VPN: the controller and the Realtime socket
+start from `KevBoxCoordinator.start()` through defaulted constructor hooks.
+
+### Testing after a merge
+
+`docs/superpowers/2026-11-10-0.6-premiumize-vpn-e2e.md` shows how to run the chain on the
+`kevbox_tv` emulator against a local Supabase with 0023, using unroutable TEST-NET servers, with no
+Premiumize login.
 
 ## Regenerating the rebrand
 

@@ -1,6 +1,7 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.session
 
+import java.util.Locale
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,11 +18,13 @@ import tv.own.owntv.kevbox.supabase.ApiResponse
 import tv.own.owntv.kevbox.supabase.Fetch
 import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
+import tv.own.owntv.kevbox.supabase.PlaylistVpn
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
+import tv.own.owntv.kevbox.supabase.VpnServer
 
 /**
- * The member's Supabase session on this TV: sign-in, silent refresh, the two reads and sign-out.
+ * The member's Supabase session on this TV: sign-in, silent refresh, the reads and sign-out.
  *
  * Built over a store that already holds a session, it starts signed in without a call, so a
  * restart or reboot needs no password. A refused refresh is reported as SessionRejected and the
@@ -130,6 +133,18 @@ class KevBoxAuth(
             Fetch.SignedOut -> Fetch.SignedOut
         }
 
+    /**
+     * The VPN servers kevbox.dev offers, in sort order: only [hosts] when given, every row when null.
+     * A row with a blank host or config is skipped; a body that is not an array of rows is Failed.
+     */
+    suspend fun vpnServers(hosts: List<String>?): Fetch<List<VpnServer>> =
+        when (val result = signedInCall { api.selectVpnServers(it, hosts) }) {
+            is Fetch.Ok -> parseVpnServers(result.value)?.let { Fetch.Ok(it) } ?: Fetch.Failed
+            Fetch.Failed -> Fetch.Failed
+            Fetch.SessionRejected -> Fetch.SessionRejected
+            Fetch.SignedOut -> Fetch.SignedOut
+        }
+
     suspend fun verdict(): Fetch<AccessVerdict> =
         when (val result = signedInCall { api.accessVerdict(it) }) {
             is Fetch.Ok -> parseVerdict(result.value)?.let { Fetch.Ok(it) } ?: Fetch.Failed
@@ -184,6 +199,17 @@ class KevBoxAuth(
             ApiResponse.NoNetwork -> Fetch.Failed
             is ApiResponse.Http -> Fetch.Ok(response)
         }
+    }
+
+    /**
+     * A fresh access token, refreshed first when it expires within a minute. For the Realtime socket,
+     * which outlives any one [signedInCall]. The caller must never log it.
+     */
+    suspend fun accessToken(): Fetch<String> = when (val fresh = freshSession()) {
+        is Fetch.Ok -> Fetch.Ok(fresh.value.accessToken)
+        Fetch.Failed -> Fetch.Failed
+        Fetch.SessionRejected -> Fetch.SessionRejected
+        Fetch.SignedOut -> Fetch.SignedOut
     }
 
     /** The stored session, refreshed first when its access token expires within a minute. */
@@ -285,6 +311,7 @@ class KevBoxAuth(
                 username = row.opt(USERNAME) as? String ?: return null,
                 password = row.opt(PASSWORD) as? String ?: return null,
                 proxy = parseProxy(row),
+                vpn = parseVpn(row),
             )
         }
     }
@@ -305,6 +332,50 @@ class KevBoxAuth(
             username = (row.opt(PROXY_USERNAME) as? String)?.trim().orEmpty(),
             password = (row.opt(PROXY_PASSWORD) as? String).orEmpty(),
         )
+    }
+
+    /**
+     * The row's VPN columns. A server without them (before migration 0023), a null column, a VPN
+     * switched off, or one missing its server, username or password all read as [PlaylistVpn.OFF].
+     * The password is kept exactly as stored, like the proxy password. Hosts are lowercased, as
+     * host names compare and as the server read's filter accepts them.
+     */
+    private fun parseVpn(row: JSONObject): PlaylistVpn {
+        if (row.opt(VPN_ENABLED) != true) return PlaylistVpn.OFF
+        val server = (row.opt(VPN_SERVER) as? String)?.trim().orEmpty().lowercase(Locale.ROOT)
+        val username = (row.opt(VPN_USERNAME) as? String)?.trim().orEmpty()
+        val password = (row.opt(VPN_PASSWORD) as? String).orEmpty()
+        if (server.isEmpty() || username.isEmpty() || password.isBlank()) return PlaylistVpn.OFF
+        return PlaylistVpn(
+            enabled = true,
+            server = server,
+            backupServer = (row.opt(VPN_BACKUP_SERVER) as? String)?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() },
+            username = username,
+            password = password,
+            changedAt = row.opt(VPN_CHANGED_AT) as? String,
+        )
+    }
+
+    private fun parseVpnServers(response: ApiResponse.Http): List<VpnServer>? {
+        if (response.code != HTTP_OK) return null
+        val array = try {
+            JSONArray(response.body)
+        } catch (_: JSONException) {
+            return null
+        }
+        return (0 until array.length()).mapNotNull { index ->
+            val row = array.opt(index) as? JSONObject ?: return null
+            val host = (row.opt(HOST) as? String)?.trim().orEmpty().lowercase(Locale.ROOT)
+            val config = (row.opt(CONFIG) as? String).orEmpty()
+            if (host.isEmpty() || config.isBlank()) return@mapNotNull null
+            VpnServer(
+                host = host,
+                label = (row.opt(LABEL) as? String).orEmpty(),
+                config = config,
+                backupHost = (row.opt(BACKUP_HOST) as? String)?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() },
+                sortOrder = (row.opt(SORT_ORDER) as? Number)?.toInt() ?: 0,
+            )
+        }
     }
 
     private fun parseVerdict(response: ApiResponse.Http): AccessVerdict? {
@@ -364,5 +435,16 @@ class KevBoxAuth(
         const val PROXY_PORT = "proxy_port"
         const val PROXY_USERNAME = "proxy_username"
         const val PROXY_PASSWORD = "proxy_password"
+        const val VPN_ENABLED = "vpn_enabled"
+        const val VPN_SERVER = "vpn_server"
+        const val VPN_BACKUP_SERVER = "vpn_backup_server"
+        const val VPN_USERNAME = "vpn_username"
+        const val VPN_PASSWORD = "vpn_password"
+        const val VPN_CHANGED_AT = "vpn_changed_at"
+        const val HOST = "host"
+        const val LABEL = "label"
+        const val CONFIG = "config"
+        const val BACKUP_HOST = "backup_host"
+        const val SORT_ORDER = "sort_order"
     }
 }

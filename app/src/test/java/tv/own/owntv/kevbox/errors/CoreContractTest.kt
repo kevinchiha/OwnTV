@@ -85,6 +85,13 @@ class CoreContractTest {
         // isPlaying stays true through mpv's silent retries; buffering says no frame shows yet.
         val playerBuffering: KProperty1<OwnTVPlayer, StateFlow<Boolean>> = OwnTVPlayer::buffering
 
+        // 0.6 channel restart: Core's own background/foreground pair re-tunes the Live engine's channel
+        // at the live edge, and the full-screen player's retry reloads its stream (AC-40).
+        val previewBackgrounded: (LivePreviewEngine) -> Unit = LivePreviewEngine::onAppBackgrounded
+        val previewForegrounded: (LivePreviewEngine) -> Unit = LivePreviewEngine::onAppForegrounded
+        val playerRetry: (OwnTVPlayer) -> Unit = OwnTVPlayer::retry
+        listOf(previewBackgrounded, previewForegrounded, playerRetry).forEach { assertNotNull(it) }
+
         // 0.5 watching diary: GuideNow reads the stored guide's on-now entry as LiveViewModel.nowPlayingFor does,
         // with the profile's Live customizations and the guide offset read as MiniGuideLoader reads them.
         val nowProgrammes: suspend (LiveEpgReader, List<ChannelEntity>, SectionCustomizations, Int) -> Map<Long, XtEpgEntry> =

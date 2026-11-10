@@ -32,8 +32,11 @@ import org.junit.Test
 import tv.own.owntv.kevbox.supabase.AccessVerdict
 import tv.own.owntv.kevbox.supabase.Fetch
 import tv.own.owntv.kevbox.supabase.PlaylistRow
+import tv.own.owntv.kevbox.supabase.PlaylistVpn
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
+import tv.own.owntv.kevbox.supabase.VPN_AUTO
+import tv.own.owntv.kevbox.supabase.VpnServer
 
 class KevBoxAuthTest {
 
@@ -362,7 +365,8 @@ class KevBoxAuthTest {
             assertEquals("Bearer new-access", read.header("Authorization"))
             assertEquals(ANON, read.header("apikey"))
             assertEquals(
-                "client_number,name,server_url,username,password,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password",
+                "client_number,name,server_url,username,password,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password," +
+                    "vpn_enabled,vpn_server,vpn_backup_server,vpn_username,vpn_password,vpn_changed_at",
                 read.url.queryParameter("select"),
             )
             assertEquals("name.asc", read.url.queryParameter("order"))
@@ -392,10 +396,11 @@ class KevBoxAuthTest {
     }
 
     @Test
-    fun `a server without the proxy columns is asked again without them, and the proxy reads as off`() = runBlocking {
+    fun `the playlist read falls back twice on 42703`() = runBlocking {
         storeSession(expiresAtMs = clock + 600_000)
         server.on(
             PLAYLIST,
+            Canned(400, """{"code":"42703","message":"column member_playlist.vpn_enabled does not exist"}"""),
             Canned(400, """{"code":"42703","message":"column member_playlist.proxy_enabled does not exist"}"""),
             Canned(200, rowsBody),
         )
@@ -403,8 +408,147 @@ class KevBoxAuthTest {
         val result = auth().playlists()
 
         assertEquals(Fetch.Ok(listOf(PlaylistRow("C1", "Home", "http://iptv.example", "u", "p"))), result)
+        assertEquals(3, server.calls(PLAYLIST))
+        val selects = server.requests.map { it.url.queryParameter("select")!! }
+        assertTrue(selects[0].contains(",vpn_enabled,") && selects[0].contains(",proxy_enabled,"))
+        // Second: the proxy columns and no vpn_ (AC-23).
+        assertEquals(
+            "client_number,name,server_url,username,password,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password",
+            selects[1],
+        )
+        // Third: neither.
+        assertEquals("client_number,name,server_url,username,password", selects[2])
+    }
+
+    @Test
+    fun `a server without the VPN columns is asked once more, and the proxy still reads`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        val body = """[{"client_number":"C1","name":"A","server_url":"http://a","username":"u","password":"p",""" +
+            """"proxy_enabled":true,"proxy_host":"proxy.example","proxy_port":3128,"proxy_username":"pu","proxy_password":"pp"}]"""
+        server.on(
+            PLAYLIST,
+            Canned(400, """{"code":"42703","message":"column member_playlist.vpn_enabled does not exist"}"""),
+            Canned(200, body),
+        )
+
+        val row = (auth().playlists() as Fetch.Ok).value.single()
+
         assertEquals(2, server.calls(PLAYLIST))
-        assertEquals("client_number,name,server_url,username,password", server.requests.last().url.queryParameter("select"))
+        assertEquals(tv.own.owntv.kevbox.supabase.PlaylistProxy(true, "proxy.example", 3128, "pu", "pp"), row.proxy)
+        assertEquals(PlaylistVpn.OFF, row.vpn)
+    }
+
+    @Test
+    fun `a 400 without 42703 is not asked again`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        server.on(PLAYLIST, Canned(400, """{"code":"PGRST100","message":"bad"}"""))
+
+        assertEquals(Fetch.Failed, auth().playlists())
+        assertEquals(1, server.calls(PLAYLIST))
+    }
+
+    @Test
+    fun `a row reads as VPN on only when complete`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        fun row(n: Int, vpn: String) =
+            """{"client_number":"C$n","name":"N$n","server_url":"http://x","username":"u","password":"p",$vpn}"""
+        val body = "[" + listOf(
+            // Enabled with a blank username.
+            row(1, """"vpn_enabled":true,"vpn_server":"vpn-de.premiumize.me","vpn_backup_server":null,""" +
+                """"vpn_username":"  ","vpn_password":"pw","vpn_changed_at":"2026-11-10T19:00:00+00:00""""),
+            // Switched off with every field filled.
+            row(2, """"vpn_enabled":false,"vpn_server":"vpn-de.premiumize.me","vpn_backup_server":"vpn-nl.premiumize.me",""" +
+                """"vpn_username":"vu","vpn_password":"pw","vpn_changed_at":"2026-11-10T19:00:00+00:00""""),
+            // Complete, with a blank backup and spaces around the values.
+            row(3, """"vpn_enabled":true,"vpn_server":" vpn-de.premiumize.me ","vpn_backup_server":" ",""" +
+                """"vpn_username":" vu ","vpn_password":" p w ","vpn_changed_at":"2026-11-10T19:00:00.123456+00:00""""),
+            // Complete on auto, no backup, no change time.
+            row(4, """"vpn_enabled":true,"vpn_server":"auto","vpn_backup_server":null,""" +
+                """"vpn_username":"vu","vpn_password":"pw","vpn_changed_at":null"""),
+            // Enabled as the string "true", not JSON true.
+            row(5, """"vpn_enabled":"true","vpn_server":"vpn-de.premiumize.me","vpn_backup_server":null,""" +
+                """"vpn_username":"vu","vpn_password":"pw","vpn_changed_at":null"""),
+            // Enabled with a blank password and with no server.
+            row(6, """"vpn_enabled":true,"vpn_server":"vpn-de.premiumize.me","vpn_username":"vu","vpn_password":"   """"),
+            row(7, """"vpn_enabled":true,"vpn_server":null,"vpn_username":"vu","vpn_password":"pw""""),
+        ).joinToString(",") + "]"
+        server.on(PLAYLIST, Canned(200, body))
+
+        val rows = (auth().playlists() as Fetch.Ok).value
+
+        assertEquals(PlaylistVpn.OFF, rows[0].vpn)
+        assertEquals(PlaylistVpn.OFF, rows[1].vpn)
+        assertEquals(
+            PlaylistVpn(true, "vpn-de.premiumize.me", null, "vu", " p w ", "2026-11-10T19:00:00.123456+00:00"),
+            rows[2].vpn,
+        )
+        assertEquals(PlaylistVpn(true, VPN_AUTO, null, "vu", "pw", null), rows[3].vpn)
+        assertEquals(listOf(PlaylistVpn.OFF), rows.drop(4).map { it.vpn }.distinct())
+        // A row with no vpn_ keys at all (an older server) reads as off too.
+        assertEquals(PlaylistVpn.OFF, PlaylistRow("C", "N", "http://x", "u", "p").vpn)
+    }
+
+    @Test
+    fun `a complete row keeps its backup server`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        val body = """[{"client_number":"C1","name":"A","server_url":"http://a","username":"u","password":"p",""" +
+            """"vpn_enabled":true,"vpn_server":"vpn-de.premiumize.me","vpn_backup_server":"vpn-nl.premiumize.me",""" +
+            """"vpn_username":"vu","vpn_password":"pw","vpn_changed_at":"t1"}]"""
+        server.on(PLAYLIST, Canned(200, body))
+
+        val vpn = (auth().playlists() as Fetch.Ok).value.single().vpn
+
+        assertEquals(PlaylistVpn(true, "vpn-de.premiumize.me", "vpn-nl.premiumize.me", "vu", "pw", "t1"), vpn)
+        // The login never shows in the row's text.
+        assertFalse(vpn.toString().contains("vu") || vpn.toString().contains("pw"))
+    }
+
+    @Test
+    fun `VPN hosts read lowercased, from the row and from the server list`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        val row = """[{"client_number":"C1","name":"A","server_url":"http://a","username":"u","password":"p",""" +
+            """"vpn_enabled":true,"vpn_server":"VPN-DE.Premiumize.ME","vpn_backup_server":" Vpn-NL.premiumize.me ",""" +
+            """"vpn_username":"vu","vpn_password":"pw","vpn_changed_at":"t1"}]"""
+        val list = """[{"host":"VPN-DE.premiumize.me","label":"Germany","config":"client","backup_host":"VPN-NL.premiumize.me","sort_order":1}]"""
+        server.on(PLAYLIST, Canned(200, row))
+        server.on(VPN_SERVERS, Canned(200, list))
+        val auth = auth()
+
+        val vpn = (auth.playlists() as Fetch.Ok).value.single().vpn
+        val servers = (auth.vpnServers(listOf(vpn.server)) as Fetch.Ok).value
+
+        // Lowercased, the hosts pass the read's host filter and match the server list's rows.
+        assertEquals("vpn-de.premiumize.me", vpn.server)
+        assertEquals("vpn-nl.premiumize.me", vpn.backupServer)
+        assertEquals("in.(vpn-de.premiumize.me)", server.requests.last().url.queryParameter("host"))
+        assertEquals(VpnServer("vpn-de.premiumize.me", "Germany", "client", "vpn-nl.premiumize.me", 1), servers.single())
+    }
+
+    @Test
+    fun `vpnServers reads complete rows in order and skips a blank host or config`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        val body = """[{"host":"vpn-de.premiumize.me","label":"Germany","config":"client\ndev tun","backup_host":"vpn-nl.premiumize.me","sort_order":1},""" +
+            """{"host":"","label":"Blank","config":"client","backup_host":null,"sort_order":2},""" +
+            """{"host":"vpn-fr.premiumize.me","label":"France","config":"  ","backup_host":null,"sort_order":3},""" +
+            """{"host":"vpn-nl.premiumize.me","label":"Netherlands","config":"client","backup_host":null,"sort_order":4}]"""
+        server.on(VPN_SERVERS, Canned(200, body), Canned(200, "{}"), Canned(200, "not json"), Canned(500, "[]"), null)
+        val auth = auth()
+
+        val servers = auth.vpnServers(listOf("vpn-de.premiumize.me", "vpn-nl.premiumize.me"))
+
+        assertEquals(
+            Fetch.Ok(
+                listOf(
+                    VpnServer("vpn-de.premiumize.me", "Germany", "client\ndev tun", "vpn-nl.premiumize.me", 1),
+                    VpnServer("vpn-nl.premiumize.me", "Netherlands", "client", null, 4),
+                ),
+            ),
+            servers,
+        )
+        assertEquals("in.(vpn-de.premiumize.me,vpn-nl.premiumize.me)", server.requests.last().url.queryParameter("host"))
+        // A malformed body, a 5xx or no network is Failed, never an empty list.
+        repeat(4) { assertEquals(Fetch.Failed, auth.vpnServers(null)) }
+        assertNull(server.requests.last().url.queryParameter("host"))
     }
 
     @Test
@@ -654,6 +798,7 @@ class KevBoxAuthTest {
         const val REFRESH_PATH = "/auth/v1/token"
         const val PLAYLIST = "/rest/v1/member_playlist"
         const val VERDICT = "/rest/v1/rpc/get_access_verdict"
+        const val VPN_SERVERS = "/rest/v1/vpn_server"
         const val LOGOUT = "/auth/v1/logout"
     }
 }

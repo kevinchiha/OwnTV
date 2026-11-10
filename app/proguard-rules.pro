@@ -22,3 +22,8 @@
 #     EpgAutoRefresh, PlaylistAutoRefresh, ...) round-trip through Enum.name/valueOf.
 #     Renaming a constant would silently reset settings and break old backups. ---
 -keep enum tv.own.owntv.** { *; }
+
+# --- KevBox: the OpenVPN engine (de.blinkt.openvpn) is found by name from native code (JNI in
+#     NativeUtils and the management thread), through its AIDL binders, and Java-serialises its
+#     profile. Keep the whole engine as built; it is small next to its native libraries. ---
+-keep class de.blinkt.openvpn.** { *; }

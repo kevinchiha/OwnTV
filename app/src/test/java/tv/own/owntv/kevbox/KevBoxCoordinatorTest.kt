@@ -4,16 +4,21 @@ import java.net.UnknownHostException
 import java.time.LocalDate
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -43,6 +48,9 @@ import tv.own.owntv.kevbox.playlist.PlaylistReconciler
 import tv.own.owntv.kevbox.playlist.PlaylistScreen
 import tv.own.owntv.kevbox.playlist.SourceFields
 import tv.own.owntv.kevbox.playlist.toFields
+import tv.own.owntv.kevbox.realtime.PlaylistRealtime
+import tv.own.owntv.kevbox.realtime.REALTIME_TOPIC
+import tv.own.owntv.kevbox.realtime.RealtimeSocket
 import tv.own.owntv.kevbox.session.KevBoxAuth
 import tv.own.owntv.kevbox.session.SessionStore
 import tv.own.owntv.kevbox.session.StoredSession
@@ -51,6 +59,8 @@ import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
+import tv.own.owntv.kevbox.vpn.ManagedVpn
+import tv.own.owntv.kevbox.vpn.VpnWant
 
 class KevBoxCoordinatorTest {
 
@@ -186,6 +196,17 @@ class KevBoxCoordinatorTest {
         @Volatile var checkinForegrounds = 0
         @Volatile var playNotesForegrounds = 0
 
+        // The VPN controller as ManagedVpn sees it: what it was handed, and how often.
+        val vpnWants: MutableList<VpnWant?> = java.util.Collections.synchronizedList(mutableListOf())
+        @Volatile var vpnSignOuts = 0
+        @Volatile var vpnStarts = 0
+
+        /** How often the coordinator asked the channel restarter for a restart. */
+        @Volatile var restarts = 0
+
+        /** The coordinator's realtime hook; a test that wires the socket sets it before [start]. */
+        var startRealtime: () -> Unit = {}
+
         // The timer's sleep: tell the test the loop is idle, then wait for the test to move the clock.
         private val idle = Channel<Unit>()
         private val go = Channel<Unit>()
@@ -226,6 +247,10 @@ class KevBoxCoordinatorTest {
                 proxy = tv.own.owntv.kevbox.network.ManagedProxy(proxyTarget),
                 checkinOnForeground = { checkinForegrounds += 1 },
                 playNotesOnForeground = { playNotesForegrounds += 1 },
+                vpn = ManagedVpn(wanted = { vpnWants += it }, signedOut = { vpnSignOuts += 1 }),
+                startVpn = { vpnStarts += 1 },
+                startRealtime = { startRealtime() },
+                restartChannel = { restarts += 1 },
             )
             coordinator.start()
             idle.receive()
@@ -292,6 +317,51 @@ class KevBoxCoordinatorTest {
     }
 
     @Test
+    fun `a proxy change restarts, an unchanged proxy does not`() = harness {
+        signedIn()
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA))))
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA))))
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        waitFor { proxyTarget.stored == proxyA }
+        assertEquals(1, restarts)
+
+        // The same proxy again: nothing written, nothing re-tuned.
+        advance(15 * minute)
+        assertEquals(2, server.calls(PLAYLIST))
+        assertEquals(1, restarts)
+
+        // Switched off in kevbox.dev: written, and the playing channel re-tuned.
+        advance(15 * minute)
+        waitFor { proxyTarget.stored == PlaylistProxy.OFF }
+        assertEquals(2, restarts)
+
+        // A sign-out never re-tunes: playback stops anyway.
+        coordinator.signOut()
+        assertEquals(2, restarts)
+    }
+
+    @Test
+    fun `a pick that changes the proxy restarts, and a sign-out that clears it does not`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"), row("2").copy(proxy = proxyA))))
+        start()
+        waitFor { server.calls(PLAYLIST) == 1 }
+        assertEquals(0, restarts)
+
+        coordinator.choose("2")
+        assertEquals(proxyA, proxyTarget.stored)
+        assertEquals(1, restarts)
+
+        coordinator.choose("2")
+        assertEquals(1, restarts)
+
+        coordinator.signOut()
+        assertEquals(PlaylistProxy.OFF, proxyTarget.stored)
+        assertEquals(1, restarts)
+    }
+
+    @Test
     fun `a proxy switched off in kevbox dot dev turns Core's proxy off at the next check, and a failed check changes nothing`() = harness {
         signedIn()
         proxyTarget.stored = proxyA
@@ -317,6 +387,30 @@ class KevBoxCoordinatorTest {
         coordinator.signOut()
 
         assertEquals(PlaylistProxy.OFF, proxyTarget.stored)
+    }
+
+    @Test
+    fun `a failed playlist check changes nothing, sign-out clears`() = harness {
+        signedIn()
+        val vpnRow = """[{"client_number":"1","name":"Line 1","server_url":"http://s1.example",""" +
+            """"username":"u1","password":"p1","vpn_enabled":true,"vpn_server":"vpn-de.premiumize.me",""" +
+            """"vpn_backup_server":null,"vpn_username":"vu","vpn_password":"vp","vpn_changed_at":"c1"}]"""
+        server.once(PLAYLIST, Canned(500, "oops"))
+        server.always(PLAYLIST, Canned(200, vpnRow))
+        start()
+        assertEquals(1, server.calls(PLAYLIST))
+        assertEquals(1, vpnStarts)
+        assertEquals(emptyList<VpnWant?>(), vpnWants.toList())
+
+        advance(15 * minute)
+        waitFor { vpnWants.size == 1 }
+        assertEquals("vpn-de.premiumize.me", vpnWants[0]?.server)
+        assertEquals("c1", vpnWants[0]?.changedAt)
+
+        coordinator.signOut()
+        assertEquals(1, vpnSignOuts)
+        assertEquals(1, vpnWants.size)
+        assertEquals(1, vpnStarts)
     }
 
     @Test
@@ -549,6 +643,166 @@ class KevBoxCoordinatorTest {
         latch.countDown()
         assertTrue(signingIn.await() is SignInResult.Success)
         assertEquals(1, answers.size)
+    }
+
+    @Test
+    fun `a change during a running check gets its own check`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        assertEquals(1, server.calls(PLAYLIST))
+
+        // A check is out (it may have read the row before the change) when the change arrives.
+        val first = server.hold(PLAYLIST)
+        coordinator.onForeground()
+        waitFor { server.calls(PLAYLIST) == 2 }
+        coordinator.onPlaylistChanged()
+        repeat(50) { yield() }
+        assertEquals(2, server.calls(PLAYLIST))
+
+        // The queued check holds too, so the test can count while it is out.
+        val second = server.hold(PLAYLIST)
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1"))), Canned(200, rowsBody(row("1"), row("2"))))
+        first.countDown()
+        waitFor { server.calls(PLAYLIST) == 3 }
+        second.countDown()
+
+        // The queued check read the row after the change: its second line reached the TV.
+        reconciler.rows.await { it.size == 2 }
+        delay(200)
+        assertEquals(3, server.calls(PLAYLIST))
+    }
+
+    @Test
+    fun `a change that arrives after the next check began still gets a check after it`() = runBlocking {
+        val scope = CoroutineScope(coroutineContext + SupervisorJob(coroutineContext[Job]))
+        try {
+            // Each run parks on its own gate, so the test decides when it ends.
+            val gates = mutableListOf<CompletableDeferred<Unit>>()
+            val flight = KevBoxCoordinator.SingleFlight(scope) { _ ->
+                val gate = CompletableDeferred<Unit>()
+                gates += gate
+                gate.await()
+            }
+            suspend fun settle() = repeat(50) { yield() }
+
+            // Check A runs, and a change arriving during it waits for it to end.
+            scope.launch { flight.run(1) }
+            settle()
+            scope.launch { flight.runAfter(1) }
+            settle()
+            assertEquals(1, gates.size)
+
+            // A ends; before the waiter wakes, an ordinary trigger starts check B and a second
+            // change arrives during B.
+            gates[0].complete(Unit)
+            yield()
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { flight.run(1) }
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { flight.runAfter(1) }
+            settle()
+            assertEquals(2, gates.size)
+
+            // B may have read the row before the second change: that change gets a check C of its own.
+            gates[1].complete(Unit)
+            settle()
+            assertEquals(3, gates.size)
+            gates[2].complete(Unit)
+            settle()
+            assertEquals(3, gates.size)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `turning the VPN on with the proxy going off waits for the tunnel to re-tune`() = harness {
+        signedIn()
+        val vpnOn = """[{"client_number":"1","name":"Line 1","server_url":"http://s1.example",""" +
+            """"username":"u1","password":"p1","proxy_enabled":true,"proxy_host":"proxy.example","proxy_port":3128,""" +
+            """"proxy_username":"pu","proxy_password":"pp","vpn_enabled":true,"vpn_server":"vpn-de.premiumize.me",""" +
+            """"vpn_backup_server":null,"vpn_username":"vu","vpn_password":"vp","vpn_changed_at":"c1"}]"""
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA))))
+        server.always(PLAYLIST, Canned(200, vpnOn))
+        start()
+        waitFor { proxyTarget.stored == proxyA }
+        assertEquals(1, restarts)
+
+        // The VPN wins, so the proxy goes off; a re-tune now would use the blocked plain route.
+        advance(15 * minute)
+        waitFor { vpnWants.size == 2 }
+        assertEquals(PlaylistProxy.OFF, proxyTarget.stored)
+        assertEquals(1, restarts)
+    }
+
+    @Test
+    fun `two changes during a running check add only one more`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+
+        val first = server.hold(PLAYLIST)
+        coordinator.onPlaylistChanged() // nothing runs: this one starts at once
+        waitFor { server.calls(PLAYLIST) == 2 }
+        coordinator.onPlaylistChanged()
+        coordinator.onPlaylistChanged()
+        coordinator.onForeground() // an ordinary trigger still joins the running check
+        repeat(50) { yield() }
+        assertEquals(2, server.calls(PLAYLIST))
+
+        first.countDown()
+        waitFor { server.calls(PLAYLIST) == 3 }
+        delay(200)
+        assertEquals(3, server.calls(PLAYLIST))
+    }
+
+    @Test
+    fun `a change triggers a check within 5 seconds`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        // A socket that answers the join ok; the test pushes the change frame itself.
+        val sockets = java.util.Collections.synchronizedList(mutableListOf<RealtimeSocket.Events>())
+        startRealtime = {
+            PlaylistRealtime(
+                url = "wss://kevbox.example/realtime/v1/websocket?apikey=anon&vsn=1.0.0",
+                auth = auth,
+                scope = scope,
+                sleep = { awaitCancellation() },
+                onChange = { coordinator.onPlaylistChanged() },
+                connect = { _, events ->
+                    sockets += events
+                    object : RealtimeSocket {
+                        override fun send(text: String): Boolean {
+                            val frame = JSONObject(text)
+                            if (frame.getString("event") == "phx_join") {
+                                events.onMessage(
+                                    """{"topic":"$REALTIME_TOPIC","event":"phx_reply","ref":"${frame.getString("ref")}",""" +
+                                        """"payload":{"status":"ok","response":{}}}""",
+                                )
+                            }
+                            return true
+                        }
+
+                        override fun close() = Unit
+                    }
+                },
+            ).start()
+        }
+        start()
+        waitFor { sockets.size == 1 }
+        // The start check and the one the join starts (it may join the start check) settle first.
+        waitFor { server.calls(PLAYLIST) >= 1 }
+        delay(200)
+        val before = server.calls(PLAYLIST)
+        val clockBefore = clock
+
+        sockets[0].onMessage(
+            """{"topic":"$REALTIME_TOPIC","event":"postgres_changes","ref":null,"payload":{"data":{"type":"UPDATE"}}}""",
+        )
+
+        waitFor { server.calls(PLAYLIST) == before + 1 }
+        assertEquals(clockBefore, clock) // no timer tick: the change alone started it
+        delay(200)
+        assertEquals(before + 1, server.calls(PLAYLIST))
     }
 
     @Test

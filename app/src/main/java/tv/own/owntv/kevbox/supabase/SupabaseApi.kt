@@ -65,15 +65,55 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     }
 
     suspend fun selectPlaylists(accessToken: String): ApiResponse {
-        val query = mapOf("select" to PLAYLIST_COLUMNS + PROXY_COLUMNS, "order" to "name.asc")
-        val response = send(PLAYLIST_PATH, query, accessToken) { get() }
-        // A server without migration 0014 refuses the proxy columns (PostgREST 400, code 42703):
-        // ask again without them, so the playlists still arrive and the proxy reads as off.
-        if (response is ApiResponse.Http && response.code == HTTP_BAD_REQUEST && response.body.contains(UNDEFINED_COLUMN)) {
-            return send(PLAYLIST_PATH, mapOf("select" to PLAYLIST_COLUMNS, "order" to "name.asc"), accessToken) { get() }
+        // Newest columns first. A server without migration 0023 refuses the VPN columns (PostgREST
+        // 400, code 42703): ask again without them, so the VPN reads as off. One without 0014 also
+        // refuses the proxy columns: ask a third time with neither, as before 0023 (AC-23).
+        val selects = listOf(PLAYLIST_COLUMNS + PROXY_COLUMNS + VPN_COLUMNS, PLAYLIST_COLUMNS + PROXY_COLUMNS, PLAYLIST_COLUMNS)
+        var response: ApiResponse = UNREACHABLE
+        for (select in selects) {
+            response = send(PLAYLIST_PATH, mapOf("select" to select, "order" to "name.asc"), accessToken) { get() }
+            if (!isUndefinedColumn(response)) return response
         }
         return response
     }
+
+    /**
+     * The VPN servers (vpn_server, migration 0023) in sort order, or only [hosts] when given (null
+     * means every row). A host with anything but `[a-z0-9.-]` is dropped before the call, so the
+     * filter goes out as written; when none is left, nothing is asked and the answer is no rows,
+     * never every row.
+     */
+    suspend fun selectVpnServers(accessToken: String, hosts: List<String>?): ApiResponse {
+        val query = mutableMapOf("select" to VPN_SERVER_COLUMNS, "order" to "sort_order.asc")
+        if (hosts != null) {
+            val usable = hosts.filter { it.isNotEmpty() && it.all(::isHostChar) }
+            if (usable.isEmpty()) return NO_ROWS
+            query["host"] = "in.(" + usable.joinToString(",") + ")"
+        }
+        return send(VPN_SERVER_PATH, query, accessToken) { get() }
+    }
+
+    /**
+     * One batch of VPN events (record_live_vpn_events), oldest first. The entries are never logged.
+     * A server without the function answers 404; the caller keeps the batch.
+     */
+    suspend fun recordLiveVpnEvents(
+        accessToken: String,
+        deviceId: String,
+        appVersion: String,
+        entries: JSONArray,
+    ): ApiResponse {
+        val body = JSONObject()
+            .put(P_DEVICE_ID, deviceId)
+            .put(P_APP_VERSION, appVersion)
+            .put(P_ENTRIES, entries)
+        return post(LIVE_VPN_EVENTS_PATH, emptyMap(), body, accessToken)
+    }
+
+    private fun isUndefinedColumn(response: ApiResponse): Boolean =
+        response is ApiResponse.Http && response.code == HTTP_BAD_REQUEST && response.body.contains(UNDEFINED_COLUMN)
+
+    private fun isHostChar(c: Char): Boolean = c in 'a'..'z' || c in '0'..'9' || c == '.' || c == '-'
 
     /**
      * The matches LiveOnSat lists (football, basketball, MMA, motor sport) with kickoff between
@@ -91,7 +131,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         val response = send(LISTING_PATH, query, accessToken, listingClient) { get() }
         // A server without migration 0019 refuses the sport column (PostgREST 400, code 42703): ask
         // again without it, so the football listings still arrive and every row reads as soccer.
-        if (response is ApiResponse.Http && response.code == HTTP_BAD_REQUEST && response.body.contains(UNDEFINED_COLUMN)) {
+        if (isUndefinedColumn(response)) {
             return send(LISTING_PATH, query + ("select" to LISTING_COLUMNS), accessToken, listingClient) { get() }
         }
         return response
@@ -190,9 +230,9 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     ): ApiResponse {
         val base = root ?: return UNREACHABLE
         val url = base.newBuilder().addPathSegments(path).apply {
-            // Every query value is a constant of this file, or the football listings' `and` filter
-            // around two ISO-8601 UTC timestamps ending in `Z` (no `+` to encode), so it goes out as
-            // written (commas kept).
+            // Every query value is a constant of this file, the football listings' `and` filter
+            // around two ISO-8601 UTC timestamps ending in `Z` (no `+` to encode), or the VPN servers'
+            // `in.(...)` filter over hosts of `[a-z0-9.-]` only, so it goes out as written (commas kept).
             query.forEach { (name, value) -> addEncodedQueryParameter(name, value) }
         }.build()
         val request = Request.Builder().url(url)
@@ -228,6 +268,9 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     private companion object {
         /** No HTTP exchange happened, and no network outage explains it. Callers read it as failed. */
         val UNREACHABLE = ApiResponse.Http(0, "")
+
+        /** What a filter that names no usable host answers, without a call. */
+        private val NO_ROWS = ApiResponse.Http(200, "[]")
         const val TIMEOUT_SECONDS = 15L
         const val LISTING_TIMEOUT_SECONDS = 4L
         const val TOKEN_PATH = "auth/v1/token"
@@ -235,6 +278,9 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val PLAYLIST_PATH = "rest/v1/member_playlist"
         const val PLAYLIST_COLUMNS = "client_number,name,server_url,username,password"
         const val PROXY_COLUMNS = ",proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password"
+        const val VPN_COLUMNS = ",vpn_enabled,vpn_server,vpn_backup_server,vpn_username,vpn_password,vpn_changed_at"
+        const val VPN_SERVER_PATH = "rest/v1/vpn_server"
+        const val VPN_SERVER_COLUMNS = "host,label,config,backup_host,sort_order"
         const val LISTING_PATH = "rest/v1/football_listing"
         const val LISTING_COLUMNS = "kickoff,competition,home,away,channels"
         const val SPORT_COLUMN = ",sport"
@@ -246,6 +292,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val LIVE_CHECKIN_PATH = "rest/v1/rpc/record_live_checkin"
         const val LIVE_PLAY_PATH = "rest/v1/rpc/record_live_play"
         const val LIVE_STRETCHES_PATH = "rest/v1/rpc/record_live_stretches"
+        const val LIVE_VPN_EVENTS_PATH = "rest/v1/rpc/record_live_vpn_events"
         const val P_TV_NOW = "p_tv_now"
         const val P_PLAYED_AT = "p_played_at"
         const val P_PROXY = "p_proxy"

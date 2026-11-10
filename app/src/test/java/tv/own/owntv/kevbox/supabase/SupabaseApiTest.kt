@@ -30,6 +30,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.kevbox.usage.Stretch
 import tv.own.owntv.kevbox.usage.toEntry
+import tv.own.owntv.kevbox.vpn.VpnEvent
+import tv.own.owntv.kevbox.vpn.VpnEventKind
+import tv.own.owntv.kevbox.vpn.toEntry
 
 class SupabaseApiTest {
 
@@ -227,6 +230,77 @@ class SupabaseApiTest {
         assertEquals("News", entry.getString("programme"))
         assertEquals(true, entry.isNull("provider_host"))
         assertEquals(false, entry.getBoolean("proxy"))
+    }
+
+    @Test
+    fun `recordLiveVpnEvents posts the contract body`() = runBlocking {
+        val server = Recording()
+        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon-key")
+        val at = java.time.ZonedDateTime.of(2026, 11, 10, 21, 5, 0, 0, BEIRUT).toInstant().toEpochMilli()
+        val entries = JSONArray()
+            .put(VpnEvent("e1", VpnEventKind.FELL_BACK, "vpn-de.premiumize.me,vpn-nl.premiumize.me", at, "C1").toEntry(BEIRUT))
+            .put(VpnEvent("e2", VpnEventKind.PERMISSION_DENIED, null, at + 1_000, null).toEntry(BEIRUT))
+
+        val response = api.recordLiveVpnEvents("a1", "device-1", "99.99.99.99", entries)
+
+        assertEquals(ApiResponse.Http(204, ""), response)
+        val request = server.requests.single()
+        assertEquals("POST", request.method)
+        assertEquals("/rest/v1/rpc/record_live_vpn_events", request.url.encodedPath)
+        assertEquals("Bearer a1", request.header("Authorization"))
+        assertEquals("anon-key", request.header("apikey"))
+        val sent = JSONObject(server.bodies.single())
+        assertEquals(setOf("p_device_id", "p_app_version", "p_entries"), sent.keys().asSequence().toSet())
+        assertEquals("device-1", sent.getString("p_device_id"))
+        assertEquals("99.99.99.99", sent.getString("p_app_version"))
+        val sentEntries = sent.getJSONArray("p_entries")
+        assertEquals(2, sentEntries.length())
+        val fellBack = sentEntries.getJSONObject(0)
+        // Exactly the four wire keys: the event id stays on the TV.
+        assertEquals(setOf("kind", "server", "at", "client_number"), fellBack.keys().asSequence().toSet())
+        assertEquals("fell_back", fellBack.getString("kind"))
+        assertEquals("vpn-de.premiumize.me,vpn-nl.premiumize.me", fellBack.getString("server"))
+        assertEquals("2026-11-10T21:05:00.000+02:00", fellBack.getString("at"))
+        assertEquals("C1", fellBack.getString("client_number"))
+        val denied = sentEntries.getJSONObject(1)
+        assertEquals(setOf("kind", "server", "at", "client_number"), denied.keys().asSequence().toSet())
+        assertEquals("permission_denied", denied.getString("kind"))
+        assertTrue(denied.isNull("server"))
+        assertEquals("2026-11-10T21:05:01.000+02:00", denied.getString("at"))
+        assertTrue(denied.isNull("client_number"))
+    }
+
+    @Test
+    fun `selectVpnServers asks for every row, or only the named hosts that look like hosts`() = runBlocking {
+        val server = Recording()
+        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon-key")
+
+        api.selectVpnServers("a1", null)
+        api.selectVpnServers("a1", listOf("vpn-de.premiumize.me", "evil.host&select=*", "vpn-nl.premiumize.me"))
+
+        val all = server.requests[0]
+        assertEquals("GET", all.method)
+        assertEquals("/rest/v1/vpn_server", all.url.encodedPath)
+        assertEquals("Bearer a1", all.header("Authorization"))
+        assertEquals("select=host,label,config,backup_host,sort_order&order=sort_order.asc", all.url.encodedQuery)
+        val named = server.requests[1]
+        assertEquals(
+            "select=host,label,config,backup_host,sort_order&order=sort_order.asc" +
+                "&host=in.(vpn-de.premiumize.me,vpn-nl.premiumize.me)",
+            named.url.encodedQuery,
+        )
+    }
+
+    @Test
+    fun `selectVpnServers makes no call when the filter names no usable host`() = runBlocking {
+        val server = Recording()
+        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon-key")
+
+        // Never "every row" in place of the hosts asked for.
+        assertEquals(ApiResponse.Http(200, "[]"), api.selectVpnServers("a1", listOf("evil.host&select=*", "")))
+        assertEquals(ApiResponse.Http(200, "[]"), api.selectVpnServers("a1", emptyList()))
+
+        assertEquals(0, server.requests.size)
     }
 
     private companion object {
