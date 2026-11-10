@@ -20,7 +20,12 @@ class OvpnConfigTest {
         return stream!!.use { String(it.readBytes(), Charsets.UTF_8) }
     }
 
-    private fun premiumize(country: String) = fixture("vpn-$country.premiumize.me.ovpn")
+    /**
+     * A Premiumize file as Premiumize serves it, with CRLF line endings. The repo stores the
+     * fixtures with LF (.gitattributes), so they are converted back here.
+     */
+    private fun premiumize(country: String) =
+        fixture("vpn-$country.premiumize.me.ovpn").replace("\r\n", "\n").replace("\n", "\r\n")
 
     /** Every line of [config] without its line ending. */
     private fun lines(config: String): List<String> = config.split("\n").map { it.removeSuffix("\r") }
