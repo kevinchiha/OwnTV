@@ -28,6 +28,14 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <!-- KevBox: the OpenVPN engine's manifest asks for QUERY_ALL_PACKAGES to fill its own allowed-apps
+         picker. KevBox Live has no picker (the tunnel carries this app alone), so it is dropped.
+         Lint flags this removal line as if it asked for the permission, hence the ignore. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:node="remove"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <!-- TV-first app, but allow non-TV installs too: touchscreen optional, and leanback is NOT required
          (required=true blocked plain phones / non-TV armv7a boxes that don't report the leanback feature). -->
     <uses-feature
@@ -93,6 +101,51 @@
             android:authorities="${applicationId}.kevbox-home-art"
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
+
+        <!-- KevBox: the one-time Android VPN prompt (0.6 AC-26); translucent so the channel keeps playing behind it. -->
+        <activity android:name=".kevbox.vpn.VpnConsentActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- KevBox: the OpenVPN engine's VPN service (extras/openvpn), the only engine part kept. It runs in
+             the app's main process (the engine's patch drops android:process), so the VPN controller,
+             event queue and fall-back store exist once. Only the system may bind it (BIND_VPN_SERVICE). -->
+        <service
+            android:name="de.blinkt.openvpn.core.OpenVPNService"
+            android:exported="true"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn" />
+        </service>
+
+        <!-- KevBox: every other engine component is removed: its screens, boot receiver, external-control
+             API, cross-process status service and keep-alive job. Nothing of the engine's UI can open and
+             nothing starts a tunnel behind the app's VPN controller (AC-34, AC-37). -->
+        <meta-data android:name="android.content.APP_RESTRICTIONS" tools:node="remove" />
+        <service android:name="de.blinkt.openvpn.core.OpenVPNStatusService" tools:node="remove" />
+        <service android:name="de.blinkt.openvpn.api.ExternalOpenVPNService" tools:node="remove" />
+        <service android:name="de.blinkt.openvpn.core.keepVPNAlive" tools:node="remove" />
+        <!-- KevBox: engine boot receiver and screens. -->
+        <receiver android:name="de.blinkt.openvpn.OnBootReceiver" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.LaunchVPN" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.activities.DisconnectVPN" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.activities.NotImplemented" tools:node="remove" />
+        <!-- KevBox: engine remote-control screens and their aliases. -->
+        <activity android:name="de.blinkt.openvpn.api.GrantPermissionsActivity" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.api.ConfirmDialog" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.api.RemoteAction" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.activities.LogWindow" tools:node="remove" />
+        <!-- KevBox: more engine aliases. -->
+        <activity-alias android:name="de.blinkt.openvpn.activities.Req" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.ConnectVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.DisconnectVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.PauseVPN" tools:node="remove" />
+        <!-- KevBox: the last engine aliases. -->
+        <activity-alias android:name="de.blinkt.openvpn.api.ResumeVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.SetDefaultVPN" tools:node="remove" />
 
         <!-- Exposes the downloaded update APK to the system installer. -->
         <provider

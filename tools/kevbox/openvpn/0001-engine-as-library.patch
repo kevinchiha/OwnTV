@@ -1,0 +1,329 @@
+diff --git a/main/build.gradle.kts b/main/build.gradle.kts
+index 850b413..81f7df0 100644
+--- a/main/build.gradle.kts
++++ b/main/build.gradle.kts
+@@ -1,12 +1,11 @@
+-import com.android.build.gradle.api.ApplicationVariant
+-
+ /*
+  * Copyright (c) 2012-2016 Arne Schwabe
+  * Distributed under the GNU GPL v2 with additional terms. For full terms see the file doc/LICENSE.txt
+  */
+ 
+ plugins {
+-    alias(libs.plugins.android.application)
++    // KevBox: built as a library (AAR) for KevBox Live; no application id, version or signing.
++    id("com.android.library")
+     id("checkstyle")
+ }
+ 
+@@ -24,10 +23,10 @@ android {
+ 
+     defaultConfig {
+         minSdk = 21
+-        targetSdk = 36
++        // KevBox: a library has no targetSdk; the host app sets it.
+         //targetSdkPreview = "UpsideDownCake"
+-        versionCode = 219
+-        versionName = "0.7.64"
++        // KevBox: only the ABIs KevBox Live ships.
++        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+         externalNativeBuild {
+             cmake {
+                 //arguments+= "-DCMAKE_VERBOSE_MAKEFILE=1"
+@@ -63,37 +62,6 @@ android {
+         }
+     }
+ 
+-    signingConfigs {
+-        create("release") {
+-            // ~/.gradle/gradle.properties
+-            val keystoreFile: String? by project
+-            storeFile = keystoreFile?.let { file(it) }
+-            val keystorePassword: String? by project
+-            storePassword = keystorePassword
+-            val keystoreAliasPassword: String? by project
+-            keyPassword = keystoreAliasPassword
+-            val keystoreAlias: String? by project
+-            keyAlias = keystoreAlias
+-            enableV1Signing = true
+-            enableV2Signing = true
+-        }
+-
+-        create("releaseOvpn2") {
+-            // ~/.gradle/gradle.properties
+-            val keystoreO2File: String? by project
+-            storeFile = keystoreO2File?.let { file(it) }
+-            val keystoreO2Password: String? by project
+-            storePassword = keystoreO2Password
+-            val keystoreO2AliasPassword: String? by project
+-            keyPassword = keystoreO2AliasPassword
+-            val keystoreO2Alias: String? by project
+-            keyAlias = keystoreO2Alias
+-            enableV1Signing = true
+-            enableV2Signing = true
+-        }
+-
+-    }
+-
+     lint {
+         enable += setOf("BackButton", "EasterEgg", "StopShip", "IconExpectedSize", "GradleDynamicVersion", "NewerVersionAvailable")
+         checkOnly += setOf("ImpliedQuantity", "MissingQuantity")
+@@ -110,6 +78,8 @@ android {
+ 
+         create("skeleton") {
+             dimension = "implementation"
++            // KevBox: tell CMake this is the skeleton build (AGP 9's output folder no longer names the flavour).
++            externalNativeBuild { cmake { arguments += "-DOVPN_SKELETON=ON" } }
+         }
+ 
+         create("ovpn23")
+@@ -121,140 +91,21 @@ android {
+         create("ovpn2")
+         {
+             dimension = "ovpnimpl"
+-            versionNameSuffix = "-o2"
+             buildConfigField("boolean", "openvpn3", "false")
+         }
+     }
+ 
+-    buildTypes {
+-        getByName("release") {
+-            if (project.hasProperty("icsopenvpnDebugSign")) {
+-                logger.warn("property icsopenvpnDebugSign set, using debug signing for release")
+-                signingConfig = android.signingConfigs.getByName("debug")
+-            } else {
+-                productFlavors["ovpn23"].signingConfig = signingConfigs.getByName("release")
+-                productFlavors["ovpn2"].signingConfig = signingConfigs.getByName("releaseOvpn2")
+-            }
+-        }
+-    }
+-
+     compileOptions {
+         targetCompatibility = JavaVersion.VERSION_17
+         sourceCompatibility = JavaVersion.VERSION_17
+     }
+-
+-    splits {
+-        abi {
+-            isEnable = true
+-            reset()
+-            include("x86", "x86_64", "armeabi-v7a", "arm64-v8a")
+-            isUniversalApk = true
+-        }
+-    }
+-
+-    packaging {
+-        jniLibs {
+-            useLegacyPackaging = true
+-        }
+-    }
+-
+-    bundle {
+-        codeTransparency {
+-            signing {
+-                val keystoreTPFile: String? by project
+-                storeFile = keystoreTPFile?.let { file(it) }
+-                val keystoreTPPassword: String? by project
+-                storePassword = keystoreTPPassword
+-                val keystoreTPAliasPassword: String? by project
+-                keyPassword = keystoreTPAliasPassword
+-                val keystoreTPAlias: String? by project
+-                keyAlias = keystoreTPAlias
+-
+-                if (keystoreTPFile?.isEmpty() ?: true)
+-                    println("keystoreTPFile not set, disabling transparency signing")
+-                if (keystoreTPPassword?.isEmpty() ?: true)
+-                    println("keystoreTPPassword not set, disabling transparency signing")
+-                if (keystoreTPAliasPassword?.isEmpty() ?: true)
+-                    println("keystoreTPAliasPassword not set, disabling transparency signing")
+-                if (keystoreTPAlias?.isEmpty() ?: true)
+-                    println("keyAlias not set, disabling transparency signing")
+-
+-            }
+-        }
+-    }
+ }
+ 
+-var swigcmd = "swig"
+-// Workaround for macOS(arm64) and macOS(intel) since it otherwise does not find swig and
+-// I cannot get the Exec task to respect the PATH environment :(
+-if (file("/opt/homebrew/bin/swig").exists())
+-    swigcmd = "/opt/homebrew/bin/swig"
+-else if (file("/usr/local/bin/swig").exists())
+-    swigcmd = "/usr/local/bin/swig"
+-
+-
+-fun registerGenTask(variantName: String, variantDirName: String): File {
+-    val baseDir = File(buildDir, "generated/source/ovpn3swig/${variantDirName}")
+-    val genDir = File(baseDir, "net/openvpn/ovpn3")
+-
+-    tasks.register<Exec>("generateOpenVPN3Swig${variantName}")
+-    {
+-
+-        doFirst {
+-            mkdir(genDir)
+-        }
+-        commandLine(listOf(swigcmd, "-outdir", genDir, "-outcurrentdir", "-c++", "-java", "-package", "net.openvpn.ovpn3",
+-                "-Isrc/main/cpp/openvpn3/client", "-Isrc/main/cpp/openvpn3/",
+-                "-DOPENVPN_PLATFORM_ANDROID",
+-                "-o", "${genDir}/ovpncli_wrap.cxx", "-oh", "${genDir}/ovpncli_wrap.h",
+-                "src/main/cpp/openvpn3/client/ovpncli.i"))
+-        inputs.files( "src/main/cpp/openvpn3/client/ovpncli.i")
+-        outputs.dir( genDir)
+-
+-    }
+-    return baseDir
+-}
+-
+-android.applicationVariants.all(object : Action<ApplicationVariant> {
+-    override fun execute(variant: ApplicationVariant) {
+-        val sourceDir = registerGenTask(variant.name, variant.baseName.replace("-", "/"))
+-        val task = tasks.named("generateOpenVPN3Swig${variant.name}").get()
+-
+-        variant.registerJavaGeneratingTask(task, sourceDir)
+-    }
+-})
+-
++// KevBox: the OpenVPN 3 SWIG generation is dropped; the skeleton + ovpn2 build never uses it.
+ 
+ dependencies {
+-    // https://maven.google.com/web/index.html
+-    implementation(libs.androidx.annotation)
+-    implementation(libs.androidx.core.ktx)
+-
+-    uiImplementation(libs.android.view.material)
+-    uiImplementation(libs.androidx.activity)
+-    uiImplementation(libs.androidx.activity.ktx)
+-    uiImplementation(libs.androidx.appcompat)
+-    uiImplementation(libs.androidx.cardview)
+-    uiImplementation(libs.androidx.viewpager2)
+-    uiImplementation(libs.androidx.constraintlayout)
+-    uiImplementation(libs.androidx.core.ktx)
+-    uiImplementation(libs.androidx.fragment.ktx)
+-    uiImplementation(libs.androidx.lifecycle.runtime.ktx)
+-    uiImplementation(libs.androidx.lifecycle.viewmodel.ktx)
+-    uiImplementation(libs.androidx.preference.ktx)
+-    uiImplementation(libs.androidx.recyclerview)
+-    uiImplementation(libs.androidx.security.crypto)
+-    uiImplementation(libs.androidx.webkit)
+-    uiImplementation(libs.kotlin)
+-    uiImplementation(libs.mpandroidchart)
+-    uiImplementation(libs.square.okhttp)
+-
+-    testImplementation(libs.androidx.test.core)
+-    testImplementation(libs.junit)
+-    testImplementation(libs.kotlin)
+-    testImplementation(libs.mockito.core)
+-    testImplementation(libs.robolectric)
++    // KevBox: versions written inline (from gradle/libs.versions.toml at this tag); only the skeleton
++    // flavour is built, so the ui flavour's and the tests' libraries are left out.
++    implementation("androidx.annotation:annotation:1.9.1")
++    implementation("androidx.core:core:1.17.0")
+ }
+-
+-fun DependencyHandler.uiImplementation(dependencyNotation: Any): Dependency? =
+-    add("uiImplementation", dependencyNotation)
+\ No newline at end of file
+diff --git a/main/src/main/AndroidManifest.xml b/main/src/main/AndroidManifest.xml
+index 4aa454c..7095eb7 100644
+--- a/main/src/main/AndroidManifest.xml
++++ b/main/src/main/AndroidManifest.xml
+@@ -16,16 +16,8 @@
+             tools:ignore="QueryAllPackagesPermission" />
+ 
+ 
+-    <application
+-        android:name=".core.ICSOpenVPNApplication"
+-        android:allowBackup="true"
+-        android:appCategory="productivity"
+-        android:icon="@mipmap/ic_launcher"
+-        android:roundIcon="@mipmap/ic_launcher_round"
+-        android:label="@string/app"
+-        android:supportsRtl="true"
+-        android:theme="@style/blinkt"
+-        tools:ignore="UnusedAttribute">
++    <!-- KevBox: a library's application element carries no Application class, icon, label or theme. -->
++    <application tools:ignore="UnusedAttribute">
+         <meta-data
+             android:name="android.content.APP_RESTRICTIONS"
+             android:resource="@xml/app_restrictions" />
+@@ -39,12 +31,12 @@
+             android:theme="@style/blinkt.dialog" />
+ 
+ 
++        <!-- KevBox: every component runs in the host app's main process (no android:process). -->
+         <service
+             android:name=".core.OpenVPNService"
+             android:exported="true"
+             android:permission="android.permission.BIND_VPN_SERVICE"
+-            android:foregroundServiceType="specialUse"
+-            android:process=":openvpn">
++            android:foregroundServiceType="specialUse">
+             <intent-filter>
+                 <action android:name="android.net.VpnService" />
+             </intent-filter>
+@@ -53,7 +45,6 @@
+         </service>
+         <service
+             android:name=".api.ExternalOpenVPNService"
+-            android:process=":openvpn"
+             android:exported="true"
+                 tools:ignore="ExportedService">
+             <intent-filter>
+@@ -62,8 +53,7 @@
+         </service>
+         <service
+             android:name=".core.OpenVPNStatusService"
+-            android:exported="false"
+-            android:process=":openvpn" />
++            android:exported="false" />
+ 
+         <activity android:name=".api.GrantPermissionsActivity"
+                 android:exported="true">
+@@ -87,7 +77,6 @@
+         </receiver>
+ 
+         <service android:name=".core.keepVPNAlive"
+-                android:process=":openvpn"
+                 android:exported="true"
+                 android:permission="android.permission.BIND_JOB_SERVICE"/>
+ 
+diff --git a/main/src/main/cpp/CMakeLists.txt b/main/src/main/cpp/CMakeLists.txt
+index f26c71b..bf614c8 100644
+--- a/main/src/main/cpp/CMakeLists.txt
++++ b/main/src/main/cpp/CMakeLists.txt
+@@ -41,7 +41,8 @@ endif()
+ 
+     # Super hacky way to determine flavour
+ #-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/Users/arne/software/icsopenvpn/main/build/intermediates/cmake/normal/debug/obj/arm64-v8a
+-if (NOT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY} MATCHES "build/intermediates/cmake/.*skeleton.*/")
++# KevBox: the skeleton flavour passes -DOVPN_SKELETON=ON; the output-folder test misses under AGP 9.
++if (NOT OVPN_SKELETON AND NOT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY} MATCHES "build/intermediates/cmake/.*skeleton.*/")
+     FIND_PACKAGE(SWIG 3.0 REQUIRED)
+ 
+     add_custom_command(OUTPUT "ovpncli_wrap.cxx"
+@@ -118,7 +119,8 @@ target_link_libraries(ovpnutil log)
+ add_library(osslutil SHARED ovpnutil/osslutil.cpp)
+ target_link_libraries(osslutil log crypto ssl)
+ 
+-if (NOT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY} MATCHES "build/intermediates/cmake/.*skeleton.*/")
++# KevBox: the skeleton flavour passes -DOVPN_SKELETON=ON; the output-folder test misses under AGP 9.
++if (NOT OVPN_SKELETON AND NOT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY} MATCHES "build/intermediates/cmake/.*skeleton.*/")
+     add_library(osslspeedtest SHARED ovpnutil/sslspeed.c)
+     target_link_libraries(osslspeedtest log crypto ssl)
+ else ()
+diff --git a/main/src/main/java/de/blinkt/openvpn/core/NativeUtils.java b/main/src/main/java/de/blinkt/openvpn/core/NativeUtils.java
+index 9bfa5e6..bd3d26a 100644
+--- a/main/src/main/java/de/blinkt/openvpn/core/NativeUtils.java
++++ b/main/src/main/java/de/blinkt/openvpn/core/NativeUtils.java
+@@ -63,7 +63,8 @@ public class NativeUtils {
+     static {
+         if (!isRoboUnitTest()) {
+             System.loadLibrary("ovpnutil");
+-            if (!BuildConfig.FLAVOR.equals("skeleton")) {
++            // KevBox: a library's FLAVOR joins both dimensions ("skeletonOvpn2"); the skeleton build has no speed test.
++            if (!BuildConfig.FLAVOR.startsWith("skeleton")) {
+                 System.loadLibrary("osslspeedtest");
+             }
+         }

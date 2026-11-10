@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
+import tv.own.owntv.kevbox.supabase.PlaylistVpn
 
 class ManagedProxyTest {
     private val proxyA = PlaylistProxy(true, "a.example", 3128, "u", "p")
@@ -34,6 +35,16 @@ class ManagedProxyTest {
     }
 
     @Test
+    fun `a playlist whose VPN is on gets no proxy - the VPN wins`() {
+        val vpn = PlaylistVpn(true, "vpn-de.premiumize.me", null, "vu", "vp", null)
+        val rows = listOf(row("1", proxyA).copy(vpn = vpn), row("2", proxyB))
+        assertEquals(PlaylistProxy.OFF, ManagedProxy.proxyFor(rows, "1"))
+        assertEquals(PlaylistProxy.OFF, ManagedProxy.proxyFor(listOf(rows[0]), null))
+        assertEquals(proxyB, ManagedProxy.proxyFor(rows, "2"))
+        assertEquals(proxyA, ManagedProxy.proxyFor(listOf(row("1", proxyA).copy(vpn = vpn.copy(enabled = false))), null))
+    }
+
+    @Test
     fun `apply writes only when the proxy changes, and an off proxy with old fields counts as off`() = runBlocking {
         val target = Target(stored = PlaylistProxy(false, "old.example", 1, "x", "y"))
         val managed = ManagedProxy(target)
@@ -47,5 +58,17 @@ class ManagedProxyTest {
 
         managed.clear()
         assertEquals(listOf(proxyA, PlaylistProxy.OFF), target.saves)
+    }
+
+    @Test
+    fun `apply says whether it saved a different proxy`() = runBlocking {
+        val target = Target(stored = PlaylistProxy.OFF)
+        val managed = ManagedProxy(target)
+
+        assertEquals(false, managed.apply(listOf(row("1")), "1"))
+        assertEquals(true, managed.apply(listOf(row("1", proxyA)), "1"))
+        assertEquals(false, managed.apply(listOf(row("1", proxyA)), "1"))
+        assertEquals(true, managed.apply(listOf(row("1", proxyB)), "1"))
+        assertEquals(true, managed.apply(listOf(row("1")), "1"))
     }
 }

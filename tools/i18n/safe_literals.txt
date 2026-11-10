@@ -1082,6 +1082,45 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt	source_id
 1	json	app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt	sources
 1	json	app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt	state
+1	empty	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	\0
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	*
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	1.0.0
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	access_token
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	apikey
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	broadcast
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	config
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	error
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	event
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	filter
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	heartbeat
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	http
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	https
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	join_ref
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	key
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	member_playlist
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	ok
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	payload
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	phoenix
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	phx_close
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	phx_error
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	phx_join
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	phx_reply
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	postgres_changes
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	presence
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	public
+1	url	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	realtime/v1/websocket
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	realtime:kevbox-member-playlist
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	ref
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	schema
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	self
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	status
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	system
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	table
+1	json	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	topic
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	user_id=eq.
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	vsn
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	ws
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt	wss
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/refresh/CoreSyncSteps.kt	kevbox_update_now
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/refresh/PlaylistRefreshSetting.kt	choice
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/refresh/PlaylistRefreshSetting.kt	kevbox_playlist_refresh
@@ -1184,14 +1223,18 @@
 1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	update-profile
 1	file-path	app/src/main/java/tv/own/owntv/kevbox/release/UpdateProfileAttacher.kt	update.dm
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	access_token
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	backup_host
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	client_number
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	config
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	email
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	error
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	error_code
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	expires_in
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	host
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	id
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	invalid_credentials
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	invalid_grant
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	label
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	name
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	password
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	proxy_enabled
@@ -1204,9 +1247,16 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	refresh_token_not_found
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	server_url
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	session_not_found
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	sort_order
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	user
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	user_not_found
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	username
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	vpn_backup_server
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	vpn_changed_at
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	vpn_enabled
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	vpn_password
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	vpn_server
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	vpn_username
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt	AES/GCM/NoPadding
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt	AndroidKeyStore
 1	technical	app/src/main/java/tv/own/owntv/kevbox/session/KeystoreTokenCipher.kt	kevbox_live_session
@@ -1286,11 +1336,16 @@
 1	log	app/src/main/java/tv/own/owntv/kevbox/sports/ListedChannels.kt	listed channels failed: ${e.javaClass.simpleName}
 1	technical	app/src/main/java/tv/own/owntv/kevbox/sports/SoonBySport.kt	soon-${sport.name}
 1	technical	app/src/main/java/tv/own/owntv/kevbox/sports/TodayDatedSportsSource.kt	America/New_York
-3	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt	\0
+6	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt	\0
+1	log	app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt	PlaylistVpn(enabled=$enabled, server=$server, backupServer=$backupServer, changedAt=$changedAt)
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt	auto
 2	empty	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	\0
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	(kickoff.gte.$fromIso,kickoff.lte.$toIso)
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	)
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,sport
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,vpn_enabled,vpn_server,vpn_backup_server,vpn_username,vpn_password,vpn_changed_at
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	42703
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	Authorization
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	Bearer $accessToken
@@ -1302,10 +1357,13 @@
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	client_number,name,server_url,username,password
 1	json	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	email
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	grant_type
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	host
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	host,label,config,backup_host,sort_order
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	in.(
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	kickoff,competition,home,away,channels
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	kickoff.asc
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	local
-2	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	name.asc
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	name.asc
 3	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	order
 1	json	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	p_android
 1	json	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	p_app_version
@@ -1324,8 +1382,11 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	rest/v1/rpc/record_live_errors
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	rest/v1/rpc/record_live_play
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	rest/v1/rpc/record_live_stretches
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	rest/v1/rpc/record_live_vpn_events
+1	url	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	rest/v1/vpn_server
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	scope
 4	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	select
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	sort_order.asc
 1	technical	app/src/main/java/tv/own/owntv/kevbox/ui/QuietAccessibility.kt	_enabledServices
 1	technical	app/src/main/java/tv/own/owntv/kevbox/ui/QuietAccessibility.kt	androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat
 2	empty	app/src/main/java/tv/own/owntv/kevbox/ui/SignInScreen.kt	\0
@@ -1351,6 +1412,78 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	provider_host
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	proxy
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	started_at
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/ChannelRestarter.kt	KevBoxVpn
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/ChannelRestarter.kt	channel restart failed: ${e.javaClass.simpleName}
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_at_ms
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_changed_at
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_server
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	kevbox_vpn
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	.cp
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	.cpold
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	.vp
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	KevBox Live
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	KevBoxVpn
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	KevBoxVpnEngine
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	NOPROCESS
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	temporary-vpn-profile
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: config refused ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: config unreadable ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: start failed ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: stop failed ${e.javaClass.simpleName}
+3	empty	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	\0
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	<
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	</
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	</$blockTag>
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	</$inBlock>
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	</auth-user-pass>
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	<auth-user-pass>
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	cipher
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	data-ciphers
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-256-CBC
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	data-ciphers-fallback
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	data-ciphers-fallback AES-256-CBC
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	infinite
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	resolv-retry
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	resolv-retry 25
+1	regex	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	(?:rtt|round-trip) min/avg/max\\S* = ([0-9.]+)/([0-9.]+)/([0-9.]+)
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-c
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-i
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-n
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-w
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	/system/bin/ping
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	0.2
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	2
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	3
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt	KevBoxVpn
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt	vpn prompt answer lost: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt	vpn prompt failed to open: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt	vpn prompt unavailable: ${e.javaClass.simpleName}
+1	compiler	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	DEPRECATION
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	KevBoxVpn
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn engine start failed: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn runner call failed: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn runner step failed: ${e.javaClass.simpleName}
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	at
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	client_number
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	connected
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	fell_back
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	kind
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	other_vpn_active
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	permission_denied
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	server
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	.tmp
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	at_ms
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	client_number
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	id
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	items
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	kevbox_live_vpn_events.json
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	kind
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	server
+1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	user
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt	KevBoxVpn
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt	vpn event send failed: ${e.javaClass.simpleName}
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt	,
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt	VpnWant(clientNumber=$clientNumber, server=$server, backup=$backup, changedAt=$changedAt)
 2	empty	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	eq
 1	technical	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	eqBar$i

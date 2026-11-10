@@ -251,6 +251,10 @@ android {
             // the "Unable to strip the following libraries, packaging them as they are" line on every
             // release task came from. Skipping it packages byte-identical libraries without the noise.
             keepDebugSymbols += "**/*.so"
+            // KevBox: the OpenVPN engine (extras/openvpn) runs its OpenVPN program, libovpnexec.so, as a file
+            // from the app's native library folder, so native libraries must be extracted at install
+            // (extractNativeLibs="true") instead of staying packed in the APK.
+            useLegacyPackaging = true
         }
     }
 
@@ -486,6 +490,10 @@ dependencies {
     // Versions inline because gradle/libs.versions.toml stays as upstream has it.
     implementation("io.sentry:sentry-android-core:8.60.0")
     implementation("io.sentry:sentry-android-ndk:8.60.0")
+    // KevBox: the OpenVPN 2.x engine (ics-openvpn, skeleton + ovpn2), built by tools/kevbox/openvpn/build-engine.sh
+    // from the tag in extras/openvpn/SOURCE.txt. A local AAR, so NDK and CMake stay out of the app build. Its
+    // runtime libraries (androidx.annotation, androidx.core) already come with the app.
+    implementation(files("../extras/openvpn/ics-openvpn-v0.7.64-skeleton-ovpn2.aar"))
 
 
     // Debug tooling

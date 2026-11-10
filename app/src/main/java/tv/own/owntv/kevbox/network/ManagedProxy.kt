@@ -25,27 +25,39 @@ class CoreProxyTarget(private val settings: SettingsRepository) : ProxyTarget {
  * Keeps Core's global proxy equal to the proxy kevbox.dev set for the playlist on screen.
  *
  * KevBoxCoordinator calls [apply] after every successful playlist fetch (sign-in, the 15-minute
- * check, coming back to the app) and after the member picks a playlist, and [clear] on sign-out. A
+ * check, a Realtime change, coming back to the app) and after the member picks a playlist, and
+ * [clear] on sign-out. A
  * failed fetch calls nothing, so the proxy stays as it was. The app's own Proxy screen is hidden:
  * kevbox.dev is the only place it changes. KevBox's own server calls never use it (SupabaseApi).
  */
 class ManagedProxy(private val target: ProxyTarget) {
 
-    suspend fun apply(rows: List<PlaylistRow>, chosenClientNumber: String?) {
+    /**
+     * Saves the proxy for the playlist on screen. True when it saved a different proxy: the route
+     * under a playing channel moved, so the coordinator re-tunes it (0.6 AC-40).
+     */
+    suspend fun apply(rows: List<PlaylistRow>, chosenClientNumber: String?): Boolean {
         val want = proxyFor(rows, chosenClientNumber)
         // Written only when it changes: each write restarts what reads the setting.
-        if (normalized(target.current()) != want) target.save(want)
+        if (normalized(target.current()) == want) return false
+        target.save(want)
+        return true
     }
 
-    suspend fun clear() = apply(emptyList(), null)
+    /** Sign-out: no proxy. Playback stops anyway, so nothing is re-tuned. */
+    suspend fun clear() {
+        apply(emptyList(), null)
+    }
 
     companion object {
         /**
          * The chosen playlist's proxy; with no choice, the only playlist's. Anything else (no rows,
-         * several and none chosen, a proxy switched off) is [PlaylistProxy.OFF].
+         * several and none chosen, a proxy switched off) is [PlaylistProxy.OFF]. A playlist whose VPN
+         * is on gets no proxy either: the VPN wins (0.6 AC-25, ManagedVpn).
          */
         fun proxyFor(rows: List<PlaylistRow>, chosenClientNumber: String?): PlaylistProxy {
             val row = rows.firstOrNull { it.clientNumber == chosenClientNumber } ?: rows.singleOrNull()
+            if (row?.vpn?.enabled == true) return PlaylistProxy.OFF
             return row?.proxy?.takeIf { it.enabled } ?: PlaylistProxy.OFF
         }
 
