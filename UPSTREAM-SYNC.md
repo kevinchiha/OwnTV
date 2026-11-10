@@ -823,6 +823,76 @@ start from `KevBoxCoordinator.start()` through defaulted constructor hooks.
 `kevbox_tv` emulator against a local Supabase with 0023, using unroutable TEST-NET servers, with no
 Premiumize login.
 
+## Encrypted proxy (0.7)
+
+A KevBox Live TV whose VPS proxy is on reaches persovps's Squid over TLS (`northcache.uk`, port 443
+on `45.146.255.87`) instead of plain HTTP on 38129. The players only speak plain HTTP proxies, so a
+small relay on the TV listens on `127.0.0.1` and wraps each connection in TLS. 0.7 changes no
+upstream file: everything is fork-only code under `kevbox/`, and the table above has no new row.
+
+### Where it lives
+
+- `kevbox/network/LocalRelay.kt`: the relay. It listens on `127.0.0.1` only, tries port 61129
+  first (`RELAY_PORT`), takes a free port when 61129 is busy, and keeps its port for the life of the
+  process. Per connection it opens TLS to the playlist's `proxy_tls_addr` (no DNS lookup) or to
+  `proxy_tls_host` through DNS, sends `proxy_tls_host` as the server name, checks the chain and the
+  host name (OkHttp's `OkHostnameVerifier`), then copies bytes both ways unchanged. Any failure
+  closes the player's connection; it never falls back to the plain port.
+- `kevbox/network/RelayTrust.kt`: the roots the relay trusts.
+- `kevbox/network/KeptRelay.kt`: the last encrypted address, in the `kevbox_relay` prefs, so the
+  relay starts again at process start before any playlist fetch.
+- `kevbox/network/ManagedProxy.kt`: when the playlist carries an encrypted address, Core's proxy
+  setting becomes `127.0.0.1:<relay port>` with the playlist's `kb<n>` login; the plain host is
+  never saved there.
+- `kevbox/release/DirectClient.kt`: the silent self-update goes straight to the internet, so a relay
+  that fails closed never blocks the update that fixes it.
+- Wiring in `kevbox/KevBoxCoordinator.kt` and `kevbox/di/KevBoxModule.kt`; the three columns are
+  read in `kevbox/supabase/` (migration 0024 in kevbox).
+
+### What it reads from Core
+
+Pinned with typed references in `kevbox/errors/CoreContractTest.kt`, so a Core bump that renames or
+retypes one stops that test compiling:
+
+- `tv.own.owntv.core.network.ExtraTrustAnchors(InputStream)` and its `trustManager`, built from
+  `tv.own.owntv.core.R.raw.isrg_extra_roots` (Core's bundled Let's Encrypt roots): the relay trusts
+  Android's roots plus these, the same set Core's own requests trust.
+- `tv.own.owntv.core.network.DnsConfigHolder.dns`: a lookup (when `proxy_tls_addr` is null) follows
+  the member's DNS setting.
+
+### What it relies on in Core
+
+The relay works only because Core has one proxy setting that every player follows:
+`ProxyConfigHolder` gives OkHttp (ExoPlayer, the guide, the logos) its `proxySelector` and
+`proxyAuthenticator`, and gives mpv its `http-proxy` value through `mpvProxyUrl()`, which
+`OwnTVPlayer` sets before each load. Neither is pinned by a test, because the relay does not call
+them. After a Core upgrade, check:
+
+- the proxy setting still drives both players (`ProxyConfigHolder`, `OwnTVPlayer`'s `http-proxy`);
+- `ProxyConfigHolder`'s loopback rule still applies only to requests whose destination is
+  `127.0.0.1` (the timeshift server). A rule that skipped a proxy whose own host is `127.0.0.1`
+  would send every request around the relay;
+- `ExtraTrustAnchors` and `isrg_extra_roots` still exist (`CoreContractTest` compiles);
+- whether Core's mpv now answers a proxy's 407 with the login. Up to Core 1.0.69 it does not, on
+  the plain proxy or through the relay, so mpv cannot play through the VPS proxy at all (0.7 e2e
+  report, notes 1 and 2). If a Core release fixes that, play a channel on mpv through a local TLS
+  Squid as the report does.
+
+### The debug-only test root
+
+A debug build reads one extra root from `kevbox-relay-test-ca.pem` (`RELAY_TEST_CA_FILE`) in the
+app's external files folder (`/sdcard/Android/data/tv.kevbox.live/files/`), so the emulator can test
+against a local Squid with a throwaway certificate. A release build never reads the file; the e2e
+report's check (i) shows a release build refusing the test certificate with the file in place.
+`tools/kevbox/relay/make-test-certs.sh` regenerates the unit tests' certificates under
+`app/src/test/resources/relay/`.
+
+### Testing after a merge
+
+`docs/superpowers/2026-11-10-0.7-encrypted-proxy-e2e.md` shows how to run the chain on the
+`kevbox_tv` emulator against a local Supabase with 0024 and kevbox's
+`deploy/squid-tls/test-in-container.sh --keep`, with no persovps and no real certificate.
+
 ## Regenerating the rebrand
 
 Both scripts read Core's resources at the pinned version (`owntvCore`), downloaded once into
