@@ -301,6 +301,20 @@ val kevboxModule = module {
 
     // The VPN (0.6): the engine in this process, its event queue and sender, and the controller
     // that runs the rules for the playlist on screen. KevBoxCoordinator starts the controller.
+    // Re-tunes the playing channel after a VPN or proxy change (AC-40). Lazy engines, like the
+    // watchers: they are read only once the shell has shown. The OkHttp client is the shared one,
+    // whose pool SupabaseApi's client shares too.
+    single {
+        val koin = getKoin()
+        tv.own.owntv.kevbox.vpn.ChannelRestarter(
+            livePreview = lazy { koin.get<LivePreviewEngine>() },
+            player = lazy { koin.get<OwnTVPlayer>() },
+            scene = get(),
+            http = get(),
+            application = androidContext() as android.app.Application,
+            scope = get(),
+        )
+    }
     single<tv.own.owntv.kevbox.vpn.VpnEngine> { tv.own.owntv.kevbox.vpn.IcsVpnEngine(androidContext()) }
     single {
         // noBackupFilesDir, like the error queue: this TV's alone, never in a backup.
@@ -335,6 +349,7 @@ val kevboxModule = module {
             now = System::currentTimeMillis,
             otherVpnActive = { tv.own.owntv.kevbox.vpn.otherVpnNetworkPresent(app) },
             permissionGranted = { tv.own.owntv.kevbox.vpn.vpnPermissionGranted(app) },
+            restartChannel = get<tv.own.owntv.kevbox.vpn.ChannelRestarter>()::restartSoon,
         )
     }
 
@@ -377,6 +392,7 @@ val kevboxModule = module {
             startVpn = vpnController::start,
             // Resolved only when called: the socket's callback points back at this coordinator.
             startRealtime = { koin.get<tv.own.owntv.kevbox.realtime.PlaylistRealtime>().start() },
+            restartChannel = get<tv.own.owntv.kevbox.vpn.ChannelRestarter>()::restartSoon,
         )
     }
     // KevBox Setup's login file (kevbox-setup docs/login-file.md), checked from MainActivity.onResume.

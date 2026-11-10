@@ -198,6 +198,9 @@ class KevBoxCoordinatorTest {
         @Volatile var vpnSignOuts = 0
         @Volatile var vpnStarts = 0
 
+        /** How often the coordinator asked the channel restarter for a restart. */
+        @Volatile var restarts = 0
+
         /** The coordinator's realtime hook; a test that wires the socket sets it before [start]. */
         var startRealtime: () -> Unit = {}
 
@@ -244,6 +247,7 @@ class KevBoxCoordinatorTest {
                 vpn = ManagedVpn(wanted = { vpnWants += it }, signedOut = { vpnSignOuts += 1 }),
                 startVpn = { vpnStarts += 1 },
                 startRealtime = { startRealtime() },
+                restartChannel = { restarts += 1 },
             )
             coordinator.start()
             idle.receive()
@@ -307,6 +311,51 @@ class KevBoxCoordinatorTest {
         assertEquals(2, server.calls(PLAYLIST))
         assertEquals(proxyA, proxyTarget.stored)
         assertEquals(1, proxyTarget.saves)
+    }
+
+    @Test
+    fun `a proxy change restarts, an unchanged proxy does not`() = harness {
+        signedIn()
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA))))
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA))))
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        waitFor { proxyTarget.stored == proxyA }
+        assertEquals(1, restarts)
+
+        // The same proxy again: nothing written, nothing re-tuned.
+        advance(15 * minute)
+        assertEquals(2, server.calls(PLAYLIST))
+        assertEquals(1, restarts)
+
+        // Switched off in kevbox.dev: written, and the playing channel re-tuned.
+        advance(15 * minute)
+        waitFor { proxyTarget.stored == PlaylistProxy.OFF }
+        assertEquals(2, restarts)
+
+        // A sign-out never re-tunes: playback stops anyway.
+        coordinator.signOut()
+        assertEquals(2, restarts)
+    }
+
+    @Test
+    fun `a pick that changes the proxy restarts, and a sign-out that clears it does not`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"), row("2").copy(proxy = proxyA))))
+        start()
+        waitFor { server.calls(PLAYLIST) == 1 }
+        assertEquals(0, restarts)
+
+        coordinator.choose("2")
+        assertEquals(proxyA, proxyTarget.stored)
+        assertEquals(1, restarts)
+
+        coordinator.choose("2")
+        assertEquals(1, restarts)
+
+        coordinator.signOut()
+        assertEquals(PlaylistProxy.OFF, proxyTarget.stored)
+        assertEquals(1, restarts)
     }
 
     @Test

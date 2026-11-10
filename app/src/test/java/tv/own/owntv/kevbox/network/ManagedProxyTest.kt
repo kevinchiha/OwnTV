@@ -59,4 +59,16 @@ class ManagedProxyTest {
         managed.clear()
         assertEquals(listOf(proxyA, PlaylistProxy.OFF), target.saves)
     }
+
+    @Test
+    fun `apply says whether it saved a different proxy`() = runBlocking {
+        val target = Target(stored = PlaylistProxy.OFF)
+        val managed = ManagedProxy(target)
+
+        assertEquals(false, managed.apply(listOf(row("1")), "1"))
+        assertEquals(true, managed.apply(listOf(row("1", proxyA)), "1"))
+        assertEquals(false, managed.apply(listOf(row("1", proxyA)), "1"))
+        assertEquals(true, managed.apply(listOf(row("1", proxyB)), "1"))
+        assertEquals(true, managed.apply(listOf(row("1")), "1"))
+    }
 }

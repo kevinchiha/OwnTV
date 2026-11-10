@@ -1412,6 +1412,8 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	provider_host
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	proxy
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	started_at
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/ChannelRestarter.kt	KevBoxVpn
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/ChannelRestarter.kt	channel restart failed: ${e.javaClass.simpleName}
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_at_ms
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_changed_at
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_server

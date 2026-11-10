@@ -51,7 +51,9 @@ sealed interface GateState {
  *   the tick, so it waits while something plays.
  * - Profiles: [ProfileDao.observeAll] goes to [PlaylistReconciler.watchProfiles] (AC-24).
  * - Proxy: after each good playlist fetch, a pick and a sign-out, [proxy] sets Core's global proxy to
- *   the one kevbox.dev holds for the playlist on screen.
+ *   the one kevbox.dev holds for the playlist on screen. When a fetch or a pick changes it,
+ *   [restartChannel] re-tunes the playing channel onto the new route; a sign-out does not, since
+ *   playback stops anyway (0.6 AC-40).
  * - VPN: right after the proxy, [vpn] hands the playlist on screen's VPN to the VPN controller; a
  *   sign-out stops it. A failed fetch calls neither (0.6 AC-25).
  * - Realtime: [start] starts the playlist socket through [startRealtime]; each change it hears comes
@@ -91,6 +93,8 @@ class KevBoxCoordinator(
      * callback points back at this coordinator.
      */
     private val startRealtime: () -> Unit = {},
+    /** Re-tunes the playing channel after a proxy change ([tv.own.owntv.kevbox.vpn.ChannelRestarter.restartSoon]). */
+    private val restartChannel: () -> Unit = {},
 ) {
     /** True when the store held a visible pick at [start]: an offline start opens on it. */
     private val storedPick = MutableStateFlow(false)
@@ -218,7 +222,7 @@ class KevBoxCoordinator(
 
     suspend fun choose(clientNumber: String) {
         reconciler.choose(clientNumber)
-        quietly { proxy?.apply(reconciler.rows.value, reconciler.currentClientNumber.value) }
+        quietly { applyProxy(reconciler.rows.value, reconciler.currentClientNumber.value) }
         quietly { vpn?.apply(reconciler.rows.value, reconciler.currentClientNumber.value) }
     }
 
@@ -253,6 +257,11 @@ class KevBoxCoordinator(
         scope.launch { quietly { expiry.onChannelFailed(reconciler.currentSourceId()) } }
     }
 
+    /** Sets Core's proxy for the playlist on screen; a proxy that changed re-tunes the playing channel. */
+    private suspend fun applyProxy(rows: List<PlaylistRow>, chosenClientNumber: String?) {
+        if (proxy?.apply(rows, chosenClientNumber) == true) restartChannel()
+    }
+
     private suspend fun playlistCheck() {
         lastPlaylistAt = now()
         playlistFlight.run(session)
@@ -272,7 +281,7 @@ class KevBoxCoordinator(
             is Fetch.Ok -> {
                 reconciler.apply(result.value)
                 // The playlist on screen decides the proxy, so this follows the reconcile.
-                quietly { proxy?.apply(result.value, reconciler.currentClientNumber.value) }
+                quietly { applyProxy(result.value, reconciler.currentClientNumber.value) }
                 quietly { vpn?.apply(result.value, reconciler.currentClientNumber.value) }
             }
             Fetch.SessionRejected -> signOut()
