@@ -53,7 +53,8 @@ sealed interface GateState {
  * - Proxy: after each good playlist fetch, a pick and a sign-out, [proxy] sets Core's global proxy to
  *   the one kevbox.dev holds for the playlist on screen. When a fetch or a pick changes it,
  *   [restartChannel] re-tunes the playing channel onto the new route; a sign-out does not, since
- *   playback stops anyway (0.6 AC-40).
+ *   playback stops anyway (0.6 AC-40). [start] first restarts the encrypted proxy's local relay from
+ *   the kept address, and only then starts the timers and collectors (0.7 AC-25).
  * - VPN: right after the proxy, [vpn] hands the playlist on screen's VPN to the VPN controller; a
  *   sign-out stops it. A failed fetch calls neither (0.6 AC-25).
  * - Realtime: [start] starts the playlist socket through [startRealtime]; each change it hears comes
@@ -148,45 +149,51 @@ class KevBoxCoordinator(
             // Without the socket the 15-minute check and the foreground check still run.
         }
         scope.launch {
-            // A store or Core read that throws must not keep the timers from starting.
-            quietly { storedPick.value = reconciler.currentSourceId() != null }
-            timerLoop()
-        }
-        scope.launch {
-            quietly { reconciler.watchProfiles(profileDao.observeAll().map { profiles -> profiles.map { it.id } }) }
-        }
-        scope.launch {
-            var first = true
-            var seenId: Long? = null
-            reconciler.visibleSourceChanges.collect {
-                if (first) {
-                    // The first value is this run's starting point, not a change: the stored pick,
-                    // which the reconciler's own ID only learns at the first fetch.
-                    first = false
-                    var start: Long? = null
-                    quietly { start = reconciler.currentSourceId() }
-                    seenId = start
-                    quietly { expiry.checkAtStart(start) }
-                    return@collect
-                }
-                val id = reconciler.visibleSourceId.value
-                if (id != seenId) {
-                    // Another line: its own answers, its own popups. The gate stops the old stream.
-                    expiry.reset()
-                    quietly { expiry.checkAtStart(reconciler.currentSourceId()) }
-                } else {
-                    // The same line with new credentials: test again, but never mid-stream.
-                    expiry.onCredentialsChanged()
-                    quietly { expiry.tick(reconciler.currentSourceId(), playing = playbackActive.value) }
-                }
-                seenId = id
+            // The relay listens on the kept address before anything here uses Core's saved
+            // 127.0.0.1 setting, even while kevbox.dev cannot be reached (AC-25).
+            quietly { proxy?.resume() }
+            // Launched on the scope, not as children: one collector that fails ends only itself.
+            scope.launch {
+                // A store or Core read that throws must not keep the timers from starting.
+                quietly { storedPick.value = reconciler.currentSourceId() != null }
+                timerLoop()
             }
-        }
-        scope.launch {
-            var wasPlaying = playbackActive.value
-            playbackActive.collect { playing ->
-                if (wasPlaying && !playing) quietly { expiry.tick(reconciler.currentSourceId(), playing = false) }
-                wasPlaying = playing
+            scope.launch {
+                quietly { reconciler.watchProfiles(profileDao.observeAll().map { profiles -> profiles.map { it.id } }) }
+            }
+            scope.launch {
+                var first = true
+                var seenId: Long? = null
+                reconciler.visibleSourceChanges.collect {
+                    if (first) {
+                        // The first value is this run's starting point, not a change: the stored pick,
+                        // which the reconciler's own ID only learns at the first fetch.
+                        first = false
+                        var start: Long? = null
+                        quietly { start = reconciler.currentSourceId() }
+                        seenId = start
+                        quietly { expiry.checkAtStart(start) }
+                        return@collect
+                    }
+                    val id = reconciler.visibleSourceId.value
+                    if (id != seenId) {
+                        // Another line: its own answers, its own popups. The gate stops the old stream.
+                        expiry.reset()
+                        quietly { expiry.checkAtStart(reconciler.currentSourceId()) }
+                    } else {
+                        // The same line with new credentials: test again, but never mid-stream.
+                        expiry.onCredentialsChanged()
+                        quietly { expiry.tick(reconciler.currentSourceId(), playing = playbackActive.value) }
+                    }
+                    seenId = id
+                }
+            }
+            scope.launch {
+                var wasPlaying = playbackActive.value
+                playbackActive.collect { playing ->
+                    if (wasPlaying && !playing) quietly { expiry.tick(reconciler.currentSourceId(), playing = false) }
+                    wasPlaying = playing
+                }
             }
         }
     }

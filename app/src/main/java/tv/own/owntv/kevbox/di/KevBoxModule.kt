@@ -385,6 +385,28 @@ val kevboxModule = module {
         )
     }
 
+    // The encrypted proxy's local end (0.7). It checks persovps's certificate against Android's roots
+    // plus Core's bundled Let's Encrypt roots; only a debug build may add the emulator check's test
+    // root from its external files folder. Its lookups follow the member's DNS setting, Cloudflare
+    // DNS-over-HTTPS by default.
+    single {
+        val context = androidContext()
+        val base = tv.own.owntv.core.network.ExtraTrustAnchors(
+            context.resources.openRawResource(tv.own.owntv.core.R.raw.isrg_extra_roots),
+        ).trustManager
+        var pem: String? = null
+        if (BuildConfig.DEBUG) {
+            pem = context.getExternalFilesDir(null)
+                ?.let { java.io.File(it, tv.own.owntv.kevbox.network.RELAY_TEST_CA_FILE) }
+                ?.takeIf { it.isFile }
+                ?.let { file -> runCatching { file.readText() }.getOrNull() }
+        }
+        val dns = get<tv.own.owntv.core.network.DnsConfigHolder>().dns
+        tv.own.owntv.kevbox.network.LocalRelay(
+            trust = tv.own.owntv.kevbox.network.relayTrust(base, BuildConfig.DEBUG, pem),
+            lookup = dns::lookup,
+        )
+    }
     single {
         val koin = getKoin()
         val vpnController = get<tv.own.owntv.kevbox.vpn.VpnController>()
@@ -401,7 +423,11 @@ val kevboxModule = module {
             playbackActive = get<tv.own.owntv.player.PlaybackSession>().active,
             scope = get(),
             now = System::currentTimeMillis,
-            proxy = tv.own.owntv.kevbox.network.ManagedProxy(tv.own.owntv.kevbox.network.CoreProxyTarget(get())),
+            proxy = tv.own.owntv.kevbox.network.ManagedProxy(
+                tv.own.owntv.kevbox.network.CoreProxyTarget(get()),
+                get<tv.own.owntv.kevbox.network.LocalRelay>(),
+                tv.own.owntv.kevbox.network.KeptRelay(androidContext().prefs(tv.own.owntv.kevbox.network.RELAY_PREFS_NAME)),
+            ),
             checkinOnForeground = get<tv.own.owntv.kevbox.usage.LiveCheckin>()::onForeground,
             playNotesOnForeground = get<tv.own.owntv.kevbox.usage.PlayNotes>()::onForeground,
             vpn = tv.own.owntv.kevbox.vpn.ManagedVpn(vpnController),
