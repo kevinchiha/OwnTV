@@ -1,0 +1,588 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 22 finding(s) across 25 selected item(s).",
+  "summary": {
+    "files_reviewed": 25,
+    "comments": 22,
+    "total_tokens": 1463321,
+    "input_tokens": 1401871,
+    "output_tokens": 61450,
+    "cache_read_tokens": 848279,
+    "cache_write_tokens": 553466,
+    "elapsed": "2m46s"
+  },
+  "tool_calls": {
+    "total": 45,
+    "by_tool": {
+      "code_comment": 12,
+      "code_search": 17,
+      "file_read": 13,
+      "file_read_diff": 3
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt",
+      "content": "When the user is signed out, `hasPending()` returns false, so the loop blocks on `wake.receive()` with no timeout. Nothing sends to `wake` when the user signs in, because `wake` only fires when a `kick()` finishes, and `kick()` is only called from VpnController when the VPN state changes. So events queued while signed out, or left over from an earlier run under a session that has since ended, can sit unsent until the next VPN change. That includes FELL_BACK reports, which drive Kevin's Telegram message. This also contradicts the KDoc on `vpnRetryDelayMs` (\"queued while signed out ... waits the first step\"). ErrorSender handles this with `launch { auth.userId.collect { wake.trySend(Unit) } }`. Do the same here. Note that waking the loop alone only recomputes the wait. To send right away after sign-in, trigger a send when the user id becomes non-null.",
+      "suggestion_code": "    fun start() {\n        scope.launch(Dispatchers.IO) {\n            launch { auth.userId.collect { if (it != null) guarded { trigger() }; wake.trySend(Unit) } }\n            guarded {\n                while (isActive) {\n                    val wait = if (hasPending()) vpnRetryDelayMs(failures) else null",
+      "existing_code": "                    val wait = if (hasPending()) vpnRetryDelayMs(failures) else null",
+      "start_line": 77,
+      "end_line": 77,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/realtime/PlaylistRealtime.kt",
+      "content": "Nothing times out the join reply. `awaitingReply` gets cleared by any frame, and that includes the heartbeat replies on the `phoenix` topic. So if the server never answers `phx_join` (lost frame, or a Realtime node stuck while the socket stays up), the loop can run forever without being subscribed. No reconnect happens, and changes only arrive at the 15-minute check. Fix: start a timer after sending the join, and reconnect if `joined` is still false when it fires. Add a test for a join that never gets an answer.",
+      "suggestion_code": "        ref += 1\n        if (!socket.send(joinFrame(userId, token, ref))) return false\n        launch {\n            sleep(REPLY_MS)\n            events.send(Event.JoinDue)\n        }\n        // ...in the loop:\n        // Event.JoinDue -\u003e if (!joined) return held",
+      "existing_code": "        ref += 1\n        if (!socket.send(joinFrame(userId, token, ref))) return false",
+      "start_line": 137,
+      "end_line": 138,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+      "content": "When a fetch turns the VPN on for a playlist that has a proxy, `proxyFor` now returns OFF. So `applyProxy` saves 'no proxy' and calls `restartChannel()` right away, before `vpn.apply` has even queued the connect. `ChannelRestarter` only merges calls that land within 1 s. The OpenVPN handshake (ping, connect, consent) usually takes longer than that. The playing channel then gets re-tuned onto the bare connection first, with neither proxy nor tunnel, and re-tuned a second time when the controller reports the tunnel is up. That causes two visible stalls. It also sends the stream briefly over the uninspected ISP route, which this feature is meant to prevent. The same happens in `choose()`. One fix: when the row's VPN is enabled, skip the proxy-driven restart and let the VPN controller's own restart on tunnel-up do the re-tune. Another: leave the proxy in place until the tunnel reports Up.",
+      "existing_code": "                quietly { applyProxy(result.value, reconciler.currentClientNumber.value) }\n                quietly { vpn?.apply(result.value, reconciler.currentClientNumber.value) }",
+      "start_line": 284,
+      "end_line": 285,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt",
+      "content": "The outer `guarded` wraps the whole `while` loop. If anything outside the inner `guarded { trigger() }` throws, for example `hasPending()` (which reads `auth.userId` and does queue file I/O), the exception is logged and the loop ends. The retry tick then stays dead until the process restarts, and queued events only go out on a later `kick()`. Put the try/catch inside each loop iteration so one failure can't stop the tick for good.",
+      "suggestion_code": "            while (isActive) {\n                guarded {\n                    val wait = if (hasPending()) vpnRetryDelayMs(failures) else null\n                    val woken = if (wait == null) wake.receive() else withTimeoutOrNull(wait) { wake.receive() }\n                    if (woken == null) trigger()\n                }\n            }",
+      "existing_code": "            guarded {\n                while (isActive) {\n                    val wait = if (hasPending()) vpnRetryDelayMs(failures) else null",
+      "start_line": 75,
+      "end_line": 77,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt",
+      "content": "`connect` runs on the single worker, inside `handle`. It can wait out the 5 s linger and then make a network read while the `Connecting` deadline is already counting. Any input that arrives meanwhile (Wanted with a new server, SignedOut, Background) goes into the queue ahead of the `EngineFailed` / `OtherVpnActive` that this method feeds afterwards. Example: a Wanted for server B is queued during the read. It stops this try and starts `Connecting(B)`. Then the stale `EngineFailed` arrives and is counted as a failure on B, the wrong host and the wrong cycle. The `catch` around `engine.start` has the same problem. Fix: tag inputs with the host or a try id, e.g. `EngineFailed(host)`, and have `VpnRules` ignore any that don't match the current `Connecting.host` or try. Another option is to report the result directly instead of going through `feed`.",
+      "existing_code": "        val row = when (val result = auth.vpnServers(listOf(host))) {\n            is Fetch.Ok -\u003e result.value.firstOrNull { it.host == host }\n            else -\u003e null\n        }\n        if (row == null) {\n            // A config that cannot be read is a failed try like any other (AC-24).\n            feed(VpnInput.EngineFailed)\n            return\n        }",
+      "start_line": 216,
+      "end_line": 224,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt",
+      "content": "If `startActivity` throws, `guardedNow` only logs the error. `VpnState.asking` stays true, and only a `Permission` input clears it. `consider()` then returns early for the rest of the process (`if (s.asking ...) return`), so the VPN never starts. `stopAll` does not reset `asking` either. Fix: on failure, call `onPermission(false)`, or feed a separate 'prompt failed' input that clears `asking` without recording a refusal.",
+      "suggestion_code": "    private fun openPrompt(activity: Activity) {\n        try {\n            activity.startActivity(Intent(activity, VpnConsentActivity::class.java))\n        } catch (e: Exception) {\n            Log.w(LOG_TAG, \"vpn prompt start failed: ${e.javaClass.simpleName}\")\n            feed(VpnInput.Permission(false))\n        }\n    }",
+      "existing_code": "    private fun openPrompt(activity: Activity) {\n        guardedNow { activity.startActivity(Intent(activity, VpnConsentActivity::class.java)) }\n    }",
+      "start_line": 290,
+      "end_line": 292,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt",
+      "content": "KevBoxModule passes `System::currentTimeMillis` as `now`. That is right for the stored fall-back, but every in-process deadline also uses it: connect timeout, drop grace, retry wait and the 10-min background stop. TV boxes often start with a wrong clock and then jump on NTP sync. A forward jump fires timeouts early. A backward jump makes `tick()` ignore the timeout (`now \u003e= deadline` is false) and re-arm for up to hours, so a hung connect is never declared failed. Fix: use `SystemClock.elapsedRealtime` for the phase and pause deadlines, and keep wall time only for `fallbackAtMs` and the stored value.",
+      "existing_code": "    private fun armTimer() {\n        timer?.cancel()\n        val due = state.dueAtMs ?: return\n        timer = scope.launch {\n            delay((due - now()).coerceAtLeast(0))\n            feed(VpnInput.Tick)\n        }\n    }",
+      "start_line": 324,
+      "end_line": 331,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt",
+      "content": "`otherVpnActive` and `permissionGranted` are refreshed only by `Wanted`. `foreground()` and the Idle fall-back `tick()` reach `consider()` with stale flags. Suppose another app's VPN was seen once and has since disconnected. The cycle stays blocked, and the OTHER_VPN state persists until the next playlist check. Fix: re-sample both flags in the controller and pass them with `Foreground` and `Tick`, as `Wanted` already does.",
+      "existing_code": "        fun foreground() {\n            s = s.copy(foreground = true, pauseAtMs = null)",
+      "start_line": 467,
+      "end_line": 468,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/ChannelRestarter.kt",
+      "content": "`inFront()` is checked before `playingSource`, which suspends: it calls `engineLooksOf(...).first()` on a `combine` flow. If it suspends, the main thread can run `MainActivity.onStop` between the check and `retuneLive()`. The re-tune then runs in the background and uses up Core's restore slot, which the KDoc says cannot happen. Fix: resolve the source first, then check `inFront()` right before the engine calls, with no suspension in between.",
+      "suggestion_code": "        withContext(main) {\n            val source = playingSource(scene.snapshot())\n            if (!inFront()) return@withContext\n            when (source) {",
+      "existing_code": "        withContext(main) {\n            if (!inFront()) return@withContext\n            when (playingSource(scene.snapshot())) {",
+      "start_line": 118,
+      "end_line": 120,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/realtime/PlaylistRealtime.kt",
+      "content": "`@Volatile` doesn't make check-then-set atomic. If `start()` gets called twice at the same time (say the coordinator restarts on two threads), both calls can get past the check and each launches its own collector. You'd then have two sockets per member and every change would trigger `onChange` twice. The KDoc says later calls do nothing, but this code doesn't enforce that. An `AtomicBoolean` with `compareAndSet` does.",
+      "suggestion_code": "private val started = java.util.concurrent.atomic.AtomicBoolean(false)\n\nfun start() {\n    val url = url ?: return\n    if (!started.compareAndSet(false, true)) return\n    scope.launch { ... }\n}",
+      "existing_code": "        if (started) return\n        started = true",
+      "start_line": 73,
+      "end_line": 74,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt",
+      "content": "This branch can never run. `toHttpUrlOrNull()` only accepts `http` and `https`, so any other scheme has already returned null at the `?: return null` above. You could drop the branch, or turn the `when` into an `if`, so it's clear that only two cases exist.",
+      "existing_code": "        else -\u003e null",
+      "start_line": 76,
+      "end_line": 76,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+      "content": "Race that can lose a Realtime change. `waiting` is only set back to null once the waiter coroutine gets the lock again after `current.join()`. Here is how it goes wrong:\n\n1. Flight A ends.\n2. A timer, foreground or `run()` call starts flight B before the waiter gets the lock.\n3. A new change arrives. `runAfter` sees `current = B` and returns the old `waiting`.\n4. The waiter then gets the lock and joins B, because `joinable(session)` returns B.\n\nB started before this change, so it may already have read the old row. No check runs after the change, which breaks the \"starts after this call\" promise in the KDoc. The update is missed until the next 15-minute check. To fix it, record which flight the waiter is waiting on. Only share `waiting` when that flight is still the one running (`waitingOn === current`). Otherwise chain a new waiter behind `current`.",
+      "suggestion_code": "                waiting?.takeIf { waitingSession == session \u0026\u0026 waitingOn === current }?.let { return@withLock it }",
+      "existing_code": "                waiting?.takeIf { waitingSession == session }?.let { return@withLock it }",
+      "start_line": 353,
+      "end_line": 353,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+      "content": "If the caller passes specific hosts but the filter drops all of them, the query asks for every row. This can happen with an uppercase or mixed-case `vpn_server`, since `parseVpn` only trims and never lowercases. `VpnController.connect` would then download all 18 `.ovpn` configs, and its exact `it.host == host` match would still fail and report `EngineFailed`. Two fixes: only fall back to all rows when `hosts == null`, and when a non-null list has no usable hosts, skip the call and return an empty result. Also lowercase the hosts here (and/or in `parseVpn`) so a row saved as `NL.premiumize...` still matches.",
+      "suggestion_code": "        if (hosts != null) {\n            val usable = hosts.map { it.trim().lowercase() }.filter { it.isNotEmpty() \u0026\u0026 it.all(::isHostChar) }\n            if (usable.isEmpty()) return ApiResponse.Http(HTTP_OK, \"[]\")\n            query[\"host\"] = \"in.(\" + usable.joinToString(\",\") + \")\"\n        }",
+      "existing_code": "        val usable = hosts?.filter { it.isNotEmpty() \u0026\u0026 it.all(::isHostChar) }.orEmpty()\n        if (usable.isNotEmpty()) query[\"host\"] = \"in.(\" + usable.joinToString(\",\") + \")\"",
+      "start_line": 87,
+      "end_line": 88,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+      "content": "This `return null` exits all of `parseVpnServers`, so one element that is not an object makes the whole list `Fetch.Failed`. Blank host/config rows, by contrast, are just skipped. In `VpnController`, this turns every `connect` into `EngineFailed`, and auto-pick into `Picked(null, null)`. The result is that one bad row in `vpn_server` makes every TV fall back. To match the skip behaviour, skip the bad element with `?: return@mapNotNull null` instead.",
+      "suggestion_code": "            val row = array.opt(index) as? JSONObject ?: return@mapNotNull null",
+      "existing_code": "            val row = array.opt(index) as? JSONObject ?: return null",
+      "start_line": 365,
+      "end_line": 365,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt",
+      "content": "`VpnServer` is a plain data class, so its generated `toString()` prints the full `.ovpn` text, including any embedded CA/tls-auth key blocks. `PlaylistVpn` already hides its login, so do the same here: override `toString()` to leave out `config` and keep it out of logs.",
+      "suggestion_code": "    override fun toString(): String =\n        \"VpnServer(host=$host, label=$label, backupHost=$backupHost, sortOrder=$sortOrder, config=\u003c${config.length} chars\u003e)\"",
+      "existing_code": "data class VpnServer(\n    val host: String,\n    val label: String,\n    val config: String,",
+      "start_line": 44,
+      "end_line": 47,
+      "category": "security",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt",
+      "content": "An inline `\u003cauth-user-pass\u003e…\u003c/auth-user-pass\u003e` block *is* the `auth-user-pass` directive. If a file only has the inline form and no bare line, removing it leaves the config with no `auth-user-pass` at all. `ConfigParser.convertProfile` then won't pick the user/password auth type, so `mUsername`/`mPassword` are ignored and `checkProfile` fails (or the server refuses the login). Replace the block with a bare `auth-user-pass` line instead of dropping it, or set `mAuthenticationType = VpnProfile.TYPE_USERPASS` in `IcsVpnEngine.buildProfile`.",
+      "existing_code": "        if (text.startsWith(AUTH_BLOCK_OPEN)) {\n            inAuthBlock = !text.contains(AUTH_BLOCK_CLOSE)\n            continue\n        }",
+      "start_line": 50,
+      "end_line": 53,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt",
+      "content": "A block whose closing tag shares a line with content (e.g. `...-----END CERTIFICATE-----\u003c/ca\u003e`) never matches this exact-equality check. Every line after it is then copied as block content: `resolv-retry` isn't rewritten and the cipher position isn't recorded. `text.endsWith(\"\u003c/$inBlock\u003e\")` is more robust.",
+      "suggestion_code": "            if (text.endsWith(\"\u003c/$inBlock\u003e\")) inBlock = null",
+      "existing_code": "            if (text == \"\u003c/$inBlock\u003e\") inBlock = null",
+      "start_line": 47,
+      "end_line": 47,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt",
+      "content": "`start()` already set `processMayRun = true`. When the session fails here, or in the `RuntimeException` catch, no process ever starts and no `NOPROCESS` arrives, so the flag stays true. The next `start()` then sets `awaitOldExit = true` with no old process to wait for. The new session's own `LEVEL_NOTCONNECTED`/`NOPROCESS` reports (e.g. an early exit) are swallowed and `Failed` is never sent, so the controller falls back to its timer instead of failing fast. Reset `processMayRun = false` in these paths when the process was never launched.",
+      "existing_code": "        if (profile == null || profile.checkProfile(app) != de.blinkt.openvpn.R.string.no_error_found) {\n            fail(mine)\n            return\n        }",
+      "start_line": 139,
+      "end_line": 142,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt",
+      "content": "`prepared` is set before the listener is registered and the channels/global prefs are set up. A second `start()` running at the same time returns early and calls `launch` before `VpnStatus.addStateListener` has run, so its reports could be lost. Today the only caller is the controller's single worker, but the `lock` suggests this is meant to be thread-safe. Either do the setup while holding the lock, or document that `start()` is single-threaded.",
+      "existing_code": "        synchronized(lock) {\n            if (prepared) return\n            prepared = true\n        }",
+      "start_line": 282,
+      "end_line": 285,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "tools/kevbox/openvpn/build-engine.sh",
+      "content": "`git checkout -- .` only resets tracked files. If a patch adds a file, or a previous build left untracked output, the second run's `git apply` fails with \"already exists\" (and `set -e` aborts). Add `git -C \"$src\" clean -fdx` (and `git submodule foreach git checkout -- .` if patches ever touch submodules) so every run really starts from a clean tree.",
+      "suggestion_code": "git -C \"$src\" checkout -- .\ngit -C \"$src\" clean -fdx",
+      "existing_code": "git -C \"$src\" checkout -- .",
+      "start_line": 62,
+      "end_line": 62,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt",
+      "content": "In Automatic mode, one failed server-list read (`auth.vpnServers(null)` returning anything other than `Fetch.Ok`, e.g. a short network or Supabase error) goes straight to `fallBack()`. That sends a FELL_BACK report, which becomes Kevin's Telegram message, and saves a 3-hour fall-back. No retry happens first.\n\nThe fixed-server path treats an unreadable config as a single failed try instead (`connect` → `EngineFailed` → `failure()` → retry after 60 s, AC-24). So Auto customers fall back after one transient error, while fixed-server customers get the full 3×(main+backup) cycle.\n\nSuggested fix: treat a failed read as a failed try. For example, keep a try counter and move to `Waiting(now + RETRY_WAIT_MS)` to re-pick, and only fall back after `TRIES_PER_SERVER` failed reads. Also, `fallBack()` reports `server = null` here, so the Telegram message cannot say what failed.",
+      "existing_code": "            if (main == null) {\n                // The server list could not be read: nothing to try, so the cycle ends here.\n                s = s.copy(cycle = null)\n                fallBack()\n                return\n            }",
+      "start_line": 367,
+      "end_line": 372,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt",
+      "content": "`buildProfile` runs on the bare executor thread, and only `ConfigParseError`/`IOException` are caught. ics-openvpn's `ConfigParser.convertProfile` and `checkProfile` can also throw unchecked exceptions on bad server data. For example, `Integer.parseInt` on a malformed number throws `NumberFormatException`, and a missing argument causes an index or null error. On Android, an uncaught exception on an `Executors` worker thread kills the whole app process. A bad `config` row in `vpn_server` would then crash the TV app instead of producing `EngineEvent.Failed`. Catch `RuntimeException` around building and checking the profile too, and call `fail(mine)`.",
+      "suggestion_code": "        } catch (e: IOException) {\n            Log.w(TAG, \"vpn: config unreadable ${e.javaClass.simpleName}\")\n            null\n        } catch (e: RuntimeException) {\n            Log.w(TAG, \"vpn: config refused ${e.javaClass.simpleName}\")\n            null\n        }",
+      "existing_code": "        } catch (e: IOException) {\n            Log.w(TAG, \"vpn: config unreadable ${e.javaClass.simpleName}\")\n            null\n        }",
+      "start_line": 135,
+      "end_line": 138,
+      "category": "bug",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "VPN engine core and OpenVPN integration",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEngine.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/ManagedVpn.kt",
+        "tools/kevbox/openvpn/build-engine.sh",
+        "app/build.gradle.kts",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt",
+        "app/src/main/AndroidManifest.xml",
+        "app/src/main/res/values/kevbox_strings.xml"
+      ]
+    },
+    {
+      "label": "VPN controller, rules and channel recovery",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/ChannelRestarter.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt"
+      ]
+    },
+    {
+      "label": "VPN event reporting pipeline",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt"
+      ]
+    },
+    {
+      "label": "Playlist realtime sync",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/realtime/PlaylistRealtime.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt"
+      ]
+    },
+    {
+      "label": "Supabase API, models and auth",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt"
+      ]
+    },
+    {
+      "label": "KevBox coordinator, DI wiring and proxy",
+      "files": [
+        "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+        "app/src/main/java/tv/own/owntv/kevbox/network/ManagedProxy.kt"
+      ]
+    }
+  ],
+  "session_id": "c845d10f-4893-4b8d-a145-bacb053de2f7",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "c845d10f-4893-4b8d-a145-bacb053de2f7",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "82332eac37affed118c51761bcc6d5e826f4e5fb901287b96cb5ba597e39f366"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "kevbox-live",
+      "requested_head": "phase/0.6-premiumize-vpn",
+      "resolved_base": "3c639ebaae290b9ede22af723f1f25c9f3a40843",
+      "resolved_head": "3f51c2fe93f12c276abf98178ce848ad32a17c03",
+      "exact_range": "3c639ebaae290b9ede22af723f1f25c9f3a40843..3f51c2fe93f12c276abf98178ce848ad32a17c03",
+      "source_artifact_sha256": "3eceda76b84f8bcec4fe09c6052d07580726a0a682cefeeadcba809fc2656e83"
+    },
+    "execution": {
+      "ocr_version": "v1.13.5",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "max_tool_request_times": 100,
+      "rule_config_sha256": "829bea598cee2689683e3fc90c6a7bf0c2494c56bb85e76157189cf875986d91",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "df0e5819157bddab9c0228942b6aa1b202da51fb587a271951d396bdb161171e"
+        },
+        {
+          "item_id": "2d5b1aa5a3fa12f667b5015e0bb79fbc407983e2a1816205d06bb81e87d8e7f1",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/ChannelRestarter.kt",
+          "fingerprint": "9866c90628ec373276c028faad1606694587b8bccd71e041075d539107c71896"
+        },
+        {
+          "item_id": "3174ab027ac8a963df0717d061a9caebf5131e7b2cbfbc77f049d5a855a8f055",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt",
+          "fingerprint": "7a22f54d89160cd1ce84cdef8b5cb5eebc502846e953984ac16cc694077cfe03"
+        },
+        {
+          "item_id": "3afb4ffc07d047d622654e88a4f17f729e44ffd39fe3ab821893af52e7c33bd7",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt",
+          "fingerprint": "c74058e7e3d7c9b81a25649a2fbe07f7a8298bf77bfc9bb9bf4fecd5fec59c1b"
+        },
+        {
+          "item_id": "43bfd47f68d3b8b754e03e36f00a451704fdbe938f92289461ffd1264d9b247e",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/realtime/PlaylistRealtime.kt",
+          "fingerprint": "adf395c811ee9879e738b4d5231697d46fa9e9f1bf4ea29a9100362775e5ee45"
+        },
+        {
+          "item_id": "58e43c2efa15ae9eb97da24dfcd29637548babd232a675eea8934d931f240250",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt",
+          "fingerprint": "578bace6ef53a306e05161326693fd6aae73e944bbae4a69e4a20638319427b4"
+        },
+        {
+          "item_id": "59bf3d60267543bb59236157f9ea6614c1e3ccf25a619c971c291bfb7e2936f1",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt",
+          "fingerprint": "9f59116b10a8ca5abe9458ef02741e05774850655bd8ea05104bff8549d7e71e"
+        },
+        {
+          "item_id": "6208598cb938e9dad1d1350ffae5d66edeb2bc6e0ef6e3002b59ab93b2b6f51b",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEngine.kt",
+          "fingerprint": "0fa94dd57051974751642f781839b2e97eb4b11aa21aebeaa955717846f46519"
+        },
+        {
+          "item_id": "63c6718371bf4cafdd892b9705c79078b666e87df6ce830e707ba8654dbccdcc",
+          "path": "app/src/main/AndroidManifest.xml",
+          "fingerprint": "eb3cbc76e8f5930a53d0af203e7c727d2db72e80ea291fa1c5c1eaa0847e45b7"
+        },
+        {
+          "item_id": "668e1bb39af0f14a6117e2e5fa60d51306483520ab48d7e0a891936daea64ef2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt",
+          "fingerprint": "33dca104ebc9a588805e1bc26807a9ec5749bb8e99e42af78d16bdba79b316c0"
+        },
+        {
+          "item_id": "6b35c6279eaf01edb19aa2520defe9d9093ef655b025b940f0b2977579cfbb37",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt",
+          "fingerprint": "58aec059f71d04b4dc1695c7142ce67382b4247a1dde1479ad2111342c600693"
+        },
+        {
+          "item_id": "7796ff040928332f8d909defc2d77d71789755c51702ce68f0110eff2d04e086",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt",
+          "fingerprint": "e084a8cf5e5ee6bf39bf7276778fb6d52ea23a6ef9dd81c32086ac233008b62b"
+        },
+        {
+          "item_id": "7c371482fb3c46dfe6c629904f9312a9b66ca2bbb7b5ff657477839375a230a8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt",
+          "fingerprint": "70af4be24c72c77fd4dac7e7a11057abc05772795ec163e1de92e4ef55750606"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "826b246f6b2e94d5c7e9bb1cfbe31a03488823f713259afb58a1950a62d4f845"
+        },
+        {
+          "item_id": "a5343afc40918ec1b8eda239bca9597eca2af7e50b5e13152e7e46bde88a9dc2",
+          "path": "app/build.gradle.kts",
+          "fingerprint": "cbf53b8ee775de4883c5bb2f13eaea53c48444766770c85a5b23e7e88bed53e6"
+        },
+        {
+          "item_id": "ae0a8d95e462a999024a992a2f5c0185f52df01ffba1a742a563bf19508df73f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+          "fingerprint": "01058be430c941783e8b6a733679c433c3403d11f759687d44650e227ab84863"
+        },
+        {
+          "item_id": "c02457e23e5f66d3afaa407a6226c93a19dfa92feaea55883d426bcc7eb5dde4",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt",
+          "fingerprint": "51af82b81a657004c42b3f3702ca672158b625e0066d03c931745eae24c8da42"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "1445c0e79a2e2a099f3732f1a2acc5c26e60a4bf09188647fb1846ec566dc966"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "590fb3d7d9ac0d18b5bacbd7b3ced7fe6777e220e8dc6b74635916c3a771ed44"
+        },
+        {
+          "item_id": "cdb9cea41e8492cce8a9fa0bd6c8739d3b902250949248c15a72e3916c4bbf17",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt",
+          "fingerprint": "4bdbc4f9a0c83bc88d26a68b9e4ae3cc330e5cd6605cdb4da2d78b100bb608ce"
+        },
+        {
+          "item_id": "ce206b8dab2ba0773422704f5be43632eb2d45f7ff97e91d1d9e1c90adccd387",
+          "path": "tools/kevbox/openvpn/build-engine.sh",
+          "fingerprint": "03b12b84b0de29bf25cdde67f102945260baef6456097428191f45ebf31d303f"
+        },
+        {
+          "item_id": "cf46cd16a51002ee8ef7602f3d4cac6127ca344c7c113dfab24d7bc8c6ff4e7d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt",
+          "fingerprint": "2b7e75f86b85cdf2b8f7888980bfdf5031fa2144fed2aa5423a7b69121ea90b8"
+        },
+        {
+          "item_id": "d26b09f507aa5d37030c2d7497ea7261e76336a2a57ac97950ae10e511380467",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/network/ManagedProxy.kt",
+          "fingerprint": "3f65e290d646112f10a4fa0840040c365c9c060e2a4723aee18d8e4cfa087f83"
+        },
+        {
+          "item_id": "d3fc57313ca67e7afd6e8657ff57bfa1a92890a996c9c18a0ec4d5b7e9bc4b8f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt",
+          "fingerprint": "67a27d81fb6e2afcc21c868c69a084d02fede4f1f8123a0602b05da649ee6bb3"
+        },
+        {
+          "item_id": "d58c394789329cb1f4a275619df7d4850d2b4a08b926816623c0d4a3e9dd2905",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/ManagedVpn.kt",
+          "fingerprint": "66201560a3cbe850bea1d6fe102329a1fe26a029ca7a98a2a44e059bbd18f5ba"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0548ad189d1be46953c78d417ace2222e2bf4894d0695e7f1d72ccd2f491df70",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt",
+          "fingerprint": "df0e5819157bddab9c0228942b6aa1b202da51fb587a271951d396bdb161171e"
+        },
+        {
+          "item_id": "2d5b1aa5a3fa12f667b5015e0bb79fbc407983e2a1816205d06bb81e87d8e7f1",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/ChannelRestarter.kt",
+          "fingerprint": "9866c90628ec373276c028faad1606694587b8bccd71e041075d539107c71896"
+        },
+        {
+          "item_id": "3174ab027ac8a963df0717d061a9caebf5131e7b2cbfbc77f049d5a855a8f055",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt",
+          "fingerprint": "7a22f54d89160cd1ce84cdef8b5cb5eebc502846e953984ac16cc694077cfe03"
+        },
+        {
+          "item_id": "3afb4ffc07d047d622654e88a4f17f729e44ffd39fe3ab821893af52e7c33bd7",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt",
+          "fingerprint": "c74058e7e3d7c9b81a25649a2fbe07f7a8298bf77bfc9bb9bf4fecd5fec59c1b"
+        },
+        {
+          "item_id": "43bfd47f68d3b8b754e03e36f00a451704fdbe938f92289461ffd1264d9b247e",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/realtime/PlaylistRealtime.kt",
+          "fingerprint": "adf395c811ee9879e738b4d5231697d46fa9e9f1bf4ea29a9100362775e5ee45"
+        },
+        {
+          "item_id": "58e43c2efa15ae9eb97da24dfcd29637548babd232a675eea8934d931f240250",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt",
+          "fingerprint": "578bace6ef53a306e05161326693fd6aae73e944bbae4a69e4a20638319427b4"
+        },
+        {
+          "item_id": "59bf3d60267543bb59236157f9ea6614c1e3ccf25a619c971c291bfb7e2936f1",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt",
+          "fingerprint": "9f59116b10a8ca5abe9458ef02741e05774850655bd8ea05104bff8549d7e71e"
+        },
+        {
+          "item_id": "6208598cb938e9dad1d1350ffae5d66edeb2bc6e0ef6e3002b59ab93b2b6f51b",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEngine.kt",
+          "fingerprint": "0fa94dd57051974751642f781839b2e97eb4b11aa21aebeaa955717846f46519"
+        },
+        {
+          "item_id": "63c6718371bf4cafdd892b9705c79078b666e87df6ce830e707ba8654dbccdcc",
+          "path": "app/src/main/AndroidManifest.xml",
+          "fingerprint": "eb3cbc76e8f5930a53d0af203e7c727d2db72e80ea291fa1c5c1eaa0847e45b7"
+        },
+        {
+          "item_id": "668e1bb39af0f14a6117e2e5fa60d51306483520ab48d7e0a891936daea64ef2",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/supabase/KevBoxModels.kt",
+          "fingerprint": "33dca104ebc9a588805e1bc26807a9ec5749bb8e99e42af78d16bdba79b316c0"
+        },
+        {
+          "item_id": "6b35c6279eaf01edb19aa2520defe9d9093ef655b025b940f0b2977579cfbb37",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt",
+          "fingerprint": "58aec059f71d04b4dc1695c7142ce67382b4247a1dde1479ad2111342c600693"
+        },
+        {
+          "item_id": "7796ff040928332f8d909defc2d77d71789755c51702ce68f0110eff2d04e086",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt",
+          "fingerprint": "e084a8cf5e5ee6bf39bf7276778fb6d52ea23a6ef9dd81c32086ac233008b62b"
+        },
+        {
+          "item_id": "7c371482fb3c46dfe6c629904f9312a9b66ca2bbb7b5ff657477839375a230a8",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt",
+          "fingerprint": "70af4be24c72c77fd4dac7e7a11057abc05772795ec163e1de92e4ef55750606"
+        },
+        {
+          "item_id": "94f794bc0de1786b477d5de3ccfcd530a0e3adcaf2692061828bb540280b7fae",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/KevBoxCoordinator.kt",
+          "fingerprint": "826b246f6b2e94d5c7e9bb1cfbe31a03488823f713259afb58a1950a62d4f845"
+        },
+        {
+          "item_id": "a5343afc40918ec1b8eda239bca9597eca2af7e50b5e13152e7e46bde88a9dc2",
+          "path": "app/build.gradle.kts",
+          "fingerprint": "cbf53b8ee775de4883c5bb2f13eaea53c48444766770c85a5b23e7e88bed53e6"
+        },
+        {
+          "item_id": "ae0a8d95e462a999024a992a2f5c0185f52df01ffba1a742a563bf19508df73f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt",
+          "fingerprint": "01058be430c941783e8b6a733679c433c3403d11f759687d44650e227ab84863"
+        },
+        {
+          "item_id": "c02457e23e5f66d3afaa407a6226c93a19dfa92feaea55883d426bcc7eb5dde4",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt",
+          "fingerprint": "51af82b81a657004c42b3f3702ca672158b625e0066d03c931745eae24c8da42"
+        },
+        {
+          "item_id": "c4d3e2e12502c3d09197c9cfd4a3e64d7c981aa6b35c5dcda3ffe7a56cd7f375",
+          "path": "app/src/main/res/values/kevbox_strings.xml",
+          "fingerprint": "1445c0e79a2e2a099f3732f1a2acc5c26e60a4bf09188647fb1846ec566dc966"
+        },
+        {
+          "item_id": "ca8b23df2cca4e5f507d0aeb3cf53aca32a8b8390f33f5aa6b1a63a7df238581",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/di/KevBoxModule.kt",
+          "fingerprint": "590fb3d7d9ac0d18b5bacbd7b3ced7fe6777e220e8dc6b74635916c3a771ed44"
+        },
+        {
+          "item_id": "cdb9cea41e8492cce8a9fa0bd6c8739d3b902250949248c15a72e3916c4bbf17",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt",
+          "fingerprint": "4bdbc4f9a0c83bc88d26a68b9e4ae3cc330e5cd6605cdb4da2d78b100bb608ce"
+        },
+        {
+          "item_id": "ce206b8dab2ba0773422704f5be43632eb2d45f7ff97e91d1d9e1c90adccd387",
+          "path": "tools/kevbox/openvpn/build-engine.sh",
+          "fingerprint": "03b12b84b0de29bf25cdde67f102945260baef6456097428191f45ebf31d303f"
+        },
+        {
+          "item_id": "cf46cd16a51002ee8ef7602f3d4cac6127ca344c7c113dfab24d7bc8c6ff4e7d",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt",
+          "fingerprint": "2b7e75f86b85cdf2b8f7888980bfdf5031fa2144fed2aa5423a7b69121ea90b8"
+        },
+        {
+          "item_id": "d26b09f507aa5d37030c2d7497ea7261e76336a2a57ac97950ae10e511380467",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/network/ManagedProxy.kt",
+          "fingerprint": "3f65e290d646112f10a4fa0840040c365c9c060e2a4723aee18d8e4cfa087f83"
+        },
+        {
+          "item_id": "d3fc57313ca67e7afd6e8657ff57bfa1a92890a996c9c18a0ec4d5b7e9bc4b8f",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/realtime/RealtimeFrames.kt",
+          "fingerprint": "67a27d81fb6e2afcc21c868c69a084d02fede4f1f8123a0602b05da649ee6bb3"
+        },
+        {
+          "item_id": "d58c394789329cb1f4a275619df7d4850d2b4a08b926816623c0d4a3e9dd2905",
+          "path": "app/src/main/java/tv/own/owntv/kevbox/vpn/ManagedVpn.kt",
+          "fingerprint": "66201560a3cbe850bea1d6fe102329a1fe26a029ca7a98a2a44e059bbd18f5ba"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 166071
+  }
+}
