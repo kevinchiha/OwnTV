@@ -362,8 +362,9 @@ fun vpnPermissionGranted(context: Context): Boolean = try {
 }
 
 /**
- * A VPN network is up that is not this app's (AC-29). On Android 10 and later the owner shows; an
- * app only sees its own uid there. Before Android 10, the controller's idle rule tells ours apart.
+ * A VPN network is up that is not this app's (AC-29). On Android 11 and later the owner shows; an
+ * app only sees its own uid there (NetworkCapabilities.getOwnerUid is API 30, so calling it on
+ * Android 10 throws NoSuchMethodError). Before Android 11, the controller's idle rule tells ours apart.
  */
 fun otherVpnNetworkPresent(context: Context): Boolean {
     val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return false
@@ -373,6 +374,6 @@ fun otherVpnNetworkPresent(context: Context): Boolean {
     return networks.any { network ->
         val caps = connectivity.getNetworkCapabilities(network) ?: return@any false
         caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
-            (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || caps.ownerUid != mine)
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || caps.ownerUid != mine)
     }
 }
