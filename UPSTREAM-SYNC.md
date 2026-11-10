@@ -725,10 +725,18 @@ how the guide shows a channel name (no longer `ProviderTags.parse(name).name`), 
 handling it, the cards stop opening their channel. If upstream changes `ChannelLogoTile`'s plate
 rule or colours, copy the change into `HomeLogoPlate.kt`.
 
-## OpenVPN engine (0.6)
+## Premiumize VPN (0.6)
 
-KevBox Live opens a Premiumize VPN for members whose provider blocks their country. The engine is
-ics-openvpn ("OpenVPN for Android", OpenVPN 2.x core, skeleton + ovpn2 flavours, no OpenVPN 3), at
+KevBox Live opens a Premiumize VPN for members whose provider blocks their country. kevbox.dev
+switches it on per playlist row (`member_playlist.vpn_*`, migration 0023 in kevbox); the TV hears
+the change through Supabase Realtime, asks Android's VPN permission once, and sends only its own
+traffic through the tunnel. Everything on the TV lives in fork-only code under `kevbox/vpn/` and
+`kevbox/realtime/`; the upstream files it touches are `app/build.gradle.kts`,
+`app/proguard-rules.pro` and `AndroidManifest.xml`, each with a row in the table above.
+
+### OpenVPN engine
+
+The engine is ics-openvpn ("OpenVPN for Android", OpenVPN 2.x core, skeleton + ovpn2 flavours, no OpenVPN 3), at
 the tag, commit and patches named in `extras/openvpn/SOURCE.txt`, built into
 `extras/openvpn/ics-openvpn-v0.7.64-skeleton-ovpn2.aar` by `tools/kevbox/openvpn/build-engine.sh`.
 Gradle only reads the committed AAR, so NDK and CMake stay out of every app build. The engine is
@@ -752,6 +760,80 @@ engine from Maven Central or JitPack.
 - `app/proguard-rules.pro` keeps `de.blinkt.openvpn.**` whole.
 - Fork-only code: `kevbox/vpn/VpnEngine.kt` (the seam), `IcsVpnEngine.kt` (the real engine),
   `OvpnConfig.kt` (`prepareOvpn`, Premiumize's file adapted to the app's retry rules).
+
+### Where the engine comes from, and how to rebuild it
+
+- The artifact is `extras/openvpn/ics-openvpn-v0.7.64-skeleton-ovpn2.aar`, a local file dependency
+  in `app/build.gradle.kts`. Gradle never builds the engine.
+- `bash tools/kevbox/openvpn/build-engine.sh [work-folder]` rebuilds it: it clones
+  `github.com/schwabe/ics-openvpn` at the pinned tag `v0.7.64` (commit `73ce3c99`, OpenVPN core
+  2.7_rc6+1, OpenSSL 3.6.1) into `~/.cache/kevbox-openvpn` by default, fetches only the openvpn,
+  openssl, lz4 and fmt submodules, applies the patches, builds `:main:assembleSkeletonOvpn2Release`
+  and copies the AAR and the licence into `extras/openvpn/`. It needs JDK 17+, NDK 29.0.14206865
+  and CMake 3.22.1. No ics-openvpn tag after 2022 ships a 2.6.x core; v0.7.64 is the newest before
+  the 2.8 development core.
+- The library patch, `tools/kevbox/openvpn/0001-engine-as-library.patch`, turns the engine's app
+  module into an Android library: library plugin, no application id, version or signing, no
+  Application class, no `android:process` on any component, only arm64-v8a, armeabi-v7a and
+  x86_64, the skeleton flavour passed to CMake (`-DOVPN_SKELETON=ON`) and to `NativeUtils`, no
+  OpenVPN 3 SWIG step, and version-catalog names written inline. `0002-no-tv-toast-no-keepalive-job.patch`
+  removes the engine's status toasts on a TV (AC-34) and its keep-alive job.
+- GPL source note: the engine is GPLv2 with additional terms and the app is GPLv3; Kevin accepted
+  that mismatch (0.6 spec, Decisions). `extras/openvpn/SOURCE.txt` (upstream URL, tag, commit,
+  submodule commits, patches, the exact build command and the AAR's sha256) and
+  `LICENSE-ics-openvpn.txt` (copied unchanged from the tag) are the source offer. Any rebuilt AAR
+  is committed together with an updated `SOURCE.txt`.
+
+### Manifest entries
+
+- The engine's `OpenVPNService` is declared with `android:permission="android.permission.BIND_VPN_SERVICE"`,
+  the `android.net.VpnService` intent filter and `foregroundServiceType="specialUse"`, as the
+  engine's own manifest has it.
+- It stays in the app's main process. The plan asked for `tools:remove="android:process"` on each
+  merged engine component; the library patch already drops every `android:process` from the
+  engine's manifest, so the app's manifest needs no `tools:remove`. Check after any engine bump that
+  the merged release manifest (`app/build/intermediates/merged_manifests/standardRelease/`) still
+  has no `android:process` except Core's restart activity. One process means one VPN controller,
+  one event queue and one fall-back store, and a killed app takes its tunnel with it.
+- Every other engine component is removed with `tools:node="remove"`: its activities and aliases,
+  its boot receiver, its external-control API service, its cross-process status service, its
+  keep-alive job service and its `APP_RESTRICTIONS` meta-data. The engine's `QUERY_ALL_PACKAGES`
+  permission is removed too.
+- `VpnConsentActivity` (translucent, not exported, out of recents) hosts Android's one-time VPN
+  prompt, so the channel keeps playing behind it (AC-26).
+
+### Native libraries
+
+`packaging.jniLibs.useLegacyPackaging = true` in `app/build.gradle.kts`. The OpenVPN 2.x engine
+runs `libovpnexec.so` as a program from the app's native library folder, which only exists when
+libraries are extracted at install. Without it every connect fails. Side effect: native libraries
+are now compressed in the APK, so the APK shrank (standard release 61,759,871 to about 45.8 MB)
+and the installed app grew. AC-22's limit (76,776,028 bytes) is measured on the APK after the
+switch. After an upstream merge, check the merged manifest has no `extractNativeLibs="false"`.
+
+### Core members the channel restart reads
+
+`kevbox/vpn/ChannelRestarter.kt` re-tunes the playing channel after a VPN or proxy change (AC-40)
+through three public Core members, pinned with typed references in `kevbox/errors/CoreContractTest.kt`:
+`LivePreviewEngine::onAppBackgrounded` and `LivePreviewEngine::onAppForegrounded` (Core's own pair
+that re-tunes the Live engine's channel at the live edge) and `OwnTVPlayer::retry` (the full-screen
+player reloads its stream). A Core bump that renames or retypes one stops that test compiling. The
+test cannot see a change in what the pair does: if Core's notes touch background restore, play a
+channel on the emulator, change the proxy in kevbox.dev (or on a local stack) and check the channel
+comes back by itself within 3 seconds.
+
+### What stays upstream's
+
+`gradle/libs.versions.toml` is untouched (see its row above): the engine is a local AAR named
+inline in `app/build.gradle.kts`, and its runtime needs (androidx.annotation, androidx.core) already
+come with the app. `OwnTVApp.kt` gained nothing for the VPN: the controller and the Realtime socket
+start from `KevBoxCoordinator.start()` through defaulted constructor hooks.
+
+### Testing after a merge
+
+`docs/superpowers/2026-11-10-0.6-premiumize-vpn-e2e.md` shows how to run the chain on the
+`kevbox_tv` emulator against a local Supabase with 0023, using unroutable TEST-NET servers, with no
+Premiumize login.
 
 ## Regenerating the rebrand
 
