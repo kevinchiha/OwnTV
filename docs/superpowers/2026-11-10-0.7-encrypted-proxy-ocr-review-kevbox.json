@@ -1,0 +1,495 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 15 finding(s) across 23 selected item(s).",
+  "summary": {
+    "files_reviewed": 23,
+    "comments": 15,
+    "total_tokens": 1376528,
+    "input_tokens": 1328639,
+    "output_tokens": 47889,
+    "cache_read_tokens": 885800,
+    "cache_write_tokens": 442717,
+    "elapsed": "3m2s"
+  },
+  "tool_calls": {
+    "total": 52,
+    "by_tool": {
+      "code_comment": 7,
+      "code_search": 25,
+      "file_find": 2,
+      "file_read": 11,
+      "file_read_diff": 7
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "The checklist bans loose `!=`. `tlsPort` is typed `number | null`, so a strict comparison works the same way here.",
+      "suggestion_code": "  return proxy.enabled \u0026\u0026 !!proxy.tlsHost?.trim() \u0026\u0026 proxy.tlsPort !== null;",
+      "existing_code": "  return proxy.enabled \u0026\u0026 !!proxy.tlsHost?.trim() \u0026\u0026 proxy.tlsPort != null;",
+      "start_line": 128,
+      "end_line": 128,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "packages/core/src/liveProxyTls.ts",
+      "content": "There's a race between the read and the write here. `syncVpsProxyTls` picks the TLS address based on the `proxy_host`/`proxy_port` it got from `listProxyOnRows` (it only fills the address when the row points at the VPS endpoint). The write, though, only checks `proxy_enabled`. Say an admin changes a row from the VPS proxy to a different proxy after the read but before this update. The update still goes through and writes persovps's TLS address onto a row that now uses another proxy. The TV would then send its traffic to persovps instead of the proxy it was given, and nothing fixes that until the next run. The fix is to pass the host/port the decision was based on and match them in the WHERE clause, so the write only lands if the row hasn't changed.",
+      "suggestion_code": "export async function setLiveProxyTls(\n  db: Db, userId: string, clientNumber: string, expected: { host: string | null; port: number | null }, tls: ProxyTlsFields,\n): Promise\u003cboolean\u003e {\n  const res = await db.query(\n    `update public.member_playlist\n        set proxy_tls_host = $3, proxy_tls_port = $4, proxy_tls_addr = $5, updated_at = now()\n      where user_id = $1 and client_number = $2 and proxy_enabled\n        and proxy_host is not distinct from $6::text and proxy_port is not distinct from $7::integer\n        and (proxy_tls_host, proxy_tls_port, proxy_tls_addr) is distinct from ($3::text, $4::integer, $5::text)`,\n    [userId, clientNumber, tls?.host ?? null, tls?.port ?? null, tls?.addr ?? null, expected.host, expected.port],\n  );\n  return (res.rowCount ?? 0) \u003e 0;\n}",
+      "existing_code": "      where user_id = $1 and client_number = $2 and proxy_enabled\n        and (proxy_tls_host, proxy_tls_port, proxy_tls_addr) is distinct from ($3::text, $4::integer, $5::text)`,",
+      "start_line": 44,
+      "end_line": 45,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/lib/vps-proxy.ts",
+      "content": "If `VPS_PROXY_TLS_ADDR` is set but not a valid IPv4 address (a typo, or an IPv6 address), it quietly becomes `null`. Every listed TV then looks up `northcache.uk` through DNS, and that lookup is exactly what an internet company can block. The same goes for a malformed TLS host or port: the whole rollout turns off, and the refresh log only shows `0 filled, N cleared`, with nothing to say why. Have the refresh script print a warning (without the value) when one of these vars is set but rejected.",
+      "existing_code": "  const addrText = process.env.VPS_PROXY_TLS_ADDR?.trim() ?? \"\";\n  return { host, port, addr: IPV4.test(addrText) ? addrText : null };",
+      "start_line": 280,
+      "end_line": 281,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/server/admin/vps-proxy-tls-sync.ts",
+      "content": "The writes don't run in a transaction, and a database error partway through the loop throws away the counts gathered so far. Rows written before the error stay changed (each one has already triggered a TV restart through Realtime), but the log only says `Encrypted proxy sync failed`. Catch errors per row, or attach the partial `result` to the thrown error, so the log shows what actually changed.",
+      "existing_code": "    const wrote = await setLiveProxyTls(pool, row.userId, row.clientNumber, want);",
+      "start_line": 40,
+      "end_line": 40,
+      "category": "other",
+      "severity": "low"
+    },
+    {
+      "path": "src/server/admin/vps-proxy-tls-sync.ts",
+      "content": "`vpsProxyEndpoint()` also returns null when `VPS_PROXY_AUTH_FILE` is missing, so a missing auth-file setting clears every encrypted address too. The doc comment says this only happens without a valid `VPS_PROXY_HOST`/`VPS_PROXY_PORT`. Either say so in the comment, or compare against host and port alone, so a missing auth path doesn't silently turn TLS off.",
+      "existing_code": "  const endpoint = vpsProxyEndpoint();",
+      "start_line": 28,
+      "end_line": 28,
+      "category": "documentation",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/prove-live-proxy-tls.sh",
+      "content": "This negative check can pass when it shouldn't. `subscribed` only shows that B's channels reached `status: ok` once. If a B channel later gets `phx_error`/`phx_close`, or the socket drops before the two updates, `bEaves`/`bOwn` stay at 0 and the line still says PASS. The `errors` array is gathered but only printed when the check fails. Require `errors` to be empty for this PASS. Better still, add a positive control on B's socket (for example a broadcast echo, or a check that the socket is still open after the updates), so \"received nothing\" really means filtered and not disconnected.",
+      "suggestion_code": "  if [[ \"$(rt subscribed)\" == true \u0026\u0026 \"$(rt bEaves)\" == 0 \u0026\u0026 \"$(rt bOwn)\" == 0 \u0026\u0026 -z \"$rt_errors\" ]]; then\n    pass \"locked B's socket receives nothing, joined with A's filter or its own\"",
+      "existing_code": "  if [[ \"$(rt subscribed)\" == true \u0026\u0026 \"$(rt bEaves)\" == 0 \u0026\u0026 \"$(rt bOwn)\" == 0 ]]; then\n    pass \"locked B's socket receives nothing, joined with A's filter or its own\"",
+      "start_line": 558,
+      "end_line": 559,
+      "category": "test",
+      "severity": "medium"
+    },
+    {
+      "path": "scripts/prove-live-proxy-tls.sh",
+      "content": "If seeding fails, the script keeps going. Several later checks then print a misleading PASS because no rows exist: \"locked B reads no row\", \"the anon key alone reads nothing\" and \"locked B's socket receives nothing\". The exit code is still 1, but the output is confusing. Stop here the same way the script already stops when user creation fails. The same applies to the \"0023 is in and 0024 is not\" precondition and to a failed first apply.",
+      "suggestion_code": "  fail \"seed A and B as postgres\" \"$(head -c 300 \"$WORK/seed.err\")\"\n  echo \"Stopping: the member checks need the seeded rows.\" \u003e\u00262\n  exit 1",
+      "existing_code": "  fail \"seed A and B as postgres\" \"$(head -c 300 \"$WORK/seed.err\")\"",
+      "start_line": 356,
+      "end_line": 356,
+      "category": "test",
+      "severity": "low"
+    },
+    {
+      "path": "deploy/squid-tls/pin-nginx-listen.sh",
+      "content": "Backups are made once and never refreshed, so on any `--apply` after the first one this rollback puts back the **original pre-0.7 file**, not the file as it was just before this run. The runbook asks for exactly that re-run after every `certbot --nginx`. If `nginx -t` then fails, the rollback:\n- throws away certbot's new ssl/server-block edits;\n- un-pins the sites already pinned, which go back to `listen 443` on every address.\n\nThe next nginx restart then clashes with Squid on 45.146.255.87:443 and every site goes down. `--undo` has the same problem: it silently reverts every edit made since the first apply, and it also restores files that are no longer in sites-enabled.\n\nFix: for the rollback, take a fresh copy of each file just before rewriting it in this run (for example in `$work`). Keep the long-lived backup only for `--undo`, and have `--undo` warn when the current file differs from what `--apply` wrote.",
+      "suggestion_code": "      run_bak=$(mktemp)\n      cp -p \"$f\" \"$run_bak\"   # per-run rollback copy\n      rollback+=(\"$f:$run_bak\")",
+      "existing_code": "    if ! nginx_test; then\n      echo \"nginx -t failed: putting the files back.\" \u003e\u00262\n      restore_backups \"${changed[@]}\"",
+      "start_line": 118,
+      "end_line": 120,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "deploy/squid-tls/pin-nginx-listen.sh",
+      "content": "Only files behind `sites-enabled/*` are scanned. Two kinds of IPv4 binding are never seen, by `--apply` or by `--check`:\n- a `listen 443` in `nginx.conf`, in `conf.d/*.conf` or in an included snippet;\n- `listen [::]:443 ipv6only=off`, which also binds IPv4.\n\nEither way nginx still binds 0.0.0.0:443 and fights Squid. As the runbook notes, `nginx -t` does not catch \"address in use\". Suggestion: make `--check` scan everything nginx loads, using `nginx -T` output or `/etc/nginx` recursively, at least to report. Also have `--check` exit non-zero when anything is unpinned, so it can gate the restart.",
+      "existing_code": "for link in \"$SITES\"/*; do",
+      "start_line": 50,
+      "end_line": 50,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "deploy/squid-tls/check-tls-proxy.sh",
+      "content": "The host check is hardcoded to `northcache.uk`, but the name is taken from `--proxy` (`$name`) and passed to `-verify_hostname`. With any other name this check and the chain check disagree, and the result is misleading. Use `$name` here and in the result label.",
+      "suggestion_code": "if [ -s \"$work/leaf.pem\" ] \u0026\u0026 openssl x509 -in \"$work/leaf.pem\" -noout -checkhost \"$name\" 2\u003e/dev/null | grep -q 'does match'; then",
+      "existing_code": "if [ -s \"$work/leaf.pem\" ] \u0026\u0026 openssl x509 -in \"$work/leaf.pem\" -noout -checkhost northcache.uk 2\u003e/dev/null | grep -q 'does match'; then",
+      "start_line": 126,
+      "end_line": 126,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "deploy/squid-tls/check-tls-proxy.sh",
+      "content": "This script runs from Kevin's PC under `set -u`. On bash older than 4.4 (macOS's stock bash 3.2), expanding an empty array `\"${verify_args[@]}\"` aborts with \"unbound variable\". That is exactly the production case, a run without `--cacert`. Use `${verify_args[@]+\"${verify_args[@]}\"}`, or require bash ≥ 4.4 explicitly.",
+      "suggestion_code": "chain=$(sclient -showcerts ${verify_args[@]+\"${verify_args[@]}\"} -verify_hostname \"$name\")",
+      "existing_code": "chain=$(sclient -showcerts \"${verify_args[@]}\" -verify_hostname \"$name\")",
+      "start_line": 123,
+      "end_line": 123,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "deploy/squid-tls/make-error-pages.sh",
+      "content": "`\u003cout dir\u003e` is not cleared before the copy. Pages from an earlier run, or from a different langpack version, that the new template set does not include stay in place unchecked, and could still carry \"squid\". The \"refuses when the result still contains squid\" guarantee covers only `$work`, not what Squid will actually serve. Swap the directory in instead: copy to `$out.new`, `rm -rf \"$out\"`, then `mv`. Or at least re-run the grep on `$out`.",
+      "existing_code": "mkdir -p \"$out\"\ncp \"$work\"/* \"$out\"/",
+      "start_line": 56,
+      "end_line": 57,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "deploy/squid-tls/test-in-container.sh",
+      "content": "With `--keep`, if the inside half died early (for example apt failed, or `die` ran before the chain existed), these `docker cp` calls fail under `set -e`. The script then exits with docker's error instead of `$rc` and prints no container name to inspect. There are two fixes:\n- Add `|| true`, or guard the copies on the files existing.\n- Set `umask 077` before copying the login, so it is never briefly world-readable.",
+      "existing_code": "    docker cp \"$name:$TEST/root.pem\" \"$out/root.pem\" \u003e /dev/null\n    docker cp \"$name:$TEST/login\" \"$out/login\" \u003e /dev/null\n    chmod 600 \"$out/login\"",
+      "start_line": 99,
+      "end_line": 101,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/prove-live-proxy-tls.sh",
+      "content": "If this restore fails, the script says nothing and keeps going. Check d's `aNewAddr` needs `proxy_tls_port === TLS_PORT`, and the final `tls_snap` checks expect it too. So a failed restore shows up later as a misleading FAIL that looks like a Realtime or address problem. Check the exit status and report a FAIL here.",
+      "suggestion_code": "psql_q -c \"update public.member_playlist set proxy_tls_port = $TLS_PORT where user_id = '$USER_A';\" \u003e/dev/null 2\u003e\"$WORK/restore.err\" ||\n  fail \"restore A's proxy_tls_port to $TLS_PORT\" \"$(head -c 200 \"$WORK/restore.err\")\"",
+      "existing_code": "psql_q -c \"update public.member_playlist set proxy_tls_port = $TLS_PORT where user_id = '$USER_A';\" \u003e/dev/null 2\u003e\u00261",
+      "start_line": 452,
+      "end_line": 452,
+      "category": "test",
+      "severity": "low"
+    },
+    {
+      "path": "deploy/squid-tls/check-tls-proxy.sh",
+      "content": "Only rc 9 counts as \"could not connect\". If the TCP connect hangs, for example because a firewall drops the packets or the address is wrong, the outer `timeout 8` kills the subshell. That gives rc=124 and an empty reply, so the check reports **PASS** even though nothing was tested. A refused connection can also return 1 instead of 9, depending on how bash handles a failed `exec` redirection. Treat any non-zero rc other than the inner read timeout as a failure to connect, or check that the connection opened before you look at the reply.",
+      "suggestion_code": "if [ \"$rc\" -eq 9 ] || [ \"$rc\" -eq 124 ] || { [ \"$rc\" -ne 0 ] \u0026\u0026 [ -z \"$reply\" ]; }; then\n  result FAIL \"plain-text request to the TLS port gets no HTTP answer\" \"could not connect to $target:$port (rc $rc)\"\nelif [[ $reply == HTTP/* ]]; then",
+      "existing_code": "if [ \"$rc\" -eq 9 ]; then\n  result FAIL \"plain-text request to the TLS port gets no HTTP answer\" \"could not connect to $target:$port\"\nelif [[ $reply == HTTP/* ]]; then",
+      "start_line": 231,
+      "end_line": 233,
+      "category": "bug",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Squid TLS proxy deployment and test scripts",
+      "files": [
+        "deploy/squid-tls/check-sites.sh",
+        "deploy/squid-tls/check-tls-proxy.sh",
+        "deploy/squid-tls/kevbox-squid-tls-hook",
+        "deploy/squid-tls/make-error-pages.sh",
+        "deploy/squid-tls/pin-nginx-listen.sh",
+        "deploy/squid-tls/test-in-container.sh"
+      ]
+    },
+    {
+      "label": "Core live proxy TLS schema, types, and migration",
+      "files": [
+        "packages/core/src/index.ts",
+        "packages/core/src/liveProxyTls.ts",
+        "packages/core/src/liveVersion.ts",
+        "packages/core/src/liveVpn.ts",
+        "packages/core/src/liveWatch.ts",
+        "packages/core/test/schema.sql",
+        "supabase/migrations/0024_live_proxy_tls.sql"
+      ]
+    },
+    {
+      "label": "VPS proxy TLS sync and admin server logic",
+      "files": [
+        "scripts/refresh-vps-proxy-access.ts",
+        "src/lib/vps-proxy.ts",
+        "src/server/admin/live-proxy.ts",
+        "src/server/admin/live.ts",
+        "src/server/admin/vps-proxy-tls-sync.ts"
+      ]
+    },
+    {
+      "label": "Live watch UI and actions for proxy TLS errors",
+      "files": [
+        "src/app/live-actions.ts",
+        "src/components/kevbox-live-errors.tsx",
+        "src/components/kevbox-live-section.tsx",
+        "src/components/kevbox-live-watch.tsx"
+      ]
+    },
+    {
+      "label": "Live proxy TLS end-to-end proof script",
+      "files": [
+        "scripts/prove-live-proxy-tls.sh"
+      ]
+    }
+  ],
+  "session_id": "46701e28-d907-4951-aeaf-21300fd083d9",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "46701e28-d907-4951-aeaf-21300fd083d9",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "ccceca6c26772eb6a35665f87c7d1d792e920ec1a3b2f775b43ee33116435647"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "main",
+      "requested_head": "phase/0.7-encrypted-proxy",
+      "resolved_base": "434bf4e6204deb7978434e200e5573ffe48fb16b",
+      "resolved_head": "ee84b30f1764a5d133673edcefd82d258fbd916a",
+      "exact_range": "434bf4e6204deb7978434e200e5573ffe48fb16b..ee84b30f1764a5d133673edcefd82d258fbd916a",
+      "source_artifact_sha256": "96d6df97e139f3154934aee5ff8e1f1a3fcb5a6ebe2fedbd9fe31b9ff4852dbc"
+    },
+    "execution": {
+      "ocr_version": "v1.13.5",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "max_tool_request_times": 100,
+      "rule_config_sha256": "829bea598cee2689683e3fc90c6a7bf0c2494c56bb85e76157189cf875986d91",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "10e60a88c9a542ea1cb887d11c8c60b736d8ef27b2538de29690729a2912fcb3",
+          "path": "scripts/refresh-vps-proxy-access.ts",
+          "fingerprint": "c24e4cabbd7fbab2f433688db185a870da75e3db51c518b39accb4252d8f2428"
+        },
+        {
+          "item_id": "198ca7888f9580348c6f6daea0b43e89062eafafaba29b5dc582cf93a1c427e5",
+          "path": "scripts/prove-live-proxy-tls.sh",
+          "fingerprint": "db0959a9d943b4ba0fe9fdc3515f50d681cd7e3ffc6933204a111f400d090c1d"
+        },
+        {
+          "item_id": "1aeab0a24dc718c96b5b84769d8ad3359201245fac7c501bd4027ea95ab08bdf",
+          "path": "deploy/squid-tls/make-error-pages.sh",
+          "fingerprint": "3320f239da25fc942068bbad20afb62ce61aba20b1e02b668a3450b15fcce986"
+        },
+        {
+          "item_id": "23c88552a1e18e3c059c75da3945bc55efe85d835dc70ff889ec214f1763ab61",
+          "path": "packages/core/test/schema.sql",
+          "fingerprint": "ce99644b508b09e945802a1006160f6143122975705d51be2ba0d96dcee9998f"
+        },
+        {
+          "item_id": "33fc3d71ebe6186b48beb5d4aee2aefae93ab7708f8eaa3a8f7ad09929ca13cc",
+          "path": "deploy/squid-tls/check-sites.sh",
+          "fingerprint": "c661e426b95a2c2619c1dbdf6a058b5d45ba308db5b3030487af3bcf7a4dced6"
+        },
+        {
+          "item_id": "4e4386a40de9be4b698115873bf883fa8fcf02d273c193aa8358d78f0d7c2ff9",
+          "path": "src/server/admin/vps-proxy-tls-sync.ts",
+          "fingerprint": "c43b5018f9df6901c133d1de11dde17ea2fbdd151c68cbdb86f97b9a810ebf47"
+        },
+        {
+          "item_id": "4fa151fdb7c921acf8a8ba9fc53b2337dab0b5b2b89dbece178a83bc02ad5f27",
+          "path": "deploy/squid-tls/pin-nginx-listen.sh",
+          "fingerprint": "b334256536223e3f5a120a5d28192add0ba5a81d546dbb9ad5ea7f649e4d4e22"
+        },
+        {
+          "item_id": "5575577bb0c3d23f806bb4420d37fe7057bd9752360328e301c2853310d0e76c",
+          "path": "src/components/kevbox-live-watch.tsx",
+          "fingerprint": "48da027fb73fc06651f9f049e2ca2b92272f4ccfd9caea99d242e7602ec0fc6d"
+        },
+        {
+          "item_id": "6953ddc1199fa622ed2ba0a9f2c41dc1fd1ba0ceb302beb835e44147bf7147c1",
+          "path": "deploy/squid-tls/check-tls-proxy.sh",
+          "fingerprint": "74066f51242656ee4fc27617e46a91a7ba87c2f34167a03715a70a1213dbb0c3"
+        },
+        {
+          "item_id": "6bcc988e7e5ff688153882dfdbb50d0d248f5d2589206eeed600d1487f843da8",
+          "path": "supabase/migrations/0024_live_proxy_tls.sql",
+          "fingerprint": "d08e536c9214156967d847077ee4b11844900b0d79f53e06076a0b67ca10f1d8"
+        },
+        {
+          "item_id": "6f4c47f8db8e1e4b709dc205c356fbad17655da931c19ba7c3765878996a15eb",
+          "path": "src/server/admin/live.ts",
+          "fingerprint": "8f1d3dfac944c0546ba0c970d6d31484c45c657e6dc80707440ae4b62b715fb1"
+        },
+        {
+          "item_id": "72f0808135ef2e58fb75ba04e0dc0bedf7cd3a3bd3cdfdfca12584a6b998e9af",
+          "path": "packages/core/src/liveVpn.ts",
+          "fingerprint": "e12263a62a23b2b441d480079fb613991078e949816c8a93ee9039c1f46fb30c"
+        },
+        {
+          "item_id": "841cfc86dfbf543c9458f24e4a4b9fe5080c4961735c0195086983b53d0c2d89",
+          "path": "src/components/kevbox-live-errors.tsx",
+          "fingerprint": "e630adf763f128f12a1906bb87cfdb3256ab5c43f0800a9b3735cd170d921056"
+        },
+        {
+          "item_id": "8af1fd16409c3404691e16a8df0635a4799c3525f23f2eeb9e22753279e559a4",
+          "path": "src/app/live-actions.ts",
+          "fingerprint": "465dbd5929433ab5f7630845a68b32f34096b8d94582e2925c379d60fc266367"
+        },
+        {
+          "item_id": "90e3ed6d3b428c45b34f4237d9a39edc06f52df62c8c25c162c1a66227b95c68",
+          "path": "packages/core/src/liveWatch.ts",
+          "fingerprint": "20713cbe6f745e4657aa404fbbef3e6e9172168f52a0887d15469df30a3ebc65"
+        },
+        {
+          "item_id": "92c7417d0f8510eaf571702c30d2270668ce44baa4a1989be304f9b05784fa16",
+          "path": "packages/core/src/index.ts",
+          "fingerprint": "d61ed120fcbdd97a64d9d29ea8da37b1872c57f2bd542d2192e99cb4126c02f7"
+        },
+        {
+          "item_id": "92f610aca262f6f1b78800a5c5843d5d5fdb3d39150ca86ab592f18d47a90770",
+          "path": "src/lib/vps-proxy.ts",
+          "fingerprint": "c3e5e31e0d1ee44e51ebbaa861c4775ff58b7fe18e1c4f0faebc8310af96516a"
+        },
+        {
+          "item_id": "b629ecb41e84e69691c9265ff89a5ba5945fc79b3ea5b17a77c66c101cc7da9e",
+          "path": "packages/core/src/liveVersion.ts",
+          "fingerprint": "54a04c81539900012c8a95a0c23abedd88d4a87028b0d2c182dab943a19f4865"
+        },
+        {
+          "item_id": "b9a63099eb3ace13289177388e76149d651b0070d69dedcc04ce77d8a0bd8608",
+          "path": "packages/core/src/liveProxyTls.ts",
+          "fingerprint": "478d4df7442f70e1623cccc9eceab561faac072d01c326796f90ff3d4327a1f9"
+        },
+        {
+          "item_id": "c5e7d21ef680e12642930c2415346adb4e09643734dcd133e6310a494fa14da8",
+          "path": "deploy/squid-tls/kevbox-squid-tls-hook",
+          "fingerprint": "412d5fa8ba0ab9ac8e74b9537ffba3717b0eaa4341c0c86bed7b559ef19d1e07"
+        },
+        {
+          "item_id": "c8ba2f2322f958d33b00df8683568e6b8e59cec24969b28e3efa5e10cc361d41",
+          "path": "src/components/kevbox-live-section.tsx",
+          "fingerprint": "058f68a41912d6cb5d513946828e23628bf4c41ed0407140edda25e5d28eb16c"
+        },
+        {
+          "item_id": "d8d9b937b9730fb5897219f651cfd1b59dd3dd17078131b90c46c908e904b390",
+          "path": "deploy/squid-tls/test-in-container.sh",
+          "fingerprint": "fb7e6713e5141ec12a074104024522a4235952a4ab5221919999027ee24bc52f"
+        },
+        {
+          "item_id": "db7dafc13d32d8f67a3066b404affd87db9f0939999ac07d457c205b941cb5d3",
+          "path": "src/server/admin/live-proxy.ts",
+          "fingerprint": "bcc24a57bc50d2cc1e75f21716a8fc4f6a0909ed050e9c7fa3c41c70a073fe37"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "10e60a88c9a542ea1cb887d11c8c60b736d8ef27b2538de29690729a2912fcb3",
+          "path": "scripts/refresh-vps-proxy-access.ts",
+          "fingerprint": "c24e4cabbd7fbab2f433688db185a870da75e3db51c518b39accb4252d8f2428"
+        },
+        {
+          "item_id": "198ca7888f9580348c6f6daea0b43e89062eafafaba29b5dc582cf93a1c427e5",
+          "path": "scripts/prove-live-proxy-tls.sh",
+          "fingerprint": "db0959a9d943b4ba0fe9fdc3515f50d681cd7e3ffc6933204a111f400d090c1d"
+        },
+        {
+          "item_id": "1aeab0a24dc718c96b5b84769d8ad3359201245fac7c501bd4027ea95ab08bdf",
+          "path": "deploy/squid-tls/make-error-pages.sh",
+          "fingerprint": "3320f239da25fc942068bbad20afb62ce61aba20b1e02b668a3450b15fcce986"
+        },
+        {
+          "item_id": "23c88552a1e18e3c059c75da3945bc55efe85d835dc70ff889ec214f1763ab61",
+          "path": "packages/core/test/schema.sql",
+          "fingerprint": "ce99644b508b09e945802a1006160f6143122975705d51be2ba0d96dcee9998f"
+        },
+        {
+          "item_id": "33fc3d71ebe6186b48beb5d4aee2aefae93ab7708f8eaa3a8f7ad09929ca13cc",
+          "path": "deploy/squid-tls/check-sites.sh",
+          "fingerprint": "c661e426b95a2c2619c1dbdf6a058b5d45ba308db5b3030487af3bcf7a4dced6"
+        },
+        {
+          "item_id": "4e4386a40de9be4b698115873bf883fa8fcf02d273c193aa8358d78f0d7c2ff9",
+          "path": "src/server/admin/vps-proxy-tls-sync.ts",
+          "fingerprint": "c43b5018f9df6901c133d1de11dde17ea2fbdd151c68cbdb86f97b9a810ebf47"
+        },
+        {
+          "item_id": "4fa151fdb7c921acf8a8ba9fc53b2337dab0b5b2b89dbece178a83bc02ad5f27",
+          "path": "deploy/squid-tls/pin-nginx-listen.sh",
+          "fingerprint": "b334256536223e3f5a120a5d28192add0ba5a81d546dbb9ad5ea7f649e4d4e22"
+        },
+        {
+          "item_id": "5575577bb0c3d23f806bb4420d37fe7057bd9752360328e301c2853310d0e76c",
+          "path": "src/components/kevbox-live-watch.tsx",
+          "fingerprint": "48da027fb73fc06651f9f049e2ca2b92272f4ccfd9caea99d242e7602ec0fc6d"
+        },
+        {
+          "item_id": "6953ddc1199fa622ed2ba0a9f2c41dc1fd1ba0ceb302beb835e44147bf7147c1",
+          "path": "deploy/squid-tls/check-tls-proxy.sh",
+          "fingerprint": "74066f51242656ee4fc27617e46a91a7ba87c2f34167a03715a70a1213dbb0c3"
+        },
+        {
+          "item_id": "6bcc988e7e5ff688153882dfdbb50d0d248f5d2589206eeed600d1487f843da8",
+          "path": "supabase/migrations/0024_live_proxy_tls.sql",
+          "fingerprint": "d08e536c9214156967d847077ee4b11844900b0d79f53e06076a0b67ca10f1d8"
+        },
+        {
+          "item_id": "6f4c47f8db8e1e4b709dc205c356fbad17655da931c19ba7c3765878996a15eb",
+          "path": "src/server/admin/live.ts",
+          "fingerprint": "8f1d3dfac944c0546ba0c970d6d31484c45c657e6dc80707440ae4b62b715fb1"
+        },
+        {
+          "item_id": "72f0808135ef2e58fb75ba04e0dc0bedf7cd3a3bd3cdfdfca12584a6b998e9af",
+          "path": "packages/core/src/liveVpn.ts",
+          "fingerprint": "e12263a62a23b2b441d480079fb613991078e949816c8a93ee9039c1f46fb30c"
+        },
+        {
+          "item_id": "841cfc86dfbf543c9458f24e4a4b9fe5080c4961735c0195086983b53d0c2d89",
+          "path": "src/components/kevbox-live-errors.tsx",
+          "fingerprint": "e630adf763f128f12a1906bb87cfdb3256ab5c43f0800a9b3735cd170d921056"
+        },
+        {
+          "item_id": "8af1fd16409c3404691e16a8df0635a4799c3525f23f2eeb9e22753279e559a4",
+          "path": "src/app/live-actions.ts",
+          "fingerprint": "465dbd5929433ab5f7630845a68b32f34096b8d94582e2925c379d60fc266367"
+        },
+        {
+          "item_id": "90e3ed6d3b428c45b34f4237d9a39edc06f52df62c8c25c162c1a66227b95c68",
+          "path": "packages/core/src/liveWatch.ts",
+          "fingerprint": "20713cbe6f745e4657aa404fbbef3e6e9172168f52a0887d15469df30a3ebc65"
+        },
+        {
+          "item_id": "92c7417d0f8510eaf571702c30d2270668ce44baa4a1989be304f9b05784fa16",
+          "path": "packages/core/src/index.ts",
+          "fingerprint": "d61ed120fcbdd97a64d9d29ea8da37b1872c57f2bd542d2192e99cb4126c02f7"
+        },
+        {
+          "item_id": "92f610aca262f6f1b78800a5c5843d5d5fdb3d39150ca86ab592f18d47a90770",
+          "path": "src/lib/vps-proxy.ts",
+          "fingerprint": "c3e5e31e0d1ee44e51ebbaa861c4775ff58b7fe18e1c4f0faebc8310af96516a"
+        },
+        {
+          "item_id": "b629ecb41e84e69691c9265ff89a5ba5945fc79b3ea5b17a77c66c101cc7da9e",
+          "path": "packages/core/src/liveVersion.ts",
+          "fingerprint": "54a04c81539900012c8a95a0c23abedd88d4a87028b0d2c182dab943a19f4865"
+        },
+        {
+          "item_id": "b9a63099eb3ace13289177388e76149d651b0070d69dedcc04ce77d8a0bd8608",
+          "path": "packages/core/src/liveProxyTls.ts",
+          "fingerprint": "478d4df7442f70e1623cccc9eceab561faac072d01c326796f90ff3d4327a1f9"
+        },
+        {
+          "item_id": "c5e7d21ef680e12642930c2415346adb4e09643734dcd133e6310a494fa14da8",
+          "path": "deploy/squid-tls/kevbox-squid-tls-hook",
+          "fingerprint": "412d5fa8ba0ab9ac8e74b9537ffba3717b0eaa4341c0c86bed7b559ef19d1e07"
+        },
+        {
+          "item_id": "c8ba2f2322f958d33b00df8683568e6b8e59cec24969b28e3efa5e10cc361d41",
+          "path": "src/components/kevbox-live-section.tsx",
+          "fingerprint": "058f68a41912d6cb5d513946828e23628bf4c41ed0407140edda25e5d28eb16c"
+        },
+        {
+          "item_id": "d8d9b937b9730fb5897219f651cfd1b59dd3dd17078131b90c46c908e904b390",
+          "path": "deploy/squid-tls/test-in-container.sh",
+          "fingerprint": "fb7e6713e5141ec12a074104024522a4235952a4ab5221919999027ee24bc52f"
+        },
+        {
+          "item_id": "db7dafc13d32d8f67a3066b404affd87db9f0939999ac07d457c205b941cb5d3",
+          "path": "src/server/admin/live-proxy.ts",
+          "fingerprint": "bcc24a57bc50d2cc1e75f21716a8fc4f6a0909ed050e9c7fa3c41c70a073fe37"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 181678
+  }
+}
