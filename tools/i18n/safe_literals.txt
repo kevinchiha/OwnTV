@@ -1428,6 +1428,7 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	NOPROCESS
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	temporary-vpn-profile
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: config refused ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: engine set-up failed ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: start failed ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: stop failed ${e.javaClass.simpleName}
 7	empty	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	\0
