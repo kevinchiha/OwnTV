@@ -29,10 +29,12 @@
         tools:ignore="ScopedStorage" />
 
     <!-- KevBox: the OpenVPN engine's manifest asks for QUERY_ALL_PACKAGES to fill its own allowed-apps
-         picker. KevBox Live has no picker (the tunnel carries this app alone), so it is dropped. -->
+         picker. KevBox Live has no picker (the tunnel carries this app alone), so it is dropped.
+         Lint flags this removal line as if it asked for the permission, hence the ignore. -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:node="remove" />
+        tools:node="remove"
+        tools:ignore="QueryAllPackagesPermission" />
 
     <!-- TV-first app, but allow non-TV installs too: touchscreen optional, and leanback is NOT required
          (required=true blocked plain phones / non-TV armv7a boxes that don't report the leanback feature). -->
