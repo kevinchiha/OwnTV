@@ -40,7 +40,9 @@ import tv.own.owntv.R
  * then looks for a last-used or always-on profile, finds none (the temporary one died with the
  * process) and stops. So the settings and the notification channels are set up when this class is
  * built, in OwnTVApp.onCreate, which runs before that restart reaches the service; set up only in
- * [start], the restart would crash the app in the background on every try.
+ * [start], the restart would crash the app in the background on every try. That set-up runs while
+ * the app starts, for every member, VPN or not, so a throw there is logged and swallowed, never a
+ * crash at start; the next [start] tries it again and, failing again, gives [EngineEvent.Failed].
  *
  * The engine runs OpenVPN at verbosity 4, which logs every management command, the username among
  * them, into the engine's log (kept in memory and on disk). [quietEngineLog] lowers it.
@@ -57,7 +59,13 @@ import tv.own.owntv.R
  *
  * Nothing here logs a login, a config or a host: only class names.
  */
-class IcsVpnEngine(context: Context) : VpnEngine {
+class IcsVpnEngine internal constructor(
+    context: Context,
+    /** The engine set-up, [prepareEngine] outside tests; a test swaps in one that throws. */
+    private val setUp: IcsVpnEngine.() -> Unit,
+) : VpnEngine {
+    constructor(context: Context) : this(context, { prepareEngine() })
+
     private val app = context.applicationContext
     private val worker = Executors.newSingleThreadExecutor { task -> Thread(task, THREAD_NAME).apply { isDaemon = true } }
     private val mutableEvents = MutableSharedFlow<EngineEvent>(extraBufferCapacity = 64)
@@ -73,6 +81,10 @@ class IcsVpnEngine(context: Context) : VpnEngine {
     private var bound = false
     private var binder: IOpenVPNServiceInternal? = null
     private var stopWhenBound = false
+
+    /** Set once [setUp] has run without a throw. Written by the constructor, then the worker only. */
+    @Volatile
+    private var prepared = false
 
     private val stateListener = object : VpnStatus.StateListener {
         override fun updateState(
@@ -107,7 +119,7 @@ class IcsVpnEngine(context: Context) : VpnEngine {
     }
 
     init {
-        prepareEngine()
+        tryPrepare()
     }
 
     override fun start(host: String, config: String, username: String, password: String) {
@@ -137,6 +149,11 @@ class IcsVpnEngine(context: Context) : VpnEngine {
     }
 
     private fun launch(mine: Int, host: String, config: String, username: String, password: String) {
+        // The set-up failed when this class was built: a second failure is a failed try.
+        if (!prepared && !tryPrepare()) {
+            fail(mine)
+            return
+        }
         // Bad server data can make the engine's parser throw anything (a NumberFormatException on a
         // port): every throw is a refused config, a failed try, never a crash on this thread.
         val profile = try {
@@ -289,6 +306,22 @@ class IcsVpnEngine(context: Context) : VpnEngine {
     }
 
     /**
+     * Runs [setUp] and tells whether the engine is now set up. A throw is logged by class name only
+     * and swallowed: this runs in OwnTVApp.onCreate, where a throw would crash the app at start for
+     * every member. Linkage errors are caught too, as a missing or broken engine class gives one.
+     */
+    private fun tryPrepare(): Boolean {
+        try {
+            setUp()
+            prepared = true
+        } catch (e: Throwable) {
+            if (e !is Exception && e !is LinkageError) throw e
+            Log.w(TAG, "vpn: engine set-up failed ${e.javaClass.simpleName}")
+        }
+        return prepared
+    }
+
+    /**
      * What the engine's own Application class did at startup that its service needs in one process:
      * - the notification channels it posts to, created here first at the lowest importance with the
      *   app's name for them (AC-34); a channel's importance is fixed at creation;
@@ -296,7 +329,8 @@ class IcsVpnEngine(context: Context) : VpnEngine {
      *   every notification: set to that check's defaults for a device with no managed config (no
      *   minimal UI, no forced connection, no initial import).
      * Its strict mode, first-launch setting, locale handling, managed-config import and
-     * cross-process status binding are not needed and are left out. Runs once, from the constructor.
+     * cross-process status binding are not needed and are left out. Runs from the constructor, and
+     * again from [launch] only if that first run threw; every step is safe to repeat.
      */
     private fun prepareEngine() {
         val manager = app.getSystemService(NotificationManager::class.java)
