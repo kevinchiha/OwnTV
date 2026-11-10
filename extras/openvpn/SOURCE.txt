@@ -1,0 +1,41 @@
+OpenVPN engine embedded in KevBox Live: source offer
+=====================================================
+
+ics-openvpn-v0.7.64-skeleton-ovpn2.aar is "OpenVPN for Android" (ics-openvpn) by Arne Schwabe,
+built from the exact source below, with the two patches named below applied. It is distributed
+under the GNU GPL version 2 with the additional terms in LICENSE-ics-openvpn.txt (copied unchanged
+from doc/LICENSE.txt at the same tag). The OpenVPN 2.x core, OpenSSL, LZO and LZ4 inside it carry
+their own licences, listed in the engine's assets/full_licenses.html.
+
+Upstream:  https://github.com/schwabe/ics-openvpn
+Tag:       v0.7.64
+Commit:    73ce3c99dde39207990d66c21be8201228cd1f09
+
+Submodules at that commit (the only ones built):
+  main/src/main/cpp/openvpn  https://github.com/schwabe/openvpn                  37ef162cbf5daaa676b0daede81a9f975791a926  (OpenVPN 2.7_rc6 + 1)
+  main/src/main/cpp/openssl  https://github.com/schwabe/platform_external_openssl 410c4e1050e65ac70e6a5067d74b833b4bea3702  (OpenSSL 3.6.1)
+  main/src/main/cpp/lz4      https://github.com/lz4/lz4                           5ff839680134437dbf4678f3d0c7b371d84f4964
+  main/src/main/cpp/fmt      https://github.com/fmtlib/fmt                        47a18b2fe98557590f35055a93d1932f7466d4db
+OpenVPN 3, asio and mbed TLS are not built.
+
+Patches (in this repo, applied in this order by the build script):
+  tools/kevbox/openvpn/0001-engine-as-library.patch
+      Builds the "main" module as an Android library: library plugin, no application id, version
+      or signing, no Application class on <application>, no android:process on any component,
+      only arm64-v8a, armeabi-v7a and x86_64, the skeleton flavour told to CMake by an argument
+      (-DOVPN_SKELETON=ON) and to NativeUtils (whose FLAVOR is "skeletonOvpn2" in a library, so it
+      no longer loads the absent speed-test library), no OpenVPN 3 SWIG step, version-catalog
+      names written inline.
+  tools/kevbox/openvpn/0002-no-tv-toast-no-keepalive-job.patch
+      OpenVPNService shows no status toasts on a TV and schedules no keep-alive job.
+
+Build command (from the root of this repo, on Linux with JDK 17+, the Android SDK, NDK
+29.0.14206865 and CMake 3.22.1):
+  bash tools/kevbox/openvpn/build-engine.sh
+It clones the tag, checks the commit, fetches the four submodules above, applies the patches and
+runs, inside the engine checkout:
+  ./gradlew --no-daemon clean :main:assembleSkeletonOvpn2Release
+then copies main/build/outputs/aar/main-skeleton-ovpn2-release.aar here under the name above.
+
+Built on 2026-11-10. sha256 of the AAR as committed:
+  29880f7f2d658e56e8b20fe414d94dc0c1dfe213c40c5e9952259a096681402d

@@ -1,0 +1,23 @@
+diff --git a/main/src/main/java/de/blinkt/openvpn/core/OpenVPNService.java b/main/src/main/java/de/blinkt/openvpn/core/OpenVPNService.java
+index e5c35b2..e61aa9d 100644
+--- a/main/src/main/java/de/blinkt/openvpn/core/OpenVPNService.java
++++ b/main/src/main/java/de/blinkt/openvpn/core/OpenVPNService.java
+@@ -352,7 +352,8 @@ public class OpenVPNService extends VpnService implements StateListener, Callbac
+         }
+ 
+         // Check if running on a TV
+-        if (runningOnAndroidTV() && !(priority < 0))
++        // KevBox: no status toasts on a TV; the host app shows nothing but the system VPN prompt and this notification.
++        if (false && runningOnAndroidTV() && !(priority < 0))
+             guiHandler.post(() -> {
+                 if (mlastToast != null)
+                     mlastToast.cancel();
+@@ -675,7 +676,7 @@ public class OpenVPNService extends VpnService implements StateListener, Callbac
+         mProfile = vp;
+         ProfileManager.setConnectedVpnProfile(this, vp);
+         VpnStatus.setConnectedVPNProfile(vp.getUUIDString());
+-        keepVPNAlive.scheduleKeepVPNAliveJobService(this, vp);
++        // KevBox: no keep-alive job; the host app removes that service and decides every reconnect itself.
+ 
+         String nativeLibraryDirectory = getApplicationInfo().nativeLibraryDir;
+         String tmpDir;
