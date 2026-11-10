@@ -11,12 +11,23 @@ private const val DATA_CIPHERS_FALLBACK_LINE = "data-ciphers-fallback AES-256-CB
 private const val CIPHER = "cipher"
 private const val AUTH_BLOCK_OPEN = "<auth-user-pass>"
 private const val AUTH_BLOCK_CLOSE = "</auth-user-pass>"
+private const val AUTH_USER_PASS = "auth-user-pass"
+
+/**
+ * The OpenVPN verbosity the engine runs at. Verbosity 3 and up logs every management command as
+ * `MANAGEMENT: CMD '…'`, the username line among them; 2 still logs errors, warnings and the
+ * handshake.
+ */
+const val ENGINE_LOG_VERB = 2
+private const val VERB_LINE = "verb $ENGINE_LOG_VERB"
 
 /**
  * Pure. The config the engine receives: Premiumize's file adapted to the app's retry rules.
  *
  * - An inline `<auth-user-pass>…</auth-user-pass>` block goes (the login comes from the profile); the
- *   bare `auth-user-pass` option stays.
+ *   bare `auth-user-pass` option stays. A file left with no bare `auth-user-pass` (its only one
+ *   was that block) gets one before the first inline block: without it the engine ignores the
+ *   login.
  * - `resolv-retry infinite` becomes `resolv-retry 25`, so the controller's 30-second rules decide
  *   when a server is given up (AC-30).
  * - With no `data-ciphers` line, `data-ciphers` and `data-ciphers-fallback` lines are added after the
@@ -35,6 +46,7 @@ fun prepareOvpn(raw: String): String {
     var inAuthBlock = false
     var hasDataCiphers = false
     var hasFallback = false
+    var hasAuthUserPass = false
     var cipherIndex = -1
     for (line in lines) {
         val text = line.text.trim()
@@ -64,6 +76,7 @@ fun prepareOvpn(raw: String): String {
                 kept += Line(line.text.replace(text, RESOLV_RETRY_SECONDS), line.ending)
                 continue
             }
+            option == AUTH_USER_PASS -> hasAuthUserPass = true
             option == DATA_CIPHERS -> hasDataCiphers = true
             option == DATA_CIPHERS_FALLBACK -> hasFallback = true
             option == CIPHER -> cipherIndex = kept.size
@@ -80,7 +93,25 @@ fun prepareOvpn(raw: String): String {
         if (at > 0 && kept[at - 1].ending.isEmpty()) kept[at - 1] = Line(kept[at - 1].text, newline)
         kept.addAll(at, added.map { Line(it, newline) })
     }
+    if (!hasAuthUserPass) addLine(kept, firstBlockIndex(kept), AUTH_USER_PASS, newline)
     return kept.joinToString("") { it.text + it.ending }
+}
+
+/**
+ * The engine's custom options with a last `verb` line at [ENGINE_LOG_VERB]. The engine writes its
+ * own `verb 4` before the custom options, and OpenVPN keeps the last `verb` it reads, so the
+ * username the engine sends over the management link stays out of its log.
+ */
+fun quietEngineLog(customOptions: String?): String {
+    val options = customOptions.orEmpty()
+    val separator = if (options.isEmpty() || options.endsWith("\n")) "" else "\n"
+    return options + separator + VERB_LINE + "\n"
+}
+
+/** Inserts [text] at [at], giving the line before it an ending when it had none. */
+private fun addLine(lines: MutableList<Line>, at: Int, text: String, newline: String) {
+    if (at > 0 && lines[at - 1].ending.isEmpty()) lines[at - 1] = Line(lines[at - 1].text, newline)
+    lines.add(at, Line(text, newline))
 }
 
 private class Line(val text: String, val ending: String)

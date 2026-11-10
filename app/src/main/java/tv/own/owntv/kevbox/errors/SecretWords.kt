@@ -8,7 +8,7 @@ import tv.own.owntv.kevbox.session.StoredSession
 
 /**
  * The member's own secrets, held in memory for the scrubber: the playing source's login, the
- * KevBox email and the Supabase tokens. Sentry reads [current] on a crashing thread, where no disk
+ * KevBox email, the Supabase tokens and the chosen playlist's VPN login. Sentry reads [current] on a crashing thread, where no disk
  * or database read may happen, so the set is filled ahead of time: from the stored session once
  * the start-up read ends ([KevBoxSentry.start]), then by the reporter whenever the member, the
  * session or the sources change. Never stored, never logged.
@@ -54,10 +54,17 @@ object SecretWords {
 }
 
 /**
- * The words to scrub for one member: the source's username and password, the email, and the
- * access and refresh tokens (a refresh token is a short opaque string no pattern catches).
+ * The words to scrub for one member: the source's username and password, the email, the access
+ * and refresh tokens (a refresh token is a short opaque string no pattern catches), and the chosen
+ * playlist's VPN username and password (0.6), which no pattern catches either.
  */
-fun secretWordsOf(source: SourceEntity?, email: String?, session: StoredSession?): Set<String> =
+fun secretWordsOf(
+    source: SourceEntity?,
+    email: String?,
+    session: StoredSession?,
+    vpnUsername: String? = null,
+    vpnPassword: String? = null,
+): Set<String> =
     listOfNotNull(
         source?.username,
         source?.password,
@@ -65,4 +72,6 @@ fun secretWordsOf(source: SourceEntity?, email: String?, session: StoredSession?
         session?.email,
         session?.accessToken,
         session?.refreshToken,
+        vpnUsername,
+        vpnPassword,
     ).filter { it.isNotBlank() }.toSet()

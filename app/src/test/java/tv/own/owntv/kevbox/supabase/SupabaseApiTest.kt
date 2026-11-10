@@ -291,6 +291,18 @@ class SupabaseApiTest {
         )
     }
 
+    @Test
+    fun `selectVpnServers makes no call when the filter names no usable host`() = runBlocking {
+        val server = Recording()
+        val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon-key")
+
+        // Never "every row" in place of the hosts asked for.
+        assertEquals(ApiResponse.Http(200, "[]"), api.selectVpnServers("a1", listOf("evil.host&select=*", "")))
+        assertEquals(ApiResponse.Http(200, "[]"), api.selectVpnServers("a1", emptyList()))
+
+        assertEquals(0, server.requests.size)
+    }
+
     private companion object {
         val BEIRUT: java.time.ZoneId = java.time.ZoneId.of("Asia/Beirut")
         const val BASE = "https://test.supabase.local"

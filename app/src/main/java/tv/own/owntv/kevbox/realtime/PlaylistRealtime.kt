@@ -37,9 +37,10 @@ internal interface RealtimeSocket {
  * kevbox.dev reaches the TV in seconds instead of at the 15-minute check (0.6 AC-39, AC-33).
  *
  * It follows [KevBoxAuth.userId]: open while someone is signed in, closed while no one is. It joins
- * with a fresh access token, sends a heartbeat every 25 s and a new token every 30 minutes. No frame
- * within 10 s of a heartbeat, a refusal, or a socket that fails or closes means a reconnect after
- * [backoffMs]. The attempt count goes back to 0 only once a join has held for 60 s: Supabase answers
+ * with a fresh access token, sends a heartbeat every 25 s and a new token every 30 minutes. No join
+ * reply within 10 s, no frame within 10 s of a heartbeat, a refusal, or a socket that fails or
+ * closes means a reconnect after [backoffMs]. The join has its own wait because heartbeat replies
+ * keep a socket alive that never subscribed. The attempt count goes back to 0 only once a join has held for 60 s: Supabase answers
  * the join with ok and only then reports a change feed that cannot start (a server without migration
  * 0023), so counting the ok as success would reconnect every 5 s on every TV.
  *
@@ -137,6 +138,10 @@ class PlaylistRealtime internal constructor(
         ref += 1
         if (!socket.send(joinFrame(userId, token, ref))) return false
         launch {
+            sleep(JOIN_MS)
+            events.send(Event.JoinDue)
+        }
+        launch {
             while (true) {
                 sleep(HEARTBEAT_MS)
                 events.send(Event.HeartbeatDue)
@@ -180,6 +185,8 @@ class PlaylistRealtime internal constructor(
                     }
                 }
                 is Event.ReplyDue -> if (awaitingReply == event.ref) return held
+                // A lost join leaves the socket up but subscribed to nothing: start again.
+                Event.JoinDue -> if (!joined) return held
                 Event.Held -> held = true
                 Event.TokenDue -> launch {
                     val fresh = try {
@@ -214,6 +221,7 @@ class PlaylistRealtime internal constructor(
         data object Gone : Event
         data object HeartbeatDue : Event
         class ReplyDue(val ref: Int) : Event
+        data object JoinDue : Event
         data object Held : Event
         data object TokenDue : Event
         class Token(val token: String) : Event
@@ -222,20 +230,27 @@ class PlaylistRealtime internal constructor(
     internal companion object {
         const val HEARTBEAT_MS = 25_000L
         const val REPLY_MS = 10_000L
+        const val JOIN_MS = 10_000L
         const val TOKEN_MS = 30 * 60_000L
         const val HOLD_MS = 60_000L
         private const val MAX_ATTEMPT = 16
         private const val NORMAL_CLOSURE = 1000
 
         /**
-         * OkHttp's socket over the shared client, always direct like SupabaseApi: the customer's
-         * proxy is for the provider, and one that is down must not cut the TV off from kevbox.dev.
+         * The socket's client, from the shared one: always direct like SupabaseApi (the customer's
+         * proxy is for the provider, and one that is down must not cut the TV off from kevbox.dev),
+         * with retries on a failed connection back on. Core turns them off on the shared client,
+         * which breaks every connection on TV boxes that try IPv6 first over a dead route.
          */
+        internal fun realtimeClient(http: OkHttpClient): OkHttpClient = http.newBuilder()
+            .proxy(java.net.Proxy.NO_PROXY)
+            .proxyAuthenticator(okhttp3.Authenticator.NONE)
+            .retryOnConnectionFailure(true)
+            .build()
+
+        /** OkHttp's socket over [realtimeClient]. */
         fun okHttpConnect(http: OkHttpClient): (String, RealtimeSocket.Events) -> RealtimeSocket {
-            val client = http.newBuilder()
-                .proxy(java.net.Proxy.NO_PROXY)
-                .proxyAuthenticator(okhttp3.Authenticator.NONE)
-                .build()
+            val client = realtimeClient(http)
             return { url, events ->
                 val listener = object : WebSocketListener() {
                     override fun onMessage(webSocket: WebSocket, text: String) = events.onMessage(text)

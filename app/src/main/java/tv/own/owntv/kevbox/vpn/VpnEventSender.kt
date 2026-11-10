@@ -7,6 +7,8 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -43,6 +45,8 @@ fun vpnRetryDelayMs(failures: Int): Long =
  * first. A 2xx removes exactly the events sent; any other answer, no network, a refused session or a
  * throw keeps them all for the next try (AC-35). Signed out, it sends nothing. It never waits for the
  * tunnel: an event recorded while the tunnel is broken fails to send and goes out on a later try.
+ * A sign-in sends at once, so events waiting for a member go out without waiting for some later
+ * VPN change.
  *
  * One mutex, so overlapping triggers wait and a batch never goes out twice. Nothing here logs but an
  * exception's class name. [now] matches the other senders' shape; each event already carries its
@@ -69,21 +73,29 @@ class VpnEventSender(
     /** Tells the retry tick that a kick ended, so it measures its wait from the latest outcome. */
     private val wake = Channel<Unit>(Channel.CONFLATED)
 
-    /** The retry tick. Returns at once; the work runs on [scope]. */
+    /** The retry tick, and a send on every sign-in. Returns at once; the work runs on [scope]. */
     fun start() {
         scope.launch(Dispatchers.IO) {
-            guarded {
-                while (isActive) {
-                    val wait = if (hasPending()) vpnRetryDelayMs(failures) else null
-                    val woken = if (wait == null) {
-                        wake.receive()
-                    } else {
-                        withTimeoutOrNull(wait) { wake.receive() }
-                    }
-                    if (woken == null) guarded { trigger() }
-                }
+            while (isActive) {
+                // Each pass guarded on its own: one that throws ends that pass, never the retries.
+                if (!guarded { retryPass() }) delay(vpnRetryDelayMs(failures))
             }
         }
+        scope.launch(Dispatchers.IO) {
+            // Signed out, the tick waits with nothing to send: a sign-in is what wakes it.
+            guarded { auth.userId.filterNotNull().collect { kick() } }
+        }
+    }
+
+    /** Waits for the retry time or a kick's end, then sends when the time came first. */
+    private suspend fun retryPass() {
+        val wait = if (hasPending()) vpnRetryDelayMs(failures) else null
+        val woken = if (wait == null) {
+            wake.receive()
+        } else {
+            withTimeoutOrNull(wait) { wake.receive() }
+        }
+        if (woken == null) trigger()
     }
 
     /** Sends now: Task 4 calls it after every add and when the tunnel state settles. Returns at once. */
@@ -147,15 +159,15 @@ class VpnEventSender(
         return if (queue.oldest(1, member).isNotEmpty()) Outcome.SENT_MORE else Outcome.SENT_ALL
     }
 
-    /** The app scope has no exception handler: anything thrown here would crash the app. */
-    private suspend fun guarded(block: suspend () -> Unit) {
-        try {
-            block()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(LOG_TAG, "vpn event send failed: ${e.javaClass.simpleName}")
-        }
+    /** The app scope has no exception handler: anything thrown here would crash the app. False when [block] threw. */
+    private suspend fun guarded(block: suspend () -> Unit): Boolean = try {
+        block()
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(LOG_TAG, "vpn event send failed: ${e.javaClass.simpleName}")
+        false
     }
 
     private companion object {

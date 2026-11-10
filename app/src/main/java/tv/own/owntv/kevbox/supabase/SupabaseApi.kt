@@ -80,12 +80,16 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     /**
      * The VPN servers (vpn_server, migration 0023) in sort order, or only [hosts] when given (null
      * means every row). A host with anything but `[a-z0-9.-]` is dropped before the call, so the
-     * filter goes out as written; when none is left, every row is asked for.
+     * filter goes out as written; when none is left, nothing is asked and the answer is no rows,
+     * never every row.
      */
     suspend fun selectVpnServers(accessToken: String, hosts: List<String>?): ApiResponse {
         val query = mutableMapOf("select" to VPN_SERVER_COLUMNS, "order" to "sort_order.asc")
-        val usable = hosts?.filter { it.isNotEmpty() && it.all(::isHostChar) }.orEmpty()
-        if (usable.isNotEmpty()) query["host"] = "in.(" + usable.joinToString(",") + ")"
+        if (hosts != null) {
+            val usable = hosts.filter { it.isNotEmpty() && it.all(::isHostChar) }
+            if (usable.isEmpty()) return NO_ROWS
+            query["host"] = "in.(" + usable.joinToString(",") + ")"
+        }
         return send(VPN_SERVER_PATH, query, accessToken) { get() }
     }
 
@@ -264,6 +268,9 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     private companion object {
         /** No HTTP exchange happened, and no network outage explains it. Callers read it as failed. */
         val UNREACHABLE = ApiResponse.Http(0, "")
+
+        /** What a filter that names no usable host answers, without a call. */
+        private val NO_ROWS = ApiResponse.Http(200, "[]")
         const val TIMEOUT_SECONDS = 15L
         const val LISTING_TIMEOUT_SECONDS = 4L
         const val TOKEN_PATH = "auth/v1/token"

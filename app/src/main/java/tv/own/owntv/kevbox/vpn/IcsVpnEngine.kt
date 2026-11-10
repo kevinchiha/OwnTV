@@ -19,7 +19,6 @@ import de.blinkt.openvpn.core.OpenVPNService
 import de.blinkt.openvpn.core.ProfileManager
 import de.blinkt.openvpn.core.VPNLaunchHelper
 import de.blinkt.openvpn.core.VpnStatus
-import java.io.IOException
 import java.io.StringReader
 import java.util.concurrent.Executors
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -34,8 +33,17 @@ import tv.own.owntv.R
  * [start] hands the engine a temporary profile built from [prepareOvpn]'s config, the login, and an
  * allowed-apps list of this app alone ("allowed" mode, so the engine calls
  * `VpnService.Builder.addAllowedApplication` for it only, AC-27). The engine saves a temporary
- * profile to a file; that file is deleted at once, so the password does not stay on disk and a
- * restart of the engine's service after the process dies finds no profile to reconnect with.
+ * profile to a file; that file is deleted at once, so the password does not stay on disk.
+ *
+ * The engine's service is sticky: after the app process dies with the tunnel up, Android starts it
+ * again with no intent. It first posts its notification, which reads the engine's global settings,
+ * then looks for a last-used or always-on profile, finds none (the temporary one died with the
+ * process) and stops. So the settings and the notification channels are set up when this class is
+ * built, in OwnTVApp.onCreate, which runs before that restart reaches the service; set up only in
+ * [start], the restart would crash the app in the background on every try.
+ *
+ * The engine runs OpenVPN at verbosity 4, which logs every management command, the username among
+ * them, into the engine's log (kept in memory and on disk). [quietEngineLog] lowers it.
  *
  * Status reports map to [EngineEvent]s, one session per [start]:
  * - connected gives [EngineEvent.Up];
@@ -56,7 +64,6 @@ class IcsVpnEngine(context: Context) : VpnEngine {
     override val events: SharedFlow<EngineEvent> = mutableEvents.asSharedFlow()
 
     private val lock = Any()
-    private var prepared = false
     private var session = 0
     private var active = false
     private var up = false
@@ -99,15 +106,18 @@ class IcsVpnEngine(context: Context) : VpnEngine {
         }
     }
 
+    init {
+        prepareEngine()
+    }
+
     override fun start(host: String, config: String, username: String, password: String) {
-        prepareOnce()
         val mine = synchronized(lock) {
             session++
             active = true
             up = false
             failed = false
+            // Only a process that really started can still be winding down; see [launch].
             awaitOldExit = processMayRun
-            processMayRun = true
             stopWhenBound = false
             session
         }
@@ -127,20 +137,27 @@ class IcsVpnEngine(context: Context) : VpnEngine {
     }
 
     private fun launch(mine: Int, host: String, config: String, username: String, password: String) {
+        // Bad server data can make the engine's parser throw anything (a NumberFormatException on a
+        // port): every throw is a refused config, a failed try, never a crash on this thread.
         val profile = try {
             buildProfile(host, config, username, password)
-        } catch (e: ConfigParser.ConfigParseError) {
+                .takeIf { it.checkProfile(app) == de.blinkt.openvpn.R.string.no_error_found }
+        } catch (e: Exception) {
             Log.w(TAG, "vpn: config refused ${e.javaClass.simpleName}")
             null
-        } catch (e: IOException) {
-            Log.w(TAG, "vpn: config unreadable ${e.javaClass.simpleName}")
-            null
         }
-        if (profile == null || profile.checkProfile(app) != de.blinkt.openvpn.R.string.no_error_found) {
+        if (profile == null) {
             fail(mine)
             return
         }
-        if (!isCurrent(mine)) return
+        // Marked under the lock with the session check, so a start() after this sees the process
+        // coming and waits for its exit, and one before it leaves this stale launch out.
+        val before = synchronized(lock) {
+            if (!active || session != mine) return
+            val was = processMayRun
+            processMayRun = true
+            was
+        }
         try {
             // Load the engine's profile list before setting the temporary profile, so a later load
             // cannot replace it, then remove the file the engine writes for it.
@@ -151,6 +168,8 @@ class IcsVpnEngine(context: Context) : VpnEngine {
             VPNLaunchHelper.startOpenVpn(profile, app, START_REASON, true)
         } catch (e: RuntimeException) {
             Log.w(TAG, "vpn: start failed ${e.javaClass.simpleName}")
+            // No process came of this launch: the next start waits only for one that did.
+            synchronized(lock) { if (processMayRun) processMayRun = before }
             fail(mine)
         }
     }
@@ -165,6 +184,9 @@ class IcsVpnEngine(context: Context) : VpnEngine {
             mAllowedAppsVpnAreDisallowed = false
             mAllowedAppsVpn = hashSetOf(app.packageName)
             mAllowAppVpnBypass = false
+            // Written after the engine's own "verb 4", so it wins: no username in the engine's log.
+            mCustomConfigOptions = quietEngineLog(mCustomConfigOptions)
+            mUseCustomConfig = true
         }
     }
 
@@ -225,8 +247,6 @@ class IcsVpnEngine(context: Context) : VpnEngine {
         if (emit) mutableEvents.tryEmit(EngineEvent.Failed)
     }
 
-    private fun isCurrent(mine: Int): Boolean = synchronized(lock) { active && session == mine }
-
     private fun serviceLost() {
         val mine = synchronized(lock) {
             binder = null
@@ -276,13 +296,9 @@ class IcsVpnEngine(context: Context) : VpnEngine {
      *   every notification: set to that check's defaults for a device with no managed config (no
      *   minimal UI, no forced connection, no initial import).
      * Its strict mode, first-launch setting, locale handling, managed-config import and
-     * cross-process status binding are not needed and are left out.
+     * cross-process status binding are not needed and are left out. Runs once, from the constructor.
      */
-    private fun prepareOnce() {
-        synchronized(lock) {
-            if (prepared) return
-            prepared = true
-        }
+    private fun prepareEngine() {
         val manager = app.getSystemService(NotificationManager::class.java)
         val name = app.getString(R.string.kevbox_vpn_channel)
         for (id in ENGINE_CHANNELS) {

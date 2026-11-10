@@ -504,6 +504,27 @@ class KevBoxAuthTest {
     }
 
     @Test
+    fun `VPN hosts read lowercased, from the row and from the server list`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        val row = """[{"client_number":"C1","name":"A","server_url":"http://a","username":"u","password":"p",""" +
+            """"vpn_enabled":true,"vpn_server":"VPN-DE.Premiumize.ME","vpn_backup_server":" Vpn-NL.premiumize.me ",""" +
+            """"vpn_username":"vu","vpn_password":"pw","vpn_changed_at":"t1"}]"""
+        val list = """[{"host":"VPN-DE.premiumize.me","label":"Germany","config":"client","backup_host":"VPN-NL.premiumize.me","sort_order":1}]"""
+        server.on(PLAYLIST, Canned(200, row))
+        server.on(VPN_SERVERS, Canned(200, list))
+        val auth = auth()
+
+        val vpn = (auth.playlists() as Fetch.Ok).value.single().vpn
+        val servers = (auth.vpnServers(listOf(vpn.server)) as Fetch.Ok).value
+
+        // Lowercased, the hosts pass the read's host filter and match the server list's rows.
+        assertEquals("vpn-de.premiumize.me", vpn.server)
+        assertEquals("vpn-nl.premiumize.me", vpn.backupServer)
+        assertEquals("in.(vpn-de.premiumize.me)", server.requests.last().url.queryParameter("host"))
+        assertEquals(VpnServer("vpn-de.premiumize.me", "Germany", "client", "vpn-nl.premiumize.me", 1), servers.single())
+    }
+
+    @Test
     fun `vpnServers reads complete rows in order and skips a blank host or config`() = runBlocking {
         storeSession(expiresAtMs = clock + 600_000)
         val body = """[{"host":"vpn-de.premiumize.me","label":"Germany","config":"client\ndev tun","backup_host":"vpn-nl.premiumize.me","sort_order":1},""" +

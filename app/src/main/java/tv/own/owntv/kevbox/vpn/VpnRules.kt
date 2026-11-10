@@ -51,6 +51,12 @@ sealed interface VpnInput {
 
     /** The runner found another app's VPN when about to Connect; it started nothing. */
     data object OtherVpnActive : VpnInput
+
+    /**
+     * About to Connect, the runner found Android no longer gives this app the VPN right (another
+     * app took it since); it started nothing. The prompt is asked again.
+     */
+    data object PermissionNeeded : VpnInput
     data object Foreground : VpnInput
     data object Background : VpnInput
     data object SignedOut : VpnInput
@@ -131,6 +137,8 @@ data class VpnState(
     val tunnelUp: Boolean,
     /** When the off-screen stop happens; null in the foreground. */
     val pauseAtMs: Long?,
+    /** Automatic: server-list reads that failed in a row, each one a failed try (AC-30, AC-41). */
+    val pickFailures: Int,
     val fallbackAtMs: Long?,
     val fallbackServer: String?,
     val fallbackChangedAt: String?,
@@ -162,6 +170,7 @@ object VpnRules {
             carryHost = null,
             tunnelUp = false,
             pauseAtMs = null,
+            pickFailures = 0,
             fallbackAtMs = at,
             fallbackServer = fallbackServer.takeIf { at != null },
             fallbackChangedAt = fallbackChangedAt.takeIf { at != null },
@@ -180,6 +189,7 @@ object VpnRules {
             VpnInput.EngineDown -> run.engineDown()
             VpnInput.EngineFailed -> run.engineFailed()
             VpnInput.OtherVpnActive -> run.otherVpn()
+            VpnInput.PermissionNeeded -> run.permissionNeeded()
             VpnInput.Foreground -> run.foreground()
             VpnInput.Background -> run.background()
             VpnInput.SignedOut -> run.stopAll(forgetWant = true)
@@ -187,6 +197,27 @@ object VpnRules {
         }
         val end = run.s
         return VpnStep(end.copy(dueAtMs = dueOf(end, nowMs)), run.actions.toList())
+    }
+
+    /**
+     * [state] with a fresh look at another app's VPN. The runner calls it before a Foreground and a
+     * Tick, which reach the start rules without a Wanted, so a VPN that went away since the last
+     * playlist check no longer blocks (AC-29).
+     */
+    fun withOtherVpn(state: VpnState, otherVpnActive: Boolean): VpnState = state.copy(
+        otherVpnActive = otherVpnActive,
+        otherReported = if (otherVpnActive) state.otherReported else false,
+    )
+
+    /**
+     * [state] once the runner has really started the engine for the current try: the 30-second
+     * window runs from [nowMs], not from the Connect, which may first wait out the linger and read
+     * the config (AC-28).
+     */
+    fun engineStarted(state: VpnState, nowMs: Long): VpnState {
+        val p = state.phase as? VpnPhase.Connecting ?: return state
+        val moved = state.copy(phase = p.copy(deadlineMs = nowMs + CONNECT_TIMEOUT_MS))
+        return moved.copy(dueAtMs = dueOf(moved, nowMs))
     }
 
     /** AC-41: lowest average first; never-answered hosts skipped; none answered → first two by sortOrder. */
@@ -260,7 +291,7 @@ object VpnRules {
             s = s.copy(otherReported = true)
         }
 
-        /** Item 7: stop whatever runs and clear the fall-back and the refusal. */
+        /** Item 7: stop whatever runs and clear the fall-back, the refusal and an open ask. */
         fun stopAll(forgetWant: Boolean) {
             if (engineRuns) emit(VpnAction.Disconnect)
             tunnelDown()
@@ -269,7 +300,10 @@ object VpnRules {
                 phase = VpnPhase.Idle,
                 cycle = null,
                 carryHost = null,
+                pickFailures = 0,
                 refused = null,
+                // An ask that never got its answer must not block the next want (AC-26).
+                asking = false,
                 want = if (forgetWant) null else s.want,
             )
         }
@@ -342,6 +376,7 @@ object VpnRules {
         private fun beginCycle(main: String, backup: String?, carry: String?) {
             val counted = carry == main
             s = s.copy(
+                pickFailures = 0,
                 cycle = VpnCycle(
                     main = main,
                     backup = backup?.takeIf { it != main },
@@ -365,12 +400,29 @@ object VpnRules {
             val phase = s.phase as? VpnPhase.Picking ?: return
             val main = input.main
             if (main == null) {
-                // The server list could not be read: nothing to try, so the cycle ends here.
-                s = s.copy(cycle = null)
-                fallBack()
+                // The server list could not be read: one failed try, read again after the usual
+                // wait, and the cycle ends after the third, as on a fixed server (AC-30).
+                val failures = s.pickFailures + 1
+                if (failures >= TRIES_PER_SERVER) {
+                    s = s.copy(cycle = null)
+                    fallBack()
+                } else {
+                    s = s.copy(
+                        cycle = null,
+                        carryHost = phase.carryHost,
+                        pickFailures = failures,
+                        phase = VpnPhase.Waiting(now + RETRY_WAIT_MS),
+                    )
+                }
                 return
             }
             beginCycle(main, input.backup, phase.carryHost)
+        }
+
+        /** Automatic: read the server list again for the same cycle; a dropped server still counts once. */
+        private fun pickAgain() {
+            s = s.copy(phase = VpnPhase.Picking(s.carryHost), carryHost = null)
+            emit(VpnAction.PickServers)
         }
 
         fun permission(granted: Boolean) {
@@ -444,7 +496,7 @@ object VpnRules {
             val want = s.want
             val tried = s.cycle?.tried.orEmpty()
             report(VpnEventKind.FELL_BACK, tried.joinToString(",").ifEmpty { null })
-            s = s.copy(phase = VpnPhase.Idle, cycle = null, carryHost = null)
+            s = s.copy(phase = VpnPhase.Idle, cycle = null, carryHost = null, pickFailures = 0)
             if (want != null) {
                 emit(VpnAction.SaveFallback(now, want.server, want.changedAt))
                 s = s.copy(fallbackAtMs = now, fallbackServer = want.server, fallbackChangedAt = want.changedAt)
@@ -460,8 +512,16 @@ object VpnRules {
         fun otherVpn() {
             if (s.phase is VpnPhase.Up || s.phase is VpnPhase.Dropped) emit(VpnAction.Disconnect)
             tunnelDown()
-            s = s.copy(otherVpnActive = true, phase = VpnPhase.Idle, cycle = null, carryHost = null)
+            // Also the answer to an AskPermission the runner dropped for another app's VPN.
+            s = s.copy(otherVpnActive = true, asking = false, phase = VpnPhase.Idle, cycle = null, carryHost = null)
             reportOtherVpnOnce()
+        }
+
+        /** The try found the VPN right gone: nothing started, so ask again (AC-26). */
+        fun permissionNeeded() {
+            if (s.phase !is VpnPhase.Connecting) return
+            s = s.copy(permissionGranted = false, phase = VpnPhase.Idle, cycle = null, carryHost = null)
+            consider()
         }
 
         fun foreground() {
@@ -524,7 +584,11 @@ object VpnRules {
                 }
                 is VpnPhase.Waiting -> if (now >= p.atMs) {
                     val cycle = s.cycle
-                    if (cycle != null) connect(cycle.current, resume = false) else s = s.copy(phase = VpnPhase.Idle)
+                    when {
+                        cycle != null -> connect(cycle.current, resume = false)
+                        s.want?.server == VPN_AUTO -> pickAgain()
+                        else -> s = s.copy(phase = VpnPhase.Idle)
+                    }
                 }
                 is VpnPhase.NewCycleAt -> if (now >= p.atMs) {
                     // A new cycle never starts off screen: it waits for the next Foreground.

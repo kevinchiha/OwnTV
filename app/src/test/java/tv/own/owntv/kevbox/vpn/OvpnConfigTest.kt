@@ -88,6 +88,40 @@ class OvpnConfigTest {
     }
 
     @Test
+    fun `an inline-only login block leaves a bare auth-user-pass in its place`() {
+        // The file's own bare line removed: the block is the directive.
+        val bare = premiumize("nl").replace("auth-user-pass\r\n", "")
+        assertFalse(lines(bare).contains("auth-user-pass"))
+
+        // Tags on their own lines, and the login on the tag lines.
+        val ownLines = bare.replace("<ca>\r\n", "<auth-user-pass>\r\nu\r\np\r\n</auth-user-pass>\r\n<ca>\r\n")
+        val onTags = bare.replace("<ca>\r\n", "<auth-user-pass>u\r\np</auth-user-pass>\r\n<ca>\r\n")
+        for (raw in listOf(ownLines, onTags)) {
+            val out = lines(prepareOvpn(raw))
+            assertEquals(1, out.count { it == "auth-user-pass" })
+            assertTrue(out.indexOf("auth-user-pass") < out.indexOf("<ca>"))
+            assertFalse(out.any { it.contains("<auth-user-pass>") || it.contains("</auth-user-pass>") })
+            assertFalse(out.contains("u") || out.contains("p") || out.contains("p</auth-user-pass>"))
+        }
+
+        // A file that has the bare line keeps exactly one.
+        val both = premiumize("nl").replace("<ca>\r\n", "<auth-user-pass>u\r\np</auth-user-pass>\r\n<ca>\r\n")
+        assertEquals(1, lines(prepareOvpn(both)).count { it == "auth-user-pass" })
+    }
+
+    @Test
+    fun `the engine's log runs below the level that logs management commands`() {
+        // OpenVPN keeps the last verb it reads; the engine writes its own "verb 4" before these.
+        assertEquals("verb 2\n", quietEngineLog(null))
+        assertEquals("verb 2\n", quietEngineLog(""))
+        val parsed = "# These options found in the config file do not map to config settings:\nreneg-sec 0"
+        val out = quietEngineLog(parsed)
+        assertTrue(out.startsWith(parsed + "\n"))
+        assertEquals("verb $ENGINE_LOG_VERB", out.trimEnd().lines().last())
+        assertTrue(ENGINE_LOG_VERB < 3)
+    }
+
+    @Test
     fun `prepareOvpn keeps the file's line endings`() {
         val crlf = prepareOvpn(premiumize("fr"))
         assertFalse("a bare LF crept in", Regex("(?<!\r)\n").containsMatchIn(crlf))
