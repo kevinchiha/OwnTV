@@ -1349,6 +1349,7 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	42703
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	Authorization
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	Bearer $accessToken
+1	json	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	[]
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	and
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	apikey
 1	mime	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	application/json
@@ -1427,16 +1428,16 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	NOPROCESS
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	temporary-vpn-profile
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: config refused ${e.javaClass.simpleName}
-1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: config unreadable ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: start failed ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	vpn: stop failed ${e.javaClass.simpleName}
-3	empty	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	\0
+7	empty	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	\0
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	<
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	</
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	</$blockTag>
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	</$inBlock>
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	</auth-user-pass>
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	<auth-user-pass>
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	auth-user-pass
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	cipher
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	data-ciphers
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-256-CBC
@@ -1445,6 +1446,7 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	infinite
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	resolv-retry
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	resolv-retry 25
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	verb $ENGINE_LOG_VERB
 1	regex	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	(?:rtt|round-trip) min/avg/max\\S* = ([0-9.]+)/([0-9.]+)/([0-9.]+)
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-c
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-i
@@ -1461,6 +1463,7 @@
 1	compiler	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	DEPRECATION
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	KevBoxVpn
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn engine start failed: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn prompt failed to start: ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn runner call failed: ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn runner step failed: ${e.javaClass.simpleName}
 1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	at

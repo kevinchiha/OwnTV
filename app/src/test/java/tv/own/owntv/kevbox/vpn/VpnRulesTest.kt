@@ -304,10 +304,14 @@ class VpnRulesTest {
         auto.runUntil(s(1000))
         assertEquals(listOf(NL, NL, NL, DE, DE, DE), auto.connectTimes().map { it.second })
         assertTrue(auto.log.any { it.second == fellBack("$NL,$DE") })
-        // An unreadable server list ends the cycle with nothing tried.
+        // An unreadable server list three times in a row ends the cycle with nothing tried.
         val blind = onScreen()
         blind.send(wanted(autoWant), 0L)
-        assertEquals(listOf(fellBack(null), SaveFallback(s(1), VPN_AUTO, CHANGED_1)), blind.send(Picked(null, null), s(1)))
+        blind.send(Picked(null, null), s(1))
+        blind.runUntil(s(61))
+        blind.send(Picked(null, null), s(62))
+        blind.runUntil(s(122))
+        assertEquals(listOf(fellBack(null), SaveFallback(s(123), VPN_AUTO, CHANGED_1)), blind.send(Picked(null, null), s(123)))
 
         // A process started off screen never connects until the app is on screen.
         val boot = Driver(VpnRules.initial(null, null, null))
@@ -383,6 +387,87 @@ class VpnRulesTest {
         dropped.runUntil(2 * HOUR)
         val afterReturn = dropped.connectTimes().filter { it.first >= HOUR }.map { it.second }
         assertEquals(listOf(DE, DE, NL, NL, NL), afterReturn)
+    }
+
+    @Test
+    fun `an unreadable server list is one failed try, read again a minute later`() {
+        val d = onScreen()
+        val autoWant = want(server = VPN_AUTO, backup = null)
+        assertEquals(listOf(PickServers), d.send(wanted(autoWant), 0L))
+
+        // No fall-back, no report: the read is tried again after the usual wait (AC-30).
+        assertEquals(emptyList<VpnAction>(), d.send(Picked(null, null), s(2)))
+        assertEquals(VpnPhase.Waiting(s(62)), d.state.phase)
+        assertEquals(listOf(s(62) to PickServers), d.runUntil(s(62)))
+
+        // The second read works: the cycle starts with no failure counted against the server.
+        assertEquals(listOf(Connect(NL, autoWant)), d.send(Picked(NL, DE), s(63)))
+        assertEquals(0, d.state.cycle?.failures)
+        assertFalse(d.log.any { it.second is SaveFallback || it.second is Report })
+    }
+
+    @Test
+    fun `a fresh look at other VPNs lets a Foreground start once the other VPN went away`() {
+        val d = Driver(VpnRules.initial(null, null, null))
+        d.send(Foreground, 0L)
+        assertEquals(
+            listOf(Report(VpnEventKind.OTHER_VPN_ACTIVE, null, CLIENT)),
+            d.send(wanted(want(), otherVpn = true), s(1)),
+        )
+        d.send(Background, s(2))
+
+        // The runner looks again before the Foreground: the other VPN is gone.
+        d.state = VpnRules.withOtherVpn(d.state, otherVpnActive = false)
+        assertEquals(listOf(Connect(DE, want())), d.send(Foreground, s(3)))
+
+        // Still there: still blocked, and not reported twice.
+        val blocked = onScreen()
+        blocked.send(wanted(want(), otherVpn = true), 0L)
+        blocked.state = VpnRules.withOtherVpn(blocked.state, otherVpnActive = true)
+        assertEquals(emptyList<VpnAction>(), blocked.send(VpnInput.Tick, s(1)))
+        assertEquals(emptyList<VpnAction>(), blocked.send(Foreground, s(2)))
+    }
+
+    @Test
+    fun `a VPN right lost before a connect asks again, and an open ask ends with the want`() {
+        val d = onScreen()
+        assertEquals(listOf(Connect(DE, want())), d.send(wanted(want()), 0L))
+        // Another VPN app took the right since: nothing started, the prompt comes again.
+        assertEquals(listOf(AskPermission), d.send(VpnInput.PermissionNeeded, s(1)))
+        assertNull(d.state.dueAtMs)
+        assertEquals(listOf(Connect(DE, want())), d.send(Permission(true), s(2)))
+
+        // An ask that never got its answer: switching off and on again asks once more (AC-26).
+        val asked = onScreen()
+        assertEquals(listOf(AskPermission), asked.send(wanted(want(), granted = false), 0L))
+        asked.send(wanted(null), s(1))
+        assertFalse(asked.state.asking)
+        val again = want(changedAt = CHANGED_2)
+        assertEquals(listOf(AskPermission), asked.send(wanted(again, granted = false), s(2)))
+
+        // So does an ask the runner dropped for another app's VPN.
+        val other = onScreen()
+        other.send(wanted(want(), granted = false), 0L)
+        other.send(OtherVpnActive, s(1))
+        assertFalse(other.state.asking)
+        assertEquals(listOf(AskPermission), other.send(wanted(want(), granted = false), s(2)))
+    }
+
+    @Test
+    fun `the 30-second connect window runs from the engine's start`() {
+        val d = onScreen()
+        d.send(wanted(want()), 0L)
+        assertEquals(CONNECT_TIMEOUT_MS, d.state.dueAtMs)
+
+        // The runner waited out the linger and read the config: the engine starts 6 s later.
+        d.state = VpnRules.engineStarted(d.state, s(6))
+        assertEquals(s(6) + CONNECT_TIMEOUT_MS, d.state.dueAtMs)
+        assertEquals(emptyList<VpnAction>(), d.send(VpnInput.Tick, CONNECT_TIMEOUT_MS))
+        assertEquals(listOf(Disconnect), d.send(VpnInput.Tick, s(6) + CONNECT_TIMEOUT_MS))
+
+        // Outside a try it changes nothing.
+        val idle = onScreen()
+        assertEquals(idle.state, VpnRules.engineStarted(idle.state, s(6)))
     }
 
     private companion object {

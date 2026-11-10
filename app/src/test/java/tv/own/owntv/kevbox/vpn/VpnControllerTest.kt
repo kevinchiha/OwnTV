@@ -7,6 +7,7 @@ import java.io.File
 import java.net.UnknownHostException
 import java.time.ZoneId
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -45,12 +46,16 @@ class VpnControllerTest {
         val servers = linkedMapOf<String, String>()
         val serverReads: MutableList<String?> = Collections.synchronizedList(mutableListOf())
 
+        /** Runs on every server read, with its host filter, before it is answered. */
+        @Volatile var onRead: (String?) -> Unit = {}
+
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
             val (code, body) = when (request.url.encodedPath) {
                 SERVERS_PATH -> {
                     val filter = request.url.queryParameter("host")
                     serverReads += filter
+                    onRead(filter)
                     val wanted = filter?.removePrefix("in.(")?.removeSuffix(")")?.split(",")
                     val rows = JSONArray()
                     servers.entries.forEachIndexed { index, (host, config) ->
@@ -159,6 +164,7 @@ class VpnControllerTest {
     private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, e -> crashes += e })
     private val api = SupabaseApi(OkHttpClient.Builder().addInterceptor(server).build(), BASE, "anon-key")
 
+    /** The monotonic clock the deadlines run on; also the wall clock unless a test sets its own. */
     @Volatile private var clock = 1_800_000_000_000L
     @Volatile private var otherVpn = false
 
@@ -169,7 +175,12 @@ class VpnControllerTest {
         scope.cancel()
     }
 
-    private fun controller(pinger: Pinger = FakePinger(emptyMap())): VpnController {
+    private fun controller(
+        pinger: Pinger = FakePinger(emptyMap()),
+        permission: () -> Boolean = { true },
+        store: FallbackStore = FallbackStore(MemoryPrefs()),
+        wall: () -> Long = { clock },
+    ): VpnController {
         val sessions = PrefsSessionStore(MemoryPrefs(), PlainCipher())
         sessions.save(StoredSession(USER, "$USER@example.com", "a-$USER", "r-$USER", clock + 100 * HOUR))
         val auth = KevBoxAuth(api, sessions) { clock }
@@ -178,14 +189,15 @@ class VpnControllerTest {
             engine = engine,
             auth = auth,
             pinger = pinger,
-            store = FallbackStore(MemoryPrefs()),
+            store = store,
             queue = queue,
             sender = sender,
             application = Application(),
             scope = scope,
-            now = { clock },
+            now = wall,
             otherVpnActive = { otherVpn },
-            permissionGranted = { true },
+            permissionGranted = permission,
+            monotonic = { clock },
         ).also {
             it.start()
             // Past the start's linger, so a first Connect neither waits nor takes a VPN for ours.
@@ -201,7 +213,7 @@ class VpnControllerTest {
         withTimeout(5_000) { settle() }
     }
 
-    private suspend fun VpnController.hand(want: VpnWant) {
+    private suspend fun VpnController.hand(want: VpnWant?) {
         wanted(want)
         withTimeout(5_000) { settle() }
     }
@@ -292,6 +304,125 @@ class VpnControllerTest {
         assertEquals(DE, event.server)
         assertEquals("C1", event.clientNumber)
         assertEquals(clock, event.atMs)
+    }
+
+    @Test
+    fun `a playlist check never asks Android for the VPN right`() = runBlocking {
+        server.servers[DE] = "de-config"
+        val asks = AtomicInteger(0)
+        val vpn = controller(permission = { asks.incrementAndGet() > 0 })
+        vpn.drive(VpnInput.Foreground)
+
+        // VPN off, and on while another app's VPN is up: prepare() would take that app's VPN right.
+        repeat(3) { vpn.hand(null) }
+        otherVpn = true
+        vpn.hand(want(DE))
+        assertEquals(0, asks.get())
+        assertEquals(emptyList<String>(), engine.starts.toList())
+
+        // Clear: asked only on the way to the connect, which starts the engine.
+        otherVpn = false
+        vpn.hand(want(DE))
+        assertEquals(listOf(DE), engine.starts.toList())
+        val asked = asks.get()
+        assertTrue(asked > 0)
+
+        // Up: every later playlist check leaves the VPN right alone (AC-27, AC-29).
+        vpn.drive(VpnInput.EngineUp)
+        repeat(3) { vpn.hand(want(DE)) }
+        assertEquals(asked, asks.get())
+        assertEquals(emptyList<Throwable>(), crashes.toList())
+    }
+
+    @Test
+    fun `another VPN gone by the next foreground no longer blocks`() = runBlocking {
+        server.servers[DE] = "de-config"
+        val vpn = controller()
+        otherVpn = true
+        vpn.drive(VpnInput.Foreground)
+        vpn.hand(want(DE))
+        assertEquals(listOf(VpnEventKind.OTHER_VPN_ACTIVE), queuedKinds())
+        assertEquals(emptyList<String>(), engine.starts.toList())
+
+        // The other VPN went away; no playlist check came since, but the return to the front looks again.
+        otherVpn = false
+        vpn.drive(VpnInput.Background, VpnInput.Foreground)
+
+        assertEquals(listOf(DE), engine.starts.toList())
+        assertEquals(emptyList<Throwable>(), crashes.toList())
+    }
+
+    @Test
+    fun `a failed try that a newer want overtook counts against nothing`() = runBlocking {
+        server.servers[NL] = "nl-config"
+        val vpn = controller()
+        vpn.drive(VpnInput.Foreground)
+        val moved = VpnWant("C1", NL, null, "vu", "vp", "c2")
+        // kevbox.dev moves the VPN to nl while the vpn-de read (which finds no row) is out.
+        server.onRead = { filter -> if (filter == "in.($DE)") vpn.wanted(moved) }
+
+        vpn.hand(want(DE))
+
+        // The vpn-de failure belonged to the old try: nl's try runs with no failure against it.
+        assertEquals(listOf(NL), engine.starts.toList())
+        assertTrue(vpn.state.phase is VpnPhase.Connecting)
+        assertEquals(NL, vpn.state.cycle?.main)
+        assertEquals(0, vpn.state.cycle?.failures)
+        assertEquals(emptyList<Throwable>(), crashes.toList())
+    }
+
+    @Test
+    fun `a want that changed during the config read starts nothing for the old one`() = runBlocking {
+        server.servers[DE] = "de-config"
+        server.servers[NL] = "nl-config"
+        val vpn = controller()
+        vpn.drive(VpnInput.Foreground)
+        server.onRead = { filter -> if (filter == "in.($DE)") vpn.wanted(VpnWant("C1", NL, null, "vu", "vp", "c2")) }
+
+        vpn.hand(want(DE))
+
+        assertEquals(listOf(NL), engine.starts.toList())
+        assertEquals(emptyList<Throwable>(), crashes.toList())
+    }
+
+    @Test
+    fun `the connect window starts when the engine does`() = runBlocking {
+        server.servers[DE] = "de-config"
+        val vpn = controller()
+        vpn.drive(VpnInput.Foreground)
+        // A slow config read: 20 s pass between the Connect and the engine's start.
+        server.onRead = { clock += 20 * SECOND }
+
+        vpn.hand(want(DE))
+
+        assertEquals(listOf(DE), engine.starts.toList())
+        assertEquals(clock + CONNECT_TIMEOUT_MS, vpn.state.dueAtMs)
+    }
+
+    @Test
+    fun `a wall clock jump moves no deadline, and the fall-back is stored in wall time`() = runBlocking {
+        var wall = 1_700_000_000_000L
+        val store = FallbackStore(MemoryPrefs())
+        val vpn = controller(store = store, wall = { wall })
+        vpn.drive(VpnInput.Foreground)
+        vpn.hand(want(DE)) // no row for vpn-de: a failed try, the next one a minute away
+        val retryAt = clock + RETRY_WAIT_MS
+
+        // The TV syncs its clock two hours forward: no deadline moves.
+        wall += 2 * HOUR
+        vpn.drive(VpnInput.Tick)
+        assertEquals(VpnPhase.Waiting(retryAt), vpn.state.phase)
+
+        // Two more failed tries a minute apart, then the fall-back, stamped with the wall clock (AC-32).
+        repeat(2) {
+            clock += RETRY_WAIT_MS
+            wall += RETRY_WAIT_MS
+            vpn.drive(VpnInput.Tick)
+        }
+        assertEquals(VpnPhase.Idle, vpn.state.phase)
+        assertEquals(wall, store.atMs())
+        assertEquals(DE, store.server())
+        assertEquals(emptyList<Throwable>(), crashes.toList())
     }
 
     private companion object {

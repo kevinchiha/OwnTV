@@ -28,12 +28,19 @@ class ChannelRestarterTest {
         var engineReads = 0
         var evictions = 0
 
+        /** Runs inside the engine read, which suspends in the app. */
+        var duringRead: () -> Unit = {}
+
         // The settle wait: parks until the test lets it go, then moves the clock by the wait.
         private val waits = mutableListOf<CompletableDeferred<Unit>>()
 
         val restarter = ChannelRestarter(
             scene = scene,
-            playingSource = { engineReads += 1; source },
+            playingSource = {
+                engineReads += 1
+                duringRead()
+                source
+            },
             inFront = { front },
             retuneLive = {
                 calls += "background" to clock
@@ -137,6 +144,17 @@ class ChannelRestarterTest {
 
         assertEquals(emptyList<Pair<String, Long>>(), calls)
         assertEquals(1, evictions)
+    }
+
+    @Test
+    fun `an app that leaves the front during the engine read never gets the pair`() = harness {
+        show()
+        // MainActivity.onStop runs while the read is suspended.
+        duringRead = { front = false }
+        restarter.restartNow()
+
+        assertEquals(1, engineReads)
+        assertEquals(emptyList<Pair<String, Long>>(), calls)
     }
 
     @Test

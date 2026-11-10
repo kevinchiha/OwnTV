@@ -257,9 +257,15 @@ class KevBoxCoordinator(
         scope.launch { quietly { expiry.onChannelFailed(reconciler.currentSourceId()) } }
     }
 
-    /** Sets Core's proxy for the playlist on screen; a proxy that changed re-tunes the playing channel. */
+    /**
+     * Sets Core's proxy for the playlist on screen; a proxy that changed re-tunes the playing channel.
+     * Not when that playlist's VPN is on: the proxy then goes off only because the VPN wins, and a
+     * re-tune now would land on the blocked plain route before the tunnel is up. The VPN re-tunes
+     * the channel itself once its tunnel is up (AC-40).
+     */
     private suspend fun applyProxy(rows: List<PlaylistRow>, chosenClientNumber: String?) {
-        if (proxy?.apply(rows, chosenClientNumber) == true) restartChannel()
+        val changed = proxy?.apply(rows, chosenClientNumber) == true
+        if (changed && tv.own.owntv.kevbox.vpn.ManagedVpn.vpnFor(rows, chosenClientNumber) == null) restartChannel()
     }
 
     private suspend fun playlistCheck() {
@@ -329,7 +335,7 @@ class KevBoxCoordinator(
      * Joins a running [block] started for the same session instead of starting a second one. A
      * running block from an older session is left to finish on its own and drop its answer.
      */
-    private class SingleFlight(private val scope: CoroutineScope, private val block: suspend (session: Int) -> Unit) {
+    internal class SingleFlight(private val scope: CoroutineScope, private val block: suspend (session: Int) -> Unit) {
         private val lock = Mutex()
         private var running: Deferred<Unit>? = null
         private var runningSession = 0
@@ -337,6 +343,10 @@ class KevBoxCoordinator(
         // The one run waiting for the running block to end, from [runAfter]; null once it has begun.
         private var waiting: CompletableDeferred<Unit>? = null
         private var waitingSession = 0
+
+        // The block [waiting] waits on. A call shares [waiting] only while that block still runs:
+        // once another has started, sharing would hand the call a run that began before it.
+        private var waitingFor: Deferred<Unit>? = null
 
         suspend fun run(session: Int) {
             val job = lock.withLock { joinable(session) ?: start(session) }
@@ -350,16 +360,20 @@ class KevBoxCoordinator(
         suspend fun runAfter(session: Int) {
             val job = lock.withLock {
                 val current = joinable(session) ?: return@withLock start(session)
-                waiting?.takeIf { waitingSession == session }?.let { return@withLock it }
+                waiting?.takeIf { waitingSession == session && waitingFor === current }?.let { return@withLock it }
                 val next = CompletableDeferred<Unit>()
                 waiting = next
                 waitingSession = session
+                waitingFor = current
                 scope.launch {
                     try {
                         current.join()
                         // Whatever runs now began after current ended, so after this call: join it.
                         val flight = lock.withLock {
-                            if (waiting === next) waiting = null
+                            if (waiting === next) {
+                                waiting = null
+                                waitingFor = null
+                            }
                             joinable(session) ?: start(session)
                         }
                         flight.await()

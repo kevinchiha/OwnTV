@@ -1,6 +1,7 @@
 // KevBox Live fork only: this file does not exist upstream (ahXN00/OwnTV).
 package tv.own.owntv.kevbox.session
 
+import java.util.Locale
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -336,18 +337,19 @@ class KevBoxAuth(
     /**
      * The row's VPN columns. A server without them (before migration 0023), a null column, a VPN
      * switched off, or one missing its server, username or password all read as [PlaylistVpn.OFF].
-     * The password is kept exactly as stored, like the proxy password.
+     * The password is kept exactly as stored, like the proxy password. Hosts are lowercased, as
+     * host names compare and as the server read's filter accepts them.
      */
     private fun parseVpn(row: JSONObject): PlaylistVpn {
         if (row.opt(VPN_ENABLED) != true) return PlaylistVpn.OFF
-        val server = (row.opt(VPN_SERVER) as? String)?.trim().orEmpty()
+        val server = (row.opt(VPN_SERVER) as? String)?.trim().orEmpty().lowercase(Locale.ROOT)
         val username = (row.opt(VPN_USERNAME) as? String)?.trim().orEmpty()
         val password = (row.opt(VPN_PASSWORD) as? String).orEmpty()
         if (server.isEmpty() || username.isEmpty() || password.isBlank()) return PlaylistVpn.OFF
         return PlaylistVpn(
             enabled = true,
             server = server,
-            backupServer = (row.opt(VPN_BACKUP_SERVER) as? String)?.trim()?.takeIf { it.isNotEmpty() },
+            backupServer = (row.opt(VPN_BACKUP_SERVER) as? String)?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() },
             username = username,
             password = password,
             changedAt = row.opt(VPN_CHANGED_AT) as? String,
@@ -363,14 +365,14 @@ class KevBoxAuth(
         }
         return (0 until array.length()).mapNotNull { index ->
             val row = array.opt(index) as? JSONObject ?: return null
-            val host = (row.opt(HOST) as? String)?.trim().orEmpty()
+            val host = (row.opt(HOST) as? String)?.trim().orEmpty().lowercase(Locale.ROOT)
             val config = (row.opt(CONFIG) as? String).orEmpty()
             if (host.isEmpty() || config.isBlank()) return@mapNotNull null
             VpnServer(
                 host = host,
                 label = (row.opt(LABEL) as? String).orEmpty(),
                 config = config,
-                backupHost = (row.opt(BACKUP_HOST) as? String)?.trim()?.takeIf { it.isNotEmpty() },
+                backupHost = (row.opt(BACKUP_HOST) as? String)?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() },
                 sortOrder = (row.opt(SORT_ORDER) as? Number)?.toInt() ?: 0,
             )
         }

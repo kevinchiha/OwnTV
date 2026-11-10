@@ -58,8 +58,11 @@ if [[ "$actual" != "$COMMIT" ]]; then
   exit 1
 fi
 
-# A clean tree every time, so the patches always apply to the pinned sources.
+# A clean tree every time, so the patches always apply to the pinned sources: checkout resets the
+# tracked files, clean removes what the last run added (new files from the patches, build output,
+# local.properties), which would make `git apply` fail on a second run.
 git -C "$src" checkout -- .
+git -C "$src" clean -fdx
 git -C "$src" submodule update --init --depth 50 "${SUBMODULES[@]}"
 
 for patch in "$script_dir"/*.patch; do

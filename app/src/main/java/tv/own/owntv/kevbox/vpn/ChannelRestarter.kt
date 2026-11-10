@@ -117,7 +117,11 @@ class ChannelRestarter internal constructor(
         if (!scene.shown.value) return
         withContext(main) {
             if (!inFront()) return@withContext
-            when (playingSource(scene.snapshot())) {
+            val source = playingSource(scene.snapshot())
+            // The read suspends: MainActivity.onStop may have run meanwhile, and the pair must never
+            // run in the background, where it would use up Core's restore slot.
+            if (!inFront()) return@withContext
+            when (source) {
                 PlaySource.LIVE_ENGINE -> retuneLive()
                 PlaySource.PLAYER -> retryPlayer()
                 null -> Unit

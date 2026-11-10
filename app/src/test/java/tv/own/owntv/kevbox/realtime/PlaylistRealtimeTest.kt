@@ -256,6 +256,38 @@ class PlaylistRealtimeTest {
     }
 
     @Test
+    fun `a join with no reply within 10 s reconnects, though heartbeats are answered`() = harness {
+        // The join is lost; the socket itself stays alive and answers every heartbeat.
+        server = { socket, frame ->
+            if (frame.getString("event") == "heartbeat") answer(socket, frame)
+        }
+        start()
+        assertEquals(0, changes)
+
+        time.advance(9_999)
+        assertTrue(!sockets[0].closed)
+        time.advance(1)
+        assertTrue(sockets[0].closed)
+
+        // Answered normally again: the reconnect after the first wait joins.
+        server = { socket, frame -> answer(socket, frame) }
+        time.advance(5_000)
+        assertEquals(2, sockets.size)
+        assertEquals(1, changes)
+    }
+
+    @Test
+    fun `the socket's client goes direct and retries a failed connection`() {
+        // Core turns retries off on the shared client; the socket needs them on (AC-39).
+        val shared = OkHttpClient.Builder().retryOnConnectionFailure(false).build()
+
+        val client = PlaylistRealtime.realtimeClient(shared)
+
+        assertTrue(client.retryOnConnectionFailure)
+        assertEquals(java.net.Proxy.NO_PROXY, client.proxy)
+    }
+
+    @Test
     fun `signing out closes the socket and stops the reconnects`() = harness {
         start()
         assertEquals(1, sockets.size)

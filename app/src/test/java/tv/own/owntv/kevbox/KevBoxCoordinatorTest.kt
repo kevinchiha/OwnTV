@@ -4,7 +4,9 @@ import java.net.UnknownHostException
 import java.time.LocalDate
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -668,6 +671,67 @@ class KevBoxCoordinatorTest {
         reconciler.rows.await { it.size == 2 }
         delay(200)
         assertEquals(3, server.calls(PLAYLIST))
+    }
+
+    @Test
+    fun `a change that arrives after the next check began still gets a check after it`() = runBlocking {
+        val scope = CoroutineScope(coroutineContext + SupervisorJob(coroutineContext[Job]))
+        try {
+            // Each run parks on its own gate, so the test decides when it ends.
+            val gates = mutableListOf<CompletableDeferred<Unit>>()
+            val flight = KevBoxCoordinator.SingleFlight(scope) { _ ->
+                val gate = CompletableDeferred<Unit>()
+                gates += gate
+                gate.await()
+            }
+            suspend fun settle() = repeat(50) { yield() }
+
+            // Check A runs, and a change arriving during it waits for it to end.
+            scope.launch { flight.run(1) }
+            settle()
+            scope.launch { flight.runAfter(1) }
+            settle()
+            assertEquals(1, gates.size)
+
+            // A ends; before the waiter wakes, an ordinary trigger starts check B and a second
+            // change arrives during B.
+            gates[0].complete(Unit)
+            yield()
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { flight.run(1) }
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { flight.runAfter(1) }
+            settle()
+            assertEquals(2, gates.size)
+
+            // B may have read the row before the second change: that change gets a check C of its own.
+            gates[1].complete(Unit)
+            settle()
+            assertEquals(3, gates.size)
+            gates[2].complete(Unit)
+            settle()
+            assertEquals(3, gates.size)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `turning the VPN on with the proxy going off waits for the tunnel to re-tune`() = harness {
+        signedIn()
+        val vpnOn = """[{"client_number":"1","name":"Line 1","server_url":"http://s1.example",""" +
+            """"username":"u1","password":"p1","proxy_enabled":true,"proxy_host":"proxy.example","proxy_port":3128,""" +
+            """"proxy_username":"pu","proxy_password":"pp","vpn_enabled":true,"vpn_server":"vpn-de.premiumize.me",""" +
+            """"vpn_backup_server":null,"vpn_username":"vu","vpn_password":"vp","vpn_changed_at":"c1"}]"""
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA))))
+        server.always(PLAYLIST, Canned(200, vpnOn))
+        start()
+        waitFor { proxyTarget.stored == proxyA }
+        assertEquals(1, restarts)
+
+        // The VPN wins, so the proxy goes off; a re-tune now would use the blocked plain route.
+        advance(15 * minute)
+        waitFor { vpnWants.size == 2 }
+        assertEquals(PlaylistProxy.OFF, proxyTarget.stored)
+        assertEquals(1, restarts)
     }
 
     @Test

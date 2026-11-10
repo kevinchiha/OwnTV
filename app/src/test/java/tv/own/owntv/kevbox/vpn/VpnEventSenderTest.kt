@@ -11,8 +11,11 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -21,6 +24,7 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import org.json.JSONObject
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -139,6 +143,12 @@ class VpnEventSenderTest {
     private val crashes: MutableList<Throwable> = Collections.synchronizedList(mutableListOf())
     private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, e -> crashes += e })
     private val queue by lazy { VpnEventQueue(File(folder.root, VPN_EVENTS_FILE)) }
+
+    @After
+    fun tearDown() {
+        // start() runs for good: end it with the test.
+        scope.cancel()
+    }
 
     // Runs inside the sender, after it picked the member and before it asks for a token.
     private var beforeToken: () -> Unit = {}
@@ -322,6 +332,24 @@ class VpnEventSenderTest {
 
         assertEquals(0, server.calls())
         assertEquals(3, queue.size())
+    }
+
+    @Test
+    fun `a sign-in sends the events that waited for a member`() = runBlocking {
+        queueEvents(1..3, USER_A)
+        val auth = KevBoxAuth(api, store) { clock }
+        val sender = sender(auth)
+        sender.start()
+        delay(50)
+        assertEquals(0, server.calls())
+
+        // Signed out, the retry tick waits with nothing to send; the sign-in wakes it at once.
+        auth.signIn("$USER_A@example.com", "secret")
+        withTimeout(5_000) { while (queue.size() > 0) delay(10) }
+
+        assertEquals(1, server.calls())
+        assertEquals((1..3).map { "n-$it" }, server.sentNames(0))
+        assertEquals(emptyList<Throwable>(), crashes.toList())
     }
 
     @Test

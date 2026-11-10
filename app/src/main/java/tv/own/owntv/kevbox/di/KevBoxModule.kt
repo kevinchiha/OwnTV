@@ -161,8 +161,19 @@ val kevboxModule = module {
             proxyUsable = proxyInUse::current,
             isOnline = connectivity::isOnlineNow,
             // sessionVersion moves when a refresh rotates the tokens, which leaves the email and id alone.
-            secretChanges = merge(auth.email, auth.userId, auth.sessionVersion, sourceDao.observeAll()),
-            readSecrets = { secretWordsOf(currentSource(), auth.email.value, sessions.load()) },
+            // The rows and the pick carry the chosen playlist's VPN login (0.6).
+            secretChanges = merge(
+                auth.email,
+                auth.userId,
+                auth.sessionVersion,
+                sourceDao.observeAll(),
+                reconciler.rows,
+                reconciler.currentClientNumber,
+            ),
+            readSecrets = {
+                val vpn = tv.own.owntv.kevbox.vpn.ManagedVpn.vpnFor(reconciler.rows.value, reconciler.currentClientNumber.value)
+                secretWordsOf(currentSource(), auth.email.value, sessions.load(), vpn?.username, vpn?.password)
+            },
             scope = get(),
             now = System::currentTimeMillis,
         )
@@ -315,6 +326,8 @@ val kevboxModule = module {
             scope = get(),
         )
     }
+    // Built with the coordinator in OwnTVApp.onCreate, which runs before Android restarts the
+    // engine's sticky service in a new process: the engine's set-up is in place by then.
     single<tv.own.owntv.kevbox.vpn.VpnEngine> { tv.own.owntv.kevbox.vpn.IcsVpnEngine(androidContext()) }
     single {
         // noBackupFilesDir, like the error queue: this TV's alone, never in a backup.
@@ -345,9 +358,12 @@ val kevboxModule = module {
             sender = get(),
             application = app,
             scope = get(),
-            // The wall clock: the fall-back time has to mean the same after a restart.
+            // The wall clock stamps events and the stored fall-back time, which has to mean the same
+            // after a restart; every deadline runs on the controller's monotonic default.
             now = System::currentTimeMillis,
             otherVpnActive = { tv.own.owntv.kevbox.vpn.otherVpnNetworkPresent(app) },
+            // VpnService.prepare: the controller calls it only right before a connect or a prompt,
+            // because it takes the VPN right from any other VPN app (AC-27, AC-29).
             permissionGranted = { tv.own.owntv.kevbox.vpn.vpnPermissionGranted(app) },
             restartChannel = get<tv.own.owntv.kevbox.vpn.ChannelRestarter>()::restartSoon,
         )
