@@ -43,11 +43,19 @@ interface Relay {
  * closes the player's connection and tries nothing else, because a fallback would show an
  * inspecting internet company exactly what the encryption hides.
  */
-class LocalRelay(
+class LocalRelay internal constructor(
     trust: X509TrustManager,
     private val lookup: (String) -> List<InetAddress>,
-    private val preferredPort: Int = RELAY_PORT,
+    private val preferredPort: Int,
+    // Tests hand in a listener whose accept() fails the way a full file table does.
+    private val newListener: () -> ServerSocket,
 ) : Relay {
+
+    constructor(
+        trust: X509TrustManager,
+        lookup: (String) -> List<InetAddress>,
+        preferredPort: Int = RELAY_PORT,
+    ) : this(trust, lookup, preferredPort, { ServerSocket() })
 
     private val tls: SSLSocketFactory = SSLContext.getInstance(TLS).apply { init(null, arrayOf(trust), null) }.socketFactory
 
@@ -64,28 +72,38 @@ class LocalRelay(
     private var lastPort: Int? = null
     private val open = mutableSetOf<Connection>()
 
-    override fun start(target: RelayTarget): Int = synchronized(lock) {
-        val listening = server
-        if (listening != null) {
-            if (this.target != target) {
+    override fun start(target: RelayTarget): Int {
+        var stale = emptyList<Connection>()
+        val port = synchronized(lock) {
+            val listening = server
+            if (listening != null) {
+                if (this.target != target) {
+                    this.target = target
+                    stale = takeAllLocked()
+                }
+                listening.localPort
+            } else {
+                val bound = bind()
+                server = bound
                 this.target = target
-                closeAllLocked()
+                lastPort = bound.localPort
+                Thread({ acceptLoop(bound) }, THREAD_NAME).apply { isDaemon = true }.start()
+                bound.localPort
             }
-            return listening.localPort
         }
-        val bound = bind()
-        server = bound
-        this.target = target
-        lastPort = bound.localPort
-        Thread({ acceptLoop(bound) }, THREAD_NAME).apply { isDaemon = true }.start()
-        bound.localPort
+        // Outside the lock: a slow TLS close must never hold up the next start() or stop() (AC-15).
+        stale.forEach { it.close() }
+        return port
     }
 
-    override fun stop() = synchronized(lock) {
-        server?.let { quietly(it) }
-        server = null
-        target = null
-        closeAllLocked()
+    override fun stop() {
+        val stale = synchronized(lock) {
+            server?.let { quietly(it) }
+            server = null
+            target = null
+            takeAllLocked()
+        }
+        stale.forEach { it.close() }
     }
 
     /** The port held earlier in this process, then [preferredPort], then any free port. */
@@ -93,7 +111,7 @@ class LocalRelay(
         val loopback = InetAddress.getByName(RELAY_LOOPBACK)
         var failure: IOException? = null
         for (port in listOfNotNull(lastPort, preferredPort, 0).distinct()) {
-            val socket = ServerSocket()
+            val socket = newListener()
             try {
                 // A restart must not lose the port to connections still in TIME_WAIT.
                 socket.reuseAddress = true
@@ -111,8 +129,12 @@ class LocalRelay(
         while (true) {
             val player = try {
                 listening.accept()
-            } catch (_: IOException) {
-                return // closed by stop()
+            } catch (e: IOException) {
+                if (!keepAccepting(listening)) return
+                // A passing failure (a full file table under load, say): the relay stays usable.
+                Log.w(LOG_TAG, "relay: accept failed ${e.javaClass.simpleName}")
+                pause()
+                continue
             }
             val connection: Connection
             val to: RelayTarget
@@ -131,6 +153,26 @@ class LocalRelay(
             } catch (e: RuntimeException) {
                 close(connection)
             }
+        }
+    }
+
+    /**
+     * After a failed accept(): false when [listening] was replaced or closed, which ends its loop.
+     * A listener closed by anything but stop() is dropped, so the next start() binds again
+     * instead of handing out a port nothing listens on (AC-17, AC-19).
+     */
+    private fun keepAccepting(listening: ServerSocket): Boolean = synchronized(lock) {
+        if (server !== listening) return false
+        if (!listening.isClosed) return true
+        server = null
+        false
+    }
+
+    private fun pause() {
+        try {
+            Thread.sleep(ACCEPT_RETRY_MS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
         }
     }
 
@@ -207,10 +249,8 @@ class LocalRelay(
         connection.close()
     }
 
-    private fun closeAllLocked() {
-        open.forEach { it.close() }
-        open.clear()
-    }
+    /** Empties [open] and returns what it held, for the caller to close outside the lock. */
+    private fun takeAllLocked(): List<Connection> = open.toList().also { open.clear() }
 
     /** The player's socket and whatever upstream socket was opened for it, closed together. */
     private class Connection(val player: Socket) {
@@ -232,7 +272,10 @@ class LocalRelay(
                 closed = true
                 sockets.toList()
             }
-            all.asReversed().forEach { quietly(it) }
+            // In the order attached: the player, then the plain socket under the TLS one. Closing
+            // the plain socket first ends a copy blocked inside the TLS socket, which holds the
+            // lock the TLS close needs (AC-15).
+            all.forEach { quietly(it) }
         }
     }
 
@@ -246,6 +289,7 @@ class LocalRelay(
         const val CONNECT_TIMEOUT_MS = 10_000
         const val HANDSHAKE_TIMEOUT_MS = 15_000
         const val BUFFER_BYTES = 16 * 1024
+        const val ACCEPT_RETRY_MS = 200L
     }
 }
 

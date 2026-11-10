@@ -88,6 +88,18 @@ class ManagedProxyTest {
     private val relayTarget = RelayTarget("proxy.kevbox.dev", 443, "203.0.113.7")
     private fun loopback(port: Int = RELAY_PORT) = PlaylistProxy(true, RELAY_LOOPBACK, port, "kb12", "secret")
 
+    /** Core's setting while no relay port is open: loopback, a port no unprivileged app can bind, no login (AC-16). */
+    private fun assertClosed(p: PlaylistProxy) {
+        assertTrue("enabled, so nothing goes direct", p.enabled)
+        assertEquals(RELAY_LOOPBACK, p.host)
+        assertTrue("port ${p.port} below 1024", p.port in 1..1023)
+        assertEquals("no login", "", p.username)
+        assertEquals("no password", "", p.password)
+        // Core still routes through it (a setting it found unusable would send requests direct).
+        val config = ProxyConfig(p.enabled, p.host, p.port, p.username, p.password)
+        assertTrue("Core counts it as a usable proxy", runBlocking { ProxyInUse { config }.current() })
+    }
+
     private fun managed(target: ProxyTarget, relay: Relay = FakeRelay(), kept: KeptRelay = KeptRelay(MemoryPrefs())) =
         ManagedProxy(target, relay, kept)
 
@@ -282,38 +294,59 @@ class ManagedProxyTest {
     }
 
     @Test
-    fun `resume with nothing kept, or a relay that cannot bind, changes nothing`() = runBlocking {
+    fun `resume with nothing kept changes nothing`() = runBlocking {
         val target = Target(stored = loopback())
         val relay = FakeRelay()
         managed(target, relay).resume()
         assertEquals(emptyList<RelayTarget>(), relay.starts)
         assertEquals(emptyList<PlaylistProxy>(), target.saves)
-
-        val prefs = MemoryPrefs()
-        KeptRelay(prefs).save(relayTarget)
-        relay.canBind = false
-        managed(target, relay, KeptRelay(prefs)).resume()
-        assertEquals(emptyList<PlaylistProxy>(), target.saves)
-        assertEquals(relayTarget, KeptRelay(prefs).load())
     }
 
     @Test
-    fun `a relay that cannot bind fails closed`() = runBlocking {
+    fun `resume with a relay that cannot bind takes the login off the loopback until a port opens`() = runBlocking {
+        val prefs = MemoryPrefs()
+        KeptRelay(prefs).save(relayTarget)
+        val target = Target(stored = loopback())
+        val relay = FakeRelay().apply { canBind = false }
+        val managed = managed(target, relay, KeptRelay(prefs))
+
+        // Another app could be listening on the port the relay no longer holds.
+        managed.resume()
+        assertEquals(1, target.saves.size)
+        assertClosed(target.stored)
+        assertTrue(target.saves.none { it.username == "kb12" || it.port == RELAY_PORT })
+        // Still kept, so the next check or start tries again.
+        assertEquals(relayTarget, KeptRelay(prefs).load())
+        managed.resume()
+        assertEquals(1, target.saves.size)
+
+        // A port opens: the relay is behind Core's setting again, and the next check brings the login back.
+        relay.canBind = true
+        managed.resume()
+        assertEquals(relayTarget, relay.target)
+        assertEquals(RELAY_PORT, target.stored.port)
+        assertTrue(managed.apply(listOf(row("1", encrypted)), "1"))
+        assertEquals(loopback(), target.stored)
+    }
+
+    @Test
+    fun `a relay that cannot bind fails closed without saving the login`() = runBlocking {
         val target = Target(stored = proxyA)
         val relay = FakeRelay().apply { canBind = false }
         val kept = KeptRelay(MemoryPrefs())
         val managed = managed(target, relay, kept)
 
         assertTrue(managed.apply(listOf(row("1", encrypted)), "1"))
-        assertEquals(loopback(RELAY_PORT), target.stored)
-        assertTrue(target.saves.none { it.host == "plain.example" })
+        assertClosed(target.stored)
+        assertTrue(target.saves.none { it.host == "plain.example" || it.username == "kb12" })
         // Still kept, so the next check or start tries again.
         assertEquals(relayTarget, kept.load())
-
-        // Already on the loopback: left there, on its port.
-        target.stored = loopback(RELAY_PORT + 5)
         assertFalse(managed.apply(listOf(row("1", encrypted)), "1"))
-        assertEquals(loopback(RELAY_PORT + 5), target.stored)
+
+        // Already on the loopback with the login, on a port the relay no longer holds: the login comes off.
+        target.stored = loopback(RELAY_PORT + 5)
+        assertTrue(managed.apply(listOf(row("1", encrypted)), "1"))
+        assertClosed(target.stored)
 
         // The port frees up: the next check binds and points Core at it.
         relay.canBind = true

@@ -72,7 +72,8 @@ class ManagedProxy(
     /**
      * Process start: restarts the relay from the kept address before any playlist check, so Core's
      * saved `127.0.0.1` setting has a listener behind it even while kevbox.dev is unreachable
-     * (AC-25). Never re-tunes a channel. A relay that cannot bind leaves everything as it is.
+     * (AC-25). Never re-tunes a channel. A relay that cannot bind leaves the kept address for the
+     * next try and turns Core's setting to [CLOSED]: another app may be listening on the old port.
      */
     suspend fun resume() {
         lock.withLock {
@@ -83,7 +84,11 @@ class ManagedProxy(
                 io { kept.clear() }
                 return@withLock
             }
-            val port = startRelay(keptTarget) ?: return@withLock
+            val port = startRelay(keptTarget)
+            if (port == null) {
+                save(stored, CLOSED)
+                return@withLock
+            }
             if (port != stored.port) target.save(stored.copy(port = port, tls = null))
         }
     }
@@ -95,14 +100,10 @@ class ManagedProxy(
         if (keptChanged) io { kept.save(relayTarget) }
         val port = startRelay(relayTarget)
         val stored = normalized(target.current())
-        val core = when {
-            port != null -> PlaylistProxy(true, RELAY_LOOPBACK, port, want.username, want.password)
-            // No port could be bound: fail closed on the loopback, never the plain host (AC-16).
-            // The address stays kept, so the next apply or resume tries again.
-            stored.enabled && stored.host == RELAY_LOOPBACK ->
-                PlaylistProxy(true, RELAY_LOOPBACK, stored.port, want.username, want.password)
-            else -> PlaylistProxy(true, RELAY_LOOPBACK, RELAY_PORT, want.username, want.password)
-        }
+        // No port could be bound: fail closed, never the plain host and never the login against a
+        // port the relay has not opened (AC-16). The address stays kept, so the next apply or
+        // resume tries again.
+        val core = port?.let { PlaylistProxy(true, RELAY_LOOPBACK, it, want.username, want.password) } ?: CLOSED
         val coreChanged = save(stored, core)
         return keptChanged || coreChanged
     }
@@ -136,6 +137,16 @@ class ManagedProxy(
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
     companion object {
+        /** Below 1024: no unprivileged app on the TV can listen there, so nothing answers it. */
+        private const val CLOSED_PORT = 1
+
+        /**
+         * Core's setting while no relay port could be opened: the loopback on [CLOSED_PORT] with no
+         * login. Playback fails closed, and neither the login nor any channel link (which carries
+         * the customer's IPTV login) can reach another app listening on a loopback port (AC-16).
+         */
+        private val CLOSED = PlaylistProxy.OFF.copy(enabled = true, host = RELAY_LOOPBACK, port = CLOSED_PORT)
+
         /**
          * The chosen playlist's proxy; with no choice, the only playlist's. Anything else (no rows,
          * several and none chosen, a proxy switched off) is [PlaylistProxy.OFF]. A playlist whose VPN
