@@ -1,0 +1,619 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5"
+  },
+  "message": "Review complete: 28 finding(s) across 23 selected item(s).",
+  "summary": {
+    "files_reviewed": 23,
+    "comments": 28,
+    "total_tokens": 3016758,
+    "input_tokens": 2956194,
+    "output_tokens": 60564,
+    "cache_read_tokens": 2312116,
+    "cache_write_tokens": 643862,
+    "elapsed": "3m0s"
+  },
+  "tool_calls": {
+    "total": 94,
+    "by_tool": {
+      "code_comment": 12,
+      "code_search": 42,
+      "file_find": 3,
+      "file_read": 30,
+      "file_read_diff": 7
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "packages/core/src/liveVpn.ts",
+      "content": "There's a race on `vpn_backup_server`. The caller passes in a `backupServer` it read earlier, and this write doesn't take `VPN_LOCK_KEY`. Say `setVpnServerBackup` (or the auto-fill in `saveFetchedVpnServers`) commits after that read but before this update. Its member_playlist rewrite won't find this row, because the row isn't on that server yet. This update then saves the old backup, and the subscription stays out of step with `vpn_server.backup_host` until someone changes it again. `setLiveVpnServer` has the same problem. A fix: work out the backup inside the same statement, so there is no gap to race. Pass `null` from the caller for `auto`; the subquery also gives null for `auto`, since `auto` has no `vpn_server` row.",
+      "suggestion_code": "        set vpn_enabled = true, vpn_server = $3,\n            vpn_backup_server = (select s.backup_host from public.vpn_server s where s.host = $3),\n            vpn_username = $4, vpn_password = $5,",
+      "existing_code": "        set vpn_enabled = true, vpn_server = $3, vpn_backup_server = $4, vpn_username = $5, vpn_password = $6,",
+      "start_line": 163,
+      "end_line": 163,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/vpn-actions.ts",
+      "content": "The primary key comes from whatever `remote` line the file contains, not from the code that was requested. `VPN_LABELS`, `VPN_NEIGHBOURS` and the `failed` list are all keyed by `premiumizeVpnHost(code)`. If Premiumize ever publishes a file whose first remote is an IP, a pool name such as `de1.premiumize.me`, or another country's host, that row is stored under a key nobody expects. Its label falls back to the raw host, it never gets a neighbour backup, and it can collide with another code (the dedup below then drops it silently). It also lets any host named in the downloaded file become a server the TVs connect to. Check that the remote host matches the requested code and treat a mismatch as a failure.",
+      "suggestion_code": "    const host = firstRemoteHost(text);\n    if (host !== premiumizeVpnHost(code)) return null;\n    return { host, label: VPN_LABELS[host] ?? host, config: stripInlineAuth(text), sortOrder };",
+      "existing_code": "    const host = firstRemoteHost(text);\n    if (!host) return null;\n    return { host, label: VPN_LABELS[host] ?? host, config: stripInlineAuth(text), sortOrder };",
+      "start_line": 49,
+      "end_line": 51,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/vpn-actions.ts",
+      "content": "A file whose host duplicates an earlier one is dropped without a word. That code's server is then missing from the list, and it does not appear in `failed`, so Kevin never learns about it. Push `premiumizeVpnHost(PREMIUMIZE_VPN_CODES[i])` into `failed` here, or remove the case entirely by enforcing the host match suggested above.",
+      "existing_code": "    if (seen.has(row.host)) return;",
+      "start_line": 81,
+      "end_line": 81,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/vpn-actions.ts",
+      "content": "`listVpnServers` loads every server's full `.ovpn` config (18 files with CA certificates) only to check which hosts exist. This check also runs outside `setVpnServerBackup`'s transaction, so it is check-then-act anyway. The DB already handles both cases: the FK on `backup_host` rejects an unknown backup, and `setVpnServerBackup` updates 0 rows for an unknown host. A cheaper `select host` query, or relying on the FK error and the zero row count, would avoid pulling configs on every dropdown change.",
+      "existing_code": "    const hosts = new Set((await listVpnServers(pool)).map((r) =\u003e r.host));",
+      "start_line": 116,
+      "end_line": 116,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/vpn-servers-view.tsx",
+      "content": "When one customer is updated, the toast reads \"1 customers updated\". Handle the singular.",
+      "suggestion_code": "  if (n === 0) return \"Backup saved\";\n  return `Backup saved · ${n} customer${n === 1 ? \"\" : \"s\"} updated`;",
+      "existing_code": "  return n === 0 ? \"Backup saved\" : `Backup saved · ${n} customers updated`;",
+      "start_line": 27,
+      "end_line": 27,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/vpn-servers-view.tsx",
+      "content": "This effect has no cleanup or cancel flag, so the setState calls here (and in the chained `runFetch`, which can take up to 15 s) still run after the page unmounts. Combined with `loadedRef`, a remount never reloads the list. Use an `ignore` flag set in the cleanup function rather than a load-once ref.",
+      "existing_code": "    listVpnServersAction()\n      .then((res) =\u003e {",
+      "start_line": 71,
+      "end_line": 72,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "supabase/migrations/0023_live_vpn.sql",
+      "content": "`live_vpn_event` never gets cleaned up. Any signed-in member can call `record_live_vpn_events` without limit, storing up to 50 rows per call, and no code ever deletes from this table: there is no prune function like 0015's `prune_live_errors`, and `kevbox_admin` has no `delete` grant. A buggy TV stuck in a reconnect loop makes the table grow forever. It also makes every 5-minute watch-check slower, because `listUnsentVpnEvents` loads all unsent rows with no limit and runs two correlated subqueries per row (`previous_kind`, `already_sent_today`).\n\nSuggestions:\n- Add a `prune_live_vpn_events(p_keep_days int)` function (security definer, execute granted to `kevbox_admin`) and call it from the existing prune job.\n- Consider a cap per device per time window inside `record_live_vpn_events_as`, e.g. skip the insert when the device already has more than N events in the last hour.",
+      "existing_code": "create table if not exists public.live_vpn_event (",
+      "start_line": 63,
+      "end_line": 63,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0023_live_vpn.sql",
+      "content": "This doesn't match how `record_live_play_as` handles TV times. That function also replaces a TV time more than a day in the future with `now()` (`if v_played \u003e v_now + interval '1 day'`). Here a TV with a wrong clock can store an `at` years ahead, which then shows up wrong in any view that displays or sorts by `at`. Add the same check. Remember to change the copy in `packages/core/test/schema.sql` too.",
+      "suggestion_code": "    v_at := public.live_error_ts(case when jsonb_typeof(v_e-\u003e'at') = 'string' then v_e-\u003e\u003e'at' end);\n    if v_at is null or v_at \u003e v_now + interval '1 day' then v_at := v_now; end if;",
+      "existing_code": "    v_at := coalesce(public.live_error_ts(case when jsonb_typeof(v_e-\u003e'at') = 'string' then v_e-\u003e\u003e'at' end), v_now);",
+      "start_line": 147,
+      "end_line": 147,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "packages/core/src/liveVpn.ts",
+      "content": "Each fetch auto-fills any server whose `backup_host is null`. But `setVpnServerBackup` (and `setVpnServerBackupAction`) lets Kevin set the backup to `null` on purpose to mean \"no backup\". The schema can't tell that apart from \"never set\", so the next \"Fetch from Premiumize\" puts the neighbour back. It also rewrites `vpn_backup_server` on every VPN-on subscription for that server. That breaks the doc's promise that the fetch \"keeps the backup Kevin set\". One fix is to track whether Kevin set the backup, e.g. a `backup_set_by_admin boolean` or `backup_set_at` column that `setVpnServerBackup` sets, and only auto-fill rows where it's unset. The other is to fill the neighbour only when the row is first inserted.",
+      "existing_code": "        where s.host = n.host and s.backup_host is null",
+      "start_line": 120,
+      "end_line": 120,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/server/admin/live.ts",
+      "content": "This switches the VPN off quietly and throws away the result. Both callers, `writeVpsProxyToLive` and `sendToKevboxLive`, only write a `live.proxy` or `live.send` audit. So when this line actually turns a VPN off, no `live.vpn` audit is written, and the action cannot tell the admin the VPN went off. This matters most for `sendToKevboxLive`: if the sheet's VPS proxy login is still On (for example after `setKevboxLiveVpn` failed to turn it off), pressing Send quietly turns the customer's VPN off. Suggestion: return whether the VPN was turned off (or make `updateLiveProxy` return `{ updated, vpnTurnedOff }`), so callers can write the `live.vpn` audit and show it in the UI.",
+      "suggestion_code": "  const vpnTurnedOff = p.enabled ? await turnLiveVpnOff(db, userId, clientNumber) : false;\n  // ...return { updated, vpnTurnedOff } so callers can write a live.vpn audit",
+      "existing_code": "  if (p.enabled) await turnLiveVpnOff(db, userId, clientNumber);",
+      "start_line": 126,
+      "end_line": 126,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "`fetchDebridMetadata()` catches every read error and returns `[]`. When the Debrid sheet can't be read, the panel shows a wrong blocking reason (such as \"Customer ID missing\" or \"No debrid account\") instead of saying the sheet is unavailable. The same happens in the On path of `setKevboxLiveVpn`. `syncVpnLogins` already guards this case with `if (meta.length === 0) throw ...`. Do the same here: treat empty metadata as unavailable, not as a missing account.",
+      "existing_code": "  const login = vpnLoginFor(customer, groupDebridAccounts(rows, await fetchDebridMetadata()), new Date());\n  if (!login.ok) return login.reason;",
+      "start_line": 211,
+      "end_line": 212,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "If this step fails, the database has the VPN on but the VPS Proxy sheet still says On. Until someone retries, Squid keeps accepting that proxy login. Also, the next `sendToKevboxLive` or proxy write calls `updateLiveProxy({enabled:true})`, which quietly turns the VPN off again (see live.ts). The client also gets `success:false`, so `onSuccess` never resets `vpnPick` even though the switch did turn on. Consider retrying the sheet step automatically, or have the refresh job reconcile it (turn the sheet login Off for any customer whose VPN is on). At least make sure Send cannot quietly undo the VPN in this state.",
+      "existing_code": "      error: `The VPN is on, but the VPS proxy switch could not be turned off (${errorText(e)}). Turn the VPN off and on again to retry.`,",
+      "start_line": 392,
+      "end_line": 392,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/api/cron/watch-check/route.ts",
+      "content": "`getWatchMember` runs once per user, one after another. These lookups don't depend on each other, so they can run together with `Promise.all`. A bulk read, like `readMembers` in core, would be better still.",
+      "suggestion_code": "  const userIds = [...new Set(events.map((e) =\u003e e.userId))];\n  const members = await Promise.all(userIds.map((id) =\u003e getWatchMember(pool, id)));\n  for (const m of members) customers.set(m.userId, watchCustomer(m, sheet, now, { sheetUnavailable }));",
+      "existing_code": "  for (const userId of new Set(events.map((e) =\u003e e.userId))) {\n    customers.set(userId, watchCustomer(await getWatchMember(pool, userId), sheet, now, { sheetUnavailable }));\n  }",
+      "start_line": 136,
+      "end_line": 138,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/prove-live-vpn.sh",
+      "content": "`admin_check` passes whenever psql exits 0 and never looks at the output. 0023 adds no RLS policy for kevbox_admin on `vpn_server` or `live_vpn_event`, so these writes only work because kevbox_admin has BYPASSRLS. `0000_roles.sql` says it will carry on without that attribute if granting it fails. Without it, the UPDATE/DELETE statements and the `telegram_sent_at` update affect 0 rows, and this check still prints PASS (for example `sent=0`, or `left=0` after an insert that RLS rejects). That hides exactly the failure AC-2/AC-3 are about: the admin page can't edit servers, and the watch check sends the same Telegram message every 5 minutes. Pass an expected output to `admin_check` and compare it, e.g. `label=Admin 2` / `left=0`, `rows=3`, `sent=1`. Also check `rolbypassrls` the way `prove-member-playlist-rls.sh` does.",
+      "suggestion_code": "admin_check() {  # $1 label, $2 SQL, $3 expected output (newline-joined, as psql -At prints it)\n  if psql_q \u003e\"$WORK/admin.out\" 2\u003e\"$WORK/admin.err\" \u003c\u003cSQL\nset role kevbox_admin;\n$2\nSQL\n  then\n    if [[ \"$(paste -sd' ' \"$WORK/admin.out\")\" == \"$3\" ]]; then pass \"kevbox_admin: $1 ($3)\"\n    else fail \"kevbox_admin: $1\" \"got $(paste -sd' ' \"$WORK/admin.out\" | head -c 200), want $3\"; fi\n  else fail \"kevbox_admin: $1\" \"$(head -c 300 \"$WORK/admin.err\")\"\n  fi\n}",
+      "existing_code": "  then pass \"kevbox_admin: $1 ($(tail -1 \"$WORK/admin.out\" | head -c 120))\"",
+      "start_line": 546,
+      "end_line": 546,
+      "category": "test",
+      "severity": "high"
+    },
+    {
+      "path": "scripts/prove-live-vpn.sh",
+      "content": "The script grants `kevbox_admin` (and, in check f, `authenticated`) to `postgres` and never revokes them. They stay on the stack until it is stopped, and later scripts run as postgres on the same stack inherit those rights, which can hide permission bugs. Revoke both in `cleanup`/`hard_cleanup`.",
+      "existing_code": "psql_q -c 'grant kevbox_admin to postgres;' \u003e/dev/null 2\u003e\"$WORK/grant.err\" ||",
+      "start_line": 538,
+      "end_line": 538,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/refresh-vps-proxy-access.ts",
+      "content": "Printing only `err.name` almost always logs just \"VPN login sync failed: Error\", which tells you nothing from the journal. The errors `syncVpnLogins` throws for configuration problems carry no secrets: \"SUPABASE_DB_URL is not set\", \"the Debrid sheet holds no accounts or could not be read\", and workbook or connection errors. Print a safe reason: the message for errors you know are safe, or at least `err.code` for pg/Node errors (ECONNREFUSED, 28P01, …). That way an OnFailure alert can be acted on.",
+      "existing_code": "  const vpnOk = await step(syncVpn, (err) =\u003e `VPN login sync failed: ${err instanceof Error ? err.name : typeof err}`);",
+      "start_line": 46,
+      "end_line": 46,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "scripts/refresh-vps-proxy-access.ts",
+      "content": "`syncVpnLogins` opens the shared `getAdminPool()` pg Pool and never closes it. Idle clients keep the event loop alive until pg's idle timeout (10 s by default), so each oneshot run lingers before it exits. End the pool once `main` finishes, e.g. `try { await main() } finally { await globalThis.__kevboxAdminPool?.end() }` or through a small exported `closeAdminPool()` helper.",
+      "existing_code": "void main();",
+      "start_line": 50,
+      "end_line": 50,
+      "category": "performance",
+      "severity": "low"
+    },
+    {
+      "path": "src/components/vpn-servers-view.tsx",
+      "content": "`savingHost` tracks only one host, but a save on one row doesn't disable the dropdowns on other rows. Say Kevin changes row A, then row B before A finishes. `savingHost` moves to B, and when A's save finishes, `finally` sets it to `null`, so B's dropdown is enabled again while B's save is still running. He can then send a second, conflicting save for B, and whichever response comes back last decides what the row shows. Track saving hosts in a `Set\u003cstring\u003e`, adding the host at the start and removing it in `finally`. Or disable every dropdown while any save is running.",
+      "suggestion_code": "const [savingHosts, setSavingHosts] = useState\u003cReadonlySet\u003cstring\u003e\u003e(new Set());\n// start:   setSavingHosts((p) =\u003e new Set(p).add(host));\n// finally: setSavingHosts((p) =\u003e { const n = new Set(p); n.delete(host); return n; });\n// disabled={savingHosts.has(s.host)}",
+      "existing_code": "  const [savingHost, setSavingHost] = useState\u003cstring | null\u003e(null);",
+      "start_line": 41,
+      "end_line": 41,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/server/admin/vpn-login-sync.ts",
+      "content": "The guard only covers the Debrid sheet. `fetchSheet1Data()` throws when the workbook can't be read, but it returns `[]` when Sheet1 has fewer than 2 rows (excel.ts:332). That happens with a truncated or half-written workbook, or a sheet being hand-edited. In that case `byNumber` is empty and every VPN-on row resolves to \"No debrid account\". The loop would then switch off every customer's VPN and send one Telegram alert per customer, which the doc comment says this function prevents. Please guard Sheet1 the same way as the Debrid sheet.",
+      "suggestion_code": "  if (customers.length === 0) throw new Error(\"Sheet1 holds no customers or could not be read\");\n  if (meta.length === 0) throw new Error(\"the Debrid sheet holds no accounts or could not be read\");",
+      "existing_code": "  if (meta.length === 0) throw new Error(\"the Debrid sheet holds no accounts or could not be read\");",
+      "start_line": 69,
+      "end_line": 69,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/lib/vpn-messages.ts",
+      "content": "Several helpers here are copied from `watch-messages.ts`: the unknown-customer fallback (including the hardcoded `https://kevbox.dev`, while `watch-customers.ts` already defines `SITE`), `quietHours`/`QUIET_UNTIL_HOUR`, and the Beirut `partsOf` formatter. `vpn-login-sync.ts` has a third copy of the quiet-hours logic, and `vpn-status.ts` repeats the 3-hour retry constant (`RETRY_AFTER_MS` vs `NEXT_TRY_MS`). Exporting one shared helper each, for example from `watch-messages`/`watch-customers`, would stop them drifting apart, such as the quiet window or the site URL changing in one copy only.",
+      "existing_code": "function customerFor(customers: ReadonlyMap\u003cstring, WatchCustomer\u003e, userId: string): WatchCustomer {",
+      "start_line": 55,
+      "end_line": 55,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "supabase/migrations/0023_live_vpn.sql",
+      "content": "The `live_device` upsert runs before any entry is checked. A call whose entries are all invalid, or an empty array `[]`, still creates a new device row and takes one of the member's 20 TV slots, even though nothing is stored and the function returns 0. A signed-in caller can use this to fill all 20 slots with made-up device ids, and then real TVs are locked out of check-in, play notes and VPN events. The fix is to return early when `jsonb_array_length(p_entries) = 0`, or better, to do the device insert only once the first valid entry is found. Update the copy in test/schema.sql the same way.",
+      "existing_code": "  insert into public.live_device(user_id, device_id, app_version, first_seen, last_seen)\n    values (p_user_id, v_device, left(p_app_version, 32), v_now, v_now)",
+      "start_line": 132,
+      "end_line": 133,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "supabase/migrations/0023_live_vpn.sql",
+      "content": "Nothing stops a server from naming itself as its own backup (`backup_host = host`). If that happens, the TV's 'switch to backup' step just retries the server that is failing. Add `check (backup_host is distinct from host)`, both here and in the schema.sql copy.",
+      "existing_code": "  backup_host text references public.vpn_server(host) on delete set null,",
+      "start_line": 58,
+      "end_line": 58,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/lib/vpn-status.ts",
+      "content": "Passing `next` as the `now` argument of `beirutTime(next, next)` always drops the date. The comment says the next try is \"at most 3 hours on\", but that's only true if `lastVpnAt` is recent. When the TV fell back days ago (for example because it has been offline), the line reads like \"at 07/11 23:10 · next try 02:10\", and the next-try time looks like it's still coming. A fall-back late in the day has the same problem: the next try lands on the following day with no date shown. `vpn-messages.ts` formats the same value as `beirutTime(next, now)`. Do the same here so the two are consistent and the date shows when it's needed.",
+      "suggestion_code": "      return `VPN fell back to normal internet at ${beirutTime(at, now)} · next try ${beirutTime(next, now)}`;",
+      "existing_code": "      return `VPN fell back to normal internet at ${beirutTime(at, now)} · next try ${beirutTime(next, next)}`;",
+      "start_line": 41,
+      "end_line": 41,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/server/admin/vpn-login-sync.ts",
+      "content": "Rows are handled one after another, and nothing catches errors from `updateLiveVpnLogin` or `turnOffWithAudit`. If one row fails (for example a transient DB error), the whole sync throws and every remaining VPN-on row is skipped for that run. Those rows keep stale logins, and expired accounts keep their VPN on. Each skipped row also misses its AC-17 message until the next 15-minute run. Wrap each row's work in a try/catch, count the failures in `VpnSyncResult` and move on to the next row.",
+      "existing_code": "    if (!(await turnOffWithAudit(pool, row.userId, row.clientNumber, adminEmail))) continue;",
+      "start_line": 89,
+      "end_line": 89,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/lib/vpn-login.ts",
+      "content": "`VPN_REASON.notOnLive` isn't used anywhere: `vpnLoginFor` never returns it, and no caller references it. Remove it, or add the check it was meant for.",
+      "existing_code": "  notOnLive: \"Not on KevBox Live\",",
+      "start_line": 11,
+      "end_line": 11,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/app/actions.ts",
+      "content": "Every debrid action now waits for a full `syncVpnLogins` before it returns. That sync reloads Sheet1 and the Debrid sheet (their caches were just cleared by the write), then goes through every VPN-on subscription in the database one by one. For each row it runs an update query, and when a login has become invalid it also opens a transaction, calls `getWatchMember`, and sends a Telegram message. So the admin's assign, unassign, edit or extend click is held up by work that affects every customer, and by Telegram's response time. Since a failure here is already allowed (the 15-minute job runs the same sync), consider not awaiting it inside the action: run it after the response (for example with Next's `after()`), or only sync the rows whose debrid account was touched.",
+      "existing_code": "async function syncVpnLoginsAfterDebridWrite(adminEmail: string | null): Promise\u003cvoid\u003e {\n  try {\n    await syncVpnLogins({ adminEmail });",
+      "start_line": 84,
+      "end_line": 86,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "src/app/live-actions.ts",
+      "content": "This On path copies two pieces of logic. It repeats the customer/login/row lookup from `loginWithRow`, and it repeats the blocking checks from `vpnBlocked` (row missing → login invalid → no servers). If the rules change in one place and not the other, the reason shown in the panel and the reason this action refuses with will drift apart. Consider having `loginWithRow` also return the Sheet1 rows and the customer, and sharing one helper that returns either a reason or the login.",
+      "existing_code": "    const rows = await fetchSheet1Data();\n    const customer = rows.find((c) =\u003e c.clientNumber.trim() === ref);\n    if (!customer) return { success: false, error: NOT_IN_SHEET };\n    const db = getAdminPool();\n    const email = customer.stremioEmail?.trim() ?? \"\";\n    const loginId = email ? await findLoginId(db, email) : null;\n    if (!loginId || !(await getLiveRow(db, loginId, ref))) return { success: false, error: NOT_ON_LIVE };\n    const login = vpnLoginFor(customer, groupDebridAccounts(rows, await fetchDebridMetadata()), new Date());",
+      "start_line": 359,
+      "end_line": 366,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "scripts/refresh-vps-proxy-access.ts",
+      "content": "`syncVpnLogins` also returns `messagesSent` and `messagesFailed`, but this step drops both. Under AC-17 the \"VPN turned off\" Telegram message is sent once and never retried. If that send fails, the 15-minute job's journal says only \"N turned off\" and the run still exits 0, so Kevin never finds out that a customer's VPN went off without a message. Print the message counts too (they are just numbers, so no secrets), and consider setting a non-zero exit code when `messagesFailed \u003e 0`.",
+      "suggestion_code": "  const { updated, turnedOff, messagesSent, messagesFailed } = await syncVpnLogins();\n  console.log(`VPN logins: ${updated} updated, ${turnedOff} turned off (${messagesSent} messages sent, ${messagesFailed} failed).`);",
+      "existing_code": "  const { updated, turnedOff } = await syncVpnLogins();\n  console.log(`VPN logins: ${updated} updated, ${turnedOff} turned off.`);",
+      "start_line": 26,
+      "end_line": 27,
+      "category": "maintainability",
+      "severity": "low"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Core live VPN domain model and error handling",
+      "files": [
+        "packages/core/src/index.ts",
+        "packages/core/src/liveErrors.ts",
+        "packages/core/src/liveVpn.ts"
+      ]
+    },
+    {
+      "label": "Database schema and migration for live VPN",
+      "files": [
+        "packages/core/test/schema.sql",
+        "supabase/migrations/0023_live_vpn.sql"
+      ]
+    },
+    {
+      "label": "VPN operational scripts",
+      "files": [
+        "scripts/prove-live-vpn.sh",
+        "scripts/refresh-vps-proxy-access.ts"
+      ]
+    },
+    {
+      "label": "VPN servers dashboard page, actions and navigation",
+      "files": [
+        "src/app/(dashboard)/vpn-servers/page.tsx",
+        "src/app/vpn-actions.ts",
+        "src/components/header-content.tsx",
+        "src/components/vpn-servers-view.tsx",
+        "src/lib/nav-items.ts",
+        "src/lib/vpn-servers.ts"
+      ]
+    },
+    {
+      "label": "VPN login, messaging and status libraries with server sync",
+      "files": [
+        "src/lib/vpn-login.ts",
+        "src/lib/vpn-messages.ts",
+        "src/lib/vpn-status.ts",
+        "src/server/admin/vpn-login-sync.ts"
+      ]
+    },
+    {
+      "label": "Live section VPN integration in actions, cron and UI",
+      "files": [
+        "src/app/actions.ts",
+        "src/app/api/cron/watch-check/route.ts",
+        "src/app/live-actions.ts",
+        "src/components/kevbox-live-errors.tsx",
+        "src/components/kevbox-live-section.tsx",
+        "src/server/admin/live.ts"
+      ]
+    }
+  ],
+  "session_id": "fda81c23-30da-457f-82fe-6bc836aa57af",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "fda81c23-30da-457f-82fe-6bc836aa57af",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {
+      "identity_sha256": "ccceca6c26772eb6a35665f87c7d1d792e920ec1a3b2f775b43ee33116435647"
+    },
+    "input": {
+      "mode": "range",
+      "requested_from": "main",
+      "requested_head": "phase/0.6-premiumize-vpn",
+      "resolved_base": "2f9245eef85b547ef6d31d24eb87c60ab5796526",
+      "resolved_head": "80d14c3b3b8ca70dbe0a8ecbd054bf745d653351",
+      "exact_range": "2f9245eef85b547ef6d31d24eb87c60ab5796526..80d14c3b3b8ca70dbe0a8ecbd054bf745d653351",
+      "source_artifact_sha256": "51c486932809332b9c3d9cead96fad400069d864ed2fc53ce391e4441508d0f8"
+    },
+    "execution": {
+      "ocr_version": "v1.13.5",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "configured_concurrency": 8,
+      "max_tool_request_times": 100,
+      "rule_config_sha256": "829bea598cee2689683e3fc90c6a7bf0c2494c56bb85e76157189cf875986d91",
+      "runtime_config_sha256": "93c1bae68fa824e3eb9a388b389d2b0cdbe98c00e45b7638e3c4d5afe2dbc39f"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "055796d80a4ba86ab0c460bdcbda29fe25310e444aa515cd228d4a709164893e",
+          "path": "src/app/api/cron/watch-check/route.ts",
+          "fingerprint": "b78df96c5089bac86c9182244d2aee950b16d665f4061a2ac6579ba778bce962"
+        },
+        {
+          "item_id": "08e9b32bb96a62d287a6000cfb937c73ec90688375648b72766d4ca2632600e5",
+          "path": "supabase/migrations/0023_live_vpn.sql",
+          "fingerprint": "31cabe887a318c683f6fd4563ccc65b59b164ba34bffd052ebf0ba4246a460a8"
+        },
+        {
+          "item_id": "0f77c30b63f126d8af8a8feb1ef30cf67815c0cdf3471d943af29491237a9dd5",
+          "path": "src/lib/vpn-messages.ts",
+          "fingerprint": "bb215ea8cf2ae647e06172d8bbf5bc99b4515dfabef5b2214085fc8b512511d8"
+        },
+        {
+          "item_id": "10e60a88c9a542ea1cb887d11c8c60b736d8ef27b2538de29690729a2912fcb3",
+          "path": "scripts/refresh-vps-proxy-access.ts",
+          "fingerprint": "d05b6197485bb65a74c4a594a69ec24203e5ac0665833b54ba1d944fa538af6c"
+        },
+        {
+          "item_id": "1cae4c6066821bc2fc0c6825e946c50b6c22c954ba48fb42c72275930ea878c5",
+          "path": "src/lib/nav-items.ts",
+          "fingerprint": "be625f05c129a45f5fda7e031f3c84bce9f7cb47bf3f0541f6d9602258fc5699"
+        },
+        {
+          "item_id": "23c88552a1e18e3c059c75da3945bc55efe85d835dc70ff889ec214f1763ab61",
+          "path": "packages/core/test/schema.sql",
+          "fingerprint": "63d74098a00cf58d1d1be9c2aaf017165ead7c4b917ad91a1bd3bd33d748890c"
+        },
+        {
+          "item_id": "2b81f8243cac51b2bb293409d7c4644176666fba7867eccc0debed541da15fa6",
+          "path": "src/server/admin/vpn-login-sync.ts",
+          "fingerprint": "9ff59625eb140962e729685d27c8ec5d5a404108e21f64eee5dc0c0b88c7706e"
+        },
+        {
+          "item_id": "2ef05c13e3dc7512a7bd6072b8eb5ae341cb15dcabe4760ecfb248ae6af9d6e1",
+          "path": "src/components/vpn-servers-view.tsx",
+          "fingerprint": "440aa3e1ebeb28c7796acedb70b43fefb2fe952a92f9fdb2a5cc2c20d2f1fa35"
+        },
+        {
+          "item_id": "40522f408c9246b5bb67a1f6872ce415fad8243fb647f8d58e9709e3785f78e2",
+          "path": "src/app/actions.ts",
+          "fingerprint": "24255ade4c0a8fe503fdb8a820f5d8d238fd43ffdaf2db5fc05004c53f3d3eec"
+        },
+        {
+          "item_id": "5baa354e6c497a2796792a92e0730a74c3f0c83d2bfd0f3fce23b63236481629",
+          "path": "src/lib/vpn-status.ts",
+          "fingerprint": "f25a3718cb6fa9a294919c3c11df675af7bef04898c66c9f21bc717642f8f815"
+        },
+        {
+          "item_id": "64c67adf9c50cdb679b3c11cef864cbd94b8f749f7d257fe43678a13a76260c3",
+          "path": "src/lib/vpn-login.ts",
+          "fingerprint": "a01deeda0631de5305a5a083f7a8bf3fcda8334cb0f175a163ca54cb143538fe"
+        },
+        {
+          "item_id": "68e36c1a335c4f72270c596a0b3f0f053f25302ca17a9d27e77e227158600f76",
+          "path": "src/app/vpn-actions.ts",
+          "fingerprint": "83556069c870de7479662228ff19bea92dd45b3fef7b8bd2c17b767b65a6ce1c"
+        },
+        {
+          "item_id": "6f4c47f8db8e1e4b709dc205c356fbad17655da931c19ba7c3765878996a15eb",
+          "path": "src/server/admin/live.ts",
+          "fingerprint": "0b1fc8b958c1293b592a05d3109bbe52261050b9e964a800960f3a4db59cc3dd"
+        },
+        {
+          "item_id": "72f0808135ef2e58fb75ba04e0dc0bedf7cd3a3bd3cdfdfca12584a6b998e9af",
+          "path": "packages/core/src/liveVpn.ts",
+          "fingerprint": "3c91bd7a113bf0d7aabde46802426997b1e0b67aedb949da7d462ed11f7a303b"
+        },
+        {
+          "item_id": "740724db716fb3752e6497d15df5b57e92f7275d67c5ddd40c7fc7cae92ee3f7",
+          "path": "packages/core/src/liveErrors.ts",
+          "fingerprint": "75d4b5c335a97448201b9f7ab55ebd5e585239c404957df77341604827d3b896"
+        },
+        {
+          "item_id": "75511a7179f126b298e77d079bfc4a034997847c5622558d1a1a17258124e021",
+          "path": "src/app/(dashboard)/vpn-servers/page.tsx",
+          "fingerprint": "218db067f3f1bec55d4d3f94e2f0a301412515b8573107ffecc262b2bc28133a"
+        },
+        {
+          "item_id": "841cfc86dfbf543c9458f24e4a4b9fe5080c4961735c0195086983b53d0c2d89",
+          "path": "src/components/kevbox-live-errors.tsx",
+          "fingerprint": "9771c39c6998a01d898db20269c91116ab9eb21d1bdedab9b617c8c7cdc2a3e6"
+        },
+        {
+          "item_id": "8af1fd16409c3404691e16a8df0635a4799c3525f23f2eeb9e22753279e559a4",
+          "path": "src/app/live-actions.ts",
+          "fingerprint": "591d55bb631549dce4d2b60061616c1f9fe05c75ede3305c648c31bcb3fb1e10"
+        },
+        {
+          "item_id": "8f7f981aa4f188dca7a3ab83d185a6bef57c847a42bd6c1e84f523efdd30bdd4",
+          "path": "src/components/header-content.tsx",
+          "fingerprint": "45567791a607501c40dae44597c22eec16ae8e96995256c0d96d2833f5ef0a54"
+        },
+        {
+          "item_id": "915c78bd4ac8a72d65ea23d72a3fb2d9abaefa542eade7bb897fa2cbd647b7c8",
+          "path": "src/lib/vpn-servers.ts",
+          "fingerprint": "a2c8f190d73232ff3292e07ac42a824ea7ba40b6290158adb1d4019a51240705"
+        },
+        {
+          "item_id": "92c7417d0f8510eaf571702c30d2270668ce44baa4a1989be304f9b05784fa16",
+          "path": "packages/core/src/index.ts",
+          "fingerprint": "6679e19cf7a3c45a7e6b0ae7f8144e0fb9785fdec6bdcf9afecdc2beac589043"
+        },
+        {
+          "item_id": "c8ba2f2322f958d33b00df8683568e6b8e59cec24969b28e3efa5e10cc361d41",
+          "path": "src/components/kevbox-live-section.tsx",
+          "fingerprint": "636fcf44799debf807d691f35667e6e39369af65c3b7f005c4f5cd92f5ac898f"
+        },
+        {
+          "item_id": "df0c88a631e89c65c363af3311ed72244b21ed72eb953482c47f589a00d69cd5",
+          "path": "scripts/prove-live-vpn.sh",
+          "fingerprint": "60cb4c1593a884fb4d3af3c0708bfe66316862008395289eca914ed0f6f1715d"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "055796d80a4ba86ab0c460bdcbda29fe25310e444aa515cd228d4a709164893e",
+          "path": "src/app/api/cron/watch-check/route.ts",
+          "fingerprint": "b78df96c5089bac86c9182244d2aee950b16d665f4061a2ac6579ba778bce962"
+        },
+        {
+          "item_id": "08e9b32bb96a62d287a6000cfb937c73ec90688375648b72766d4ca2632600e5",
+          "path": "supabase/migrations/0023_live_vpn.sql",
+          "fingerprint": "31cabe887a318c683f6fd4563ccc65b59b164ba34bffd052ebf0ba4246a460a8"
+        },
+        {
+          "item_id": "0f77c30b63f126d8af8a8feb1ef30cf67815c0cdf3471d943af29491237a9dd5",
+          "path": "src/lib/vpn-messages.ts",
+          "fingerprint": "bb215ea8cf2ae647e06172d8bbf5bc99b4515dfabef5b2214085fc8b512511d8"
+        },
+        {
+          "item_id": "10e60a88c9a542ea1cb887d11c8c60b736d8ef27b2538de29690729a2912fcb3",
+          "path": "scripts/refresh-vps-proxy-access.ts",
+          "fingerprint": "d05b6197485bb65a74c4a594a69ec24203e5ac0665833b54ba1d944fa538af6c"
+        },
+        {
+          "item_id": "1cae4c6066821bc2fc0c6825e946c50b6c22c954ba48fb42c72275930ea878c5",
+          "path": "src/lib/nav-items.ts",
+          "fingerprint": "be625f05c129a45f5fda7e031f3c84bce9f7cb47bf3f0541f6d9602258fc5699"
+        },
+        {
+          "item_id": "23c88552a1e18e3c059c75da3945bc55efe85d835dc70ff889ec214f1763ab61",
+          "path": "packages/core/test/schema.sql",
+          "fingerprint": "63d74098a00cf58d1d1be9c2aaf017165ead7c4b917ad91a1bd3bd33d748890c"
+        },
+        {
+          "item_id": "2b81f8243cac51b2bb293409d7c4644176666fba7867eccc0debed541da15fa6",
+          "path": "src/server/admin/vpn-login-sync.ts",
+          "fingerprint": "9ff59625eb140962e729685d27c8ec5d5a404108e21f64eee5dc0c0b88c7706e"
+        },
+        {
+          "item_id": "2ef05c13e3dc7512a7bd6072b8eb5ae341cb15dcabe4760ecfb248ae6af9d6e1",
+          "path": "src/components/vpn-servers-view.tsx",
+          "fingerprint": "440aa3e1ebeb28c7796acedb70b43fefb2fe952a92f9fdb2a5cc2c20d2f1fa35"
+        },
+        {
+          "item_id": "40522f408c9246b5bb67a1f6872ce415fad8243fb647f8d58e9709e3785f78e2",
+          "path": "src/app/actions.ts",
+          "fingerprint": "24255ade4c0a8fe503fdb8a820f5d8d238fd43ffdaf2db5fc05004c53f3d3eec"
+        },
+        {
+          "item_id": "5baa354e6c497a2796792a92e0730a74c3f0c83d2bfd0f3fce23b63236481629",
+          "path": "src/lib/vpn-status.ts",
+          "fingerprint": "f25a3718cb6fa9a294919c3c11df675af7bef04898c66c9f21bc717642f8f815"
+        },
+        {
+          "item_id": "64c67adf9c50cdb679b3c11cef864cbd94b8f749f7d257fe43678a13a76260c3",
+          "path": "src/lib/vpn-login.ts",
+          "fingerprint": "a01deeda0631de5305a5a083f7a8bf3fcda8334cb0f175a163ca54cb143538fe"
+        },
+        {
+          "item_id": "68e36c1a335c4f72270c596a0b3f0f053f25302ca17a9d27e77e227158600f76",
+          "path": "src/app/vpn-actions.ts",
+          "fingerprint": "83556069c870de7479662228ff19bea92dd45b3fef7b8bd2c17b767b65a6ce1c"
+        },
+        {
+          "item_id": "6f4c47f8db8e1e4b709dc205c356fbad17655da931c19ba7c3765878996a15eb",
+          "path": "src/server/admin/live.ts",
+          "fingerprint": "0b1fc8b958c1293b592a05d3109bbe52261050b9e964a800960f3a4db59cc3dd"
+        },
+        {
+          "item_id": "72f0808135ef2e58fb75ba04e0dc0bedf7cd3a3bd3cdfdfca12584a6b998e9af",
+          "path": "packages/core/src/liveVpn.ts",
+          "fingerprint": "3c91bd7a113bf0d7aabde46802426997b1e0b67aedb949da7d462ed11f7a303b"
+        },
+        {
+          "item_id": "740724db716fb3752e6497d15df5b57e92f7275d67c5ddd40c7fc7cae92ee3f7",
+          "path": "packages/core/src/liveErrors.ts",
+          "fingerprint": "75d4b5c335a97448201b9f7ab55ebd5e585239c404957df77341604827d3b896"
+        },
+        {
+          "item_id": "75511a7179f126b298e77d079bfc4a034997847c5622558d1a1a17258124e021",
+          "path": "src/app/(dashboard)/vpn-servers/page.tsx",
+          "fingerprint": "218db067f3f1bec55d4d3f94e2f0a301412515b8573107ffecc262b2bc28133a"
+        },
+        {
+          "item_id": "841cfc86dfbf543c9458f24e4a4b9fe5080c4961735c0195086983b53d0c2d89",
+          "path": "src/components/kevbox-live-errors.tsx",
+          "fingerprint": "9771c39c6998a01d898db20269c91116ab9eb21d1bdedab9b617c8c7cdc2a3e6"
+        },
+        {
+          "item_id": "8af1fd16409c3404691e16a8df0635a4799c3525f23f2eeb9e22753279e559a4",
+          "path": "src/app/live-actions.ts",
+          "fingerprint": "591d55bb631549dce4d2b60061616c1f9fe05c75ede3305c648c31bcb3fb1e10"
+        },
+        {
+          "item_id": "8f7f981aa4f188dca7a3ab83d185a6bef57c847a42bd6c1e84f523efdd30bdd4",
+          "path": "src/components/header-content.tsx",
+          "fingerprint": "45567791a607501c40dae44597c22eec16ae8e96995256c0d96d2833f5ef0a54"
+        },
+        {
+          "item_id": "915c78bd4ac8a72d65ea23d72a3fb2d9abaefa542eade7bb897fa2cbd647b7c8",
+          "path": "src/lib/vpn-servers.ts",
+          "fingerprint": "a2c8f190d73232ff3292e07ac42a824ea7ba40b6290158adb1d4019a51240705"
+        },
+        {
+          "item_id": "92c7417d0f8510eaf571702c30d2270668ce44baa4a1989be304f9b05784fa16",
+          "path": "packages/core/src/index.ts",
+          "fingerprint": "6679e19cf7a3c45a7e6b0ae7f8144e0fb9785fdec6bdcf9afecdc2beac589043"
+        },
+        {
+          "item_id": "c8ba2f2322f958d33b00df8683568e6b8e59cec24969b28e3efa5e10cc361d41",
+          "path": "src/components/kevbox-live-section.tsx",
+          "fingerprint": "636fcf44799debf807d691f35667e6e39369af65c3b7f005c4f5cd92f5ac898f"
+        },
+        {
+          "item_id": "df0c88a631e89c65c363af3311ed72244b21ed72eb953482c47f589a00d69cd5",
+          "path": "scripts/prove-live-vpn.sh",
+          "fingerprint": "60cb4c1593a884fb4d3af3c0708bfe66316862008395289eca914ed0f6f1715d"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 179915
+  }
+}
