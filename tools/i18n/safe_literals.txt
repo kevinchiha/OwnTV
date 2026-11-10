@@ -1373,6 +1373,10 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	provider_host
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	proxy
 1	json	app/src/main/java/tv/own/owntv/kevbox/usage/Stretch.kt	started_at
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_at_ms
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_changed_at
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	fallback_server
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/FallbackStore.kt	kevbox_vpn
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	.cp
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	.cpold
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/vpn/IcsVpnEngine.kt	.vp
@@ -1419,6 +1423,8 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventQueue.kt	user
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt	KevBoxVpn
 1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEventSender.kt	vpn event send failed: ${e.javaClass.simpleName}
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt	,
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnRules.kt	VpnWant(clientNumber=$clientNumber, server=$server, backup=$backup, changedAt=$changedAt)
 2	empty	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	eq
 1	technical	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	eqBar$i
