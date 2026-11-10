@@ -111,6 +111,16 @@ expect 1 "liveVersion.ts without the line refused"   check_relay_min_version 5.2
 behind_message="$(check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox" 2>&1 >/dev/null || true)"
 expect 0 "that refusal says to bring 0.7's kevbox code" grep -q "bring 0.7's kevbox code" <<<"$behind_message"
 relay_min_is 5.2.1.8
+# HEAD has no LocalRelay.kt yet: a release cut from it must never be called encrypted.
+expect 1 "first relay release from a commit without the relay refused" check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox"
+no_relay_message="$(check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox" 2>&1 >/dev/null || true)"
+expect 0 "that refusal names the missing relay"      grep -q 'has no .*LocalRelay.kt' <<<"$no_relay_message"
+expect 1 "no release yet, commit without the relay refused" check_relay_min_version 5.2.1.8 "" "$tmp/kevbox"
+relay_path=app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt
+mkdir -p "$(dirname "$relay_path")"
+echo "relay" > "$relay_path"
+git_q add "$relay_path"
+git_q commit -q -m "kevbox 5.2.1.8"
 expect 0 "first relay release equal to it passes"    check_relay_min_version 5.2.1.8 v5.1.0.1 "$tmp/kevbox"
 expect 1 "first relay release above it refused"      check_relay_min_version 5.2.1.9 v5.1.0.1 "$tmp/kevbox"
 expect 1 "first relay release below it refused"      check_relay_min_version 5.2.1.7 v5.1.0.1 "$tmp/kevbox"
@@ -121,12 +131,26 @@ expect 0 "the first-release refusal names both"      grep -q '5\.2\.1\.8.*5\.2\.
 expect 1 "a latest tag missing from the clone refused" check_relay_min_version 5.2.1.9 v5.2.1.7 "$tmp/kevbox"
 fetch_message="$(check_relay_min_version 5.2.1.9 v5.2.1.7 "$tmp/kevbox" 2>&1 >/dev/null || true)"
 expect 0 "that refusal says to fetch the tags"       grep -q 'git fetch --tags origin' <<<"$fetch_message"
-mkdir -p app/src/main/java/tv/own/owntv/kevbox/network
-echo "relay" > app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt
-git_q add app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt
-git_q commit -q -m "kevbox 5.2.1.8"; git_q tag v5.2.1.8
+git_q tag v5.2.1.8
 expect 0 "later release above it passes"             check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox"
 expect 0 "later release at it passes"                check_relay_min_version 5.2.1.8 v5.2.1.8 "$tmp/kevbox"
+# Below the first relay tag: it would mark 5.2.1.7 TVs, still on the plain port, encrypted.
+relay_min_is 5.2.1.7
+expect 1 "later release, RELAY_MIN_VERSION below the first relay tag, refused" check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox"
+below_message="$(check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox" 2>&1 >/dev/null || true)"
+expect 0 "that refusal names the value"              grep -q '5\.2\.1\.7.*no release tag' <<<"$below_message"
+relay_min_is 5.1.0.1
+expect 1 "later release, RELAY_MIN_VERSION a tag without the relay, refused" check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox"
+commit "kevbox 5.2.1.9"; git_q tag v5.2.1.9
+relay_min_is 5.2.1.9
+expect 0 "later release, RELAY_MIN_VERSION a later relay tag, passes" check_relay_min_version 5.2.1.10 v5.2.1.9 "$tmp/kevbox"
+relay_min_is 5.2.1.10
+expect 0 "later release, RELAY_MIN_VERSION this release, passes" check_relay_min_version 5.2.1.10 v5.2.1.9 "$tmp/kevbox"
+relay_min_is 5.2.1.8
+release_branch="$(git symbolic-ref --short HEAD)"
+git_q checkout -q v5.1.0.1
+expect 1 "later release from a commit without the relay refused" check_relay_min_version 5.2.1.10 v5.2.1.9 "$tmp/kevbox"
+git_q checkout -q "$release_branch"
 relay_min_is 5.2.1.10
 expect 1 "later release below it refused"            check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox"
 later_message="$(check_relay_min_version 5.2.1.9 v5.2.1.8 "$tmp/kevbox" 2>&1 >/dev/null || true)"

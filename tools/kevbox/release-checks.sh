@@ -19,9 +19,10 @@
 #                                             packages/core/src/liveVersion.ts) fits this release:
 #                                             equal to <v> while no release holds the relay yet
 #                                             (LocalRelay.kt missing from <latest-tag>), else not
-#                                             above <v>; refuses when the line is missing or the
-#                                             latest tag is not in this clone; warns and passes
-#                                             when the kevbox file is missing
+#                                             above <v> and either <v> or a release tag that holds
+#                                             the relay; refuses when HEAD has no LocalRelay.kt,
+#                                             the line is missing or the latest tag is not in this
+#                                             clone; warns and passes when the kevbox file is missing
 #   check_sentry_settings <token> <org> <project>
 #                                             refuses when a Sentry auth token is set but the org
 #                                             or project is blank (an upload would fail mid-build)
@@ -114,7 +115,9 @@ check_error_codes_match() {
 # kevbox marks a TV "encrypted" once it runs RELAY_MIN_VERSION or newer, and Kevin closes the plain
 # proxy port on that word. A value below the first release that holds the relay would mark TVs
 # that still use the plain port, so the first relay release must carry it exactly; later releases
-# may only be at or above it.
+# may only be at or above it, and it must name this release or a tagged one that holds the relay
+# (every tag holding the relay is at or above the first relay release). Whatever the value, the
+# commit being released must hold the relay: kevbox calls every TV at or above it encrypted.
 check_relay_min_version() {
   local version="${1:-}" latest="${2:-}" kevbox_repo="${3:-}" file line relay_min code min_code
   local relay_path="app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt"
@@ -140,6 +143,10 @@ check_relay_min_version() {
     echo "release: the latest release tag $latest is not in this clone; run git fetch --tags origin, then rerun" >&2
     return 1
   fi
+  if ! git cat-file -e "HEAD:$relay_path" 2>/dev/null; then
+    echo "release: this release's commit has no $relay_path, yet kevbox would call TVs on $version encrypted (RELAY_MIN_VERSION $relay_min); release from a commit that holds the relay" >&2
+    return 1
+  fi
   if [[ -z "$latest" ]] || ! git cat-file -e "$latest:$relay_path" 2>/dev/null; then
     if [[ "$relay_min" != "$version" ]]; then
       echo "release: this is the first release with the encrypted proxy relay, so kevbox's RELAY_MIN_VERSION ($relay_min) must equal this release ($version)" >&2
@@ -149,6 +156,11 @@ check_relay_min_version() {
   fi
   if (( min_code > code )); then
     echo "release: kevbox's RELAY_MIN_VERSION ($relay_min, code $min_code) is above this release ($version, code $code)" >&2
+    return 1
+  fi
+  # A value naming no relay release could sit below the first one and mark plain-port TVs.
+  if [[ "$relay_min" != "$version" ]] && ! git cat-file -e "refs/tags/v$relay_min:$relay_path" 2>/dev/null; then
+    echo "release: kevbox's RELAY_MIN_VERSION ($relay_min) names no release tag that holds the relay, so it may sit below the first relay release; set it to the first relay release or a later one (this release is $version)" >&2
     return 1
   fi
 }

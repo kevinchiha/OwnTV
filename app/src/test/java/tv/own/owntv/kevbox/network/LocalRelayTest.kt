@@ -16,7 +16,9 @@ import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.util.Collections
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.ExtendedSSLSession
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SNIHostName
@@ -28,6 +30,7 @@ import javax.net.ssl.X509TrustManager
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -170,6 +173,91 @@ class LocalRelayTest {
         assertTrue("stop closes it", RelayFixtures.readsEnd(second))
     }
 
+    /** A listener whose first [failures] accept() calls fail, closing itself first when [closeFirst]. */
+    private class FlakyListener(private var failures: Int, private val closeFirst: Boolean = false) : ServerSocket() {
+        override fun accept(): Socket {
+            if (failures > 0) {
+                failures -= 1
+                if (closeFirst) close()
+                throw SocketException("Too many open files")
+            }
+            return super.accept()
+        }
+    }
+
+    @Test(timeout = 60_000)
+    fun `a passing accept error keeps the relay listening`() {
+        val server = keep(RelayFixtures.TlsEcho(RelayFixtures.RELAY_TEST_P12))
+        val r = LocalRelay(RelayFixtures.baseTrust(), { emptyList() }, RelayFixtures.freePort()) { FlakyListener(3) }
+            .also { relays += it }
+        val target = RelayTarget(RelayFixtures.HOST, server.port, "127.0.0.1")
+        val port = r.start(target)
+
+        RelayFixtures.assertRoundTrip(keep(RelayFixtures.player(port)), "after the errors\r\n".toByteArray())
+        assertEquals(port, r.start(target))
+        RelayFixtures.assertRoundTrip(keep(RelayFixtures.player(port)), "still listening\r\n".toByteArray())
+    }
+
+    @Test(timeout = 60_000)
+    fun `a listener closed under the relay is bound again by the next start`() {
+        val server = keep(RelayFixtures.TlsEcho(RelayFixtures.RELAY_TEST_P12))
+        var made = 0
+        val r = LocalRelay(RelayFixtures.baseTrust(), { emptyList() }, RelayFixtures.freePort()) {
+            made += 1
+            if (made == 1) FlakyListener(1, closeFirst = true) else ServerSocket()
+        }.also { relays += it }
+        val target = RelayTarget(RelayFixtures.HOST, server.port, "127.0.0.1")
+        r.start(target)
+
+        // The first listener is gone; within a few tries start() binds a working one.
+        var reached = false
+        repeat(50) {
+            if (reached) return@repeat
+            val port = r.start(target)
+            reached = try {
+                RelayFixtures.assertRoundTrip(keep(RelayFixtures.player(port)), "bound again\r\n".toByteArray())
+                true
+            } catch (_: IOException) {
+                Thread.sleep(100)
+                false
+            }
+        }
+        assertTrue("start() kept returning the dead port", reached)
+        assertEquals(2, made)
+    }
+
+    @Test(timeout = 60_000)
+    fun `stop returns while a copy is stuck writing to a server that stopped reading`() {
+        // The server finishes the handshake, then never reads: the relay's write into the TLS socket
+        // blocks holding that socket's write lock, and closing the TLS socket first would wait on it.
+        val server = keep(RelayFixtures.TlsEcho(RelayFixtures.RELAY_TEST_P12, echo = false))
+        val r = relay()
+        val port = r.start(RelayTarget(RelayFixtures.HOST, server.port, "127.0.0.1"))
+        val player = keep(RelayFixtures.player(port))
+
+        val written = AtomicLong()
+        Thread({
+            val chunk = ByteArray(64 * 1024)
+            try {
+                while (true) {
+                    player.getOutputStream().write(chunk)
+                    written.addAndGet(chunk.size.toLong())
+                }
+            } catch (_: IOException) {
+                // closed by the relay's stop
+            }
+        }, "stuck-player").apply { isDaemon = true }.start()
+        RelayFixtures.awaitStall(written)
+
+        val stopped = Thread({ r.stop() }, "relay-stop").apply { isDaemon = true; start() }
+        stopped.join(10_000)
+        val stuck = stopped.isAlive
+        // Unblocks a stuck stop() so tearDown's own stop() cannot hang the gate.
+        if (stuck) server.close()
+        assertFalse("stop() still blocked on the stuck TLS socket", stuck)
+        assertTrue("stop closes the player", RelayFixtures.readsEnd(player))
+    }
+
     private fun nonLoopbackIpv4(): InetAddress? = NetworkInterface.getNetworkInterfaces().toList()
         .filter { it.isUp && !it.isLoopback }
         .flatMap { it.inetAddresses.toList() }
@@ -243,10 +331,26 @@ internal object RelayFixtures {
         true
     }
 
-    /** A TLS echo server on 127.0.0.1 presenting [p12]; records each requested server name. */
-    class TlsEcho(p12: String) : Closeable {
+    /** Waits until [count] has grown and then stopped growing: the writer behind it is blocked. */
+    fun awaitStall(count: AtomicLong) {
+        var last = -1L
+        var still = 0
+        while (still < 5) {
+            Thread.sleep(200)
+            val now = count.get()
+            if (now > 0 && now == last) still += 1 else still = 0
+            last = now
+        }
+    }
+
+    /**
+     * A TLS server on 127.0.0.1 presenting [p12]; records each requested server name. It echoes,
+     * or with [echo] false finishes the handshake and then never reads.
+     */
+    class TlsEcho(p12: String, private val echo: Boolean = true) : Closeable {
         private val listener: SSLServerSocket
         private val clients = CopyOnWriteArrayList<Socket>()
+        private val closed = CountDownLatch(1)
         val serverNames = CopyOnWriteArrayList<String>()
         val accepted = AtomicInteger()
         val port: Int get() = listener.localPort
@@ -272,6 +376,7 @@ internal object RelayFixtures {
                 socket.startHandshake()
                 (socket.session as ExtendedSSLSession).requestedServerNames
                     .filterIsInstance<SNIHostName>().forEach { serverNames += it.asciiName }
+                if (!echo) closed.await()
                 val buffer = ByteArray(8192)
                 while (true) {
                     val n = socket.inputStream.read(buffer)
@@ -289,6 +394,7 @@ internal object RelayFixtures {
         fun closeClients() = clients.forEach { runCatching { it.close() } }
 
         override fun close() {
+            closed.countDown()
             runCatching { listener.close() }
             closeClients()
         }

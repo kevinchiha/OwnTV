@@ -1084,6 +1084,7 @@
 1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	kevbox-relay
 1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	no address
 1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	no port
+1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	relay: accept failed ${e.javaClass.simpleName}
 1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	relay: connection refused ${e.javaClass.simpleName}
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/network/RelayTrust.kt	X.509
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/RelayTrust.kt	kevbox-relay-test-ca.pem
