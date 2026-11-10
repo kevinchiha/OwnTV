@@ -299,7 +299,47 @@ val kevboxModule = module {
         AccessMonitor(fetch = { auth.verdict() }, prefs = PrefsVerdictPrefs(androidContext().prefs(PrefsVerdictPrefs.PREFS_NAME)))
     }
 
+    // The VPN (0.6): the engine in this process, its event queue and sender, and the controller
+    // that runs the rules for the playlist on screen. KevBoxCoordinator starts the controller.
+    single<tv.own.owntv.kevbox.vpn.VpnEngine> { tv.own.owntv.kevbox.vpn.IcsVpnEngine(androidContext()) }
     single {
+        // noBackupFilesDir, like the error queue: this TV's alone, never in a backup.
+        tv.own.owntv.kevbox.vpn.VpnEventQueue(
+            java.io.File(androidContext().noBackupFilesDir, tv.own.owntv.kevbox.vpn.VPN_EVENTS_FILE),
+        )
+    }
+    single {
+        tv.own.owntv.kevbox.vpn.VpnEventSender(
+            queue = get(),
+            auth = get(),
+            api = get(),
+            deviceId = get(),
+            appVersion = BuildConfig.VERSION_NAME,
+            scope = get(),
+            now = System::currentTimeMillis,
+            zone = { java.time.ZoneId.systemDefault() },
+        )
+    }
+    single {
+        val app = androidContext() as android.app.Application
+        tv.own.owntv.kevbox.vpn.VpnController(
+            engine = get(),
+            auth = get(),
+            pinger = tv.own.owntv.kevbox.vpn.ShellPinger(),
+            store = tv.own.owntv.kevbox.vpn.FallbackStore(app.prefs(tv.own.owntv.kevbox.vpn.VPN_PREFS_NAME)),
+            queue = get(),
+            sender = get(),
+            application = app,
+            scope = get(),
+            // The wall clock: the fall-back time has to mean the same after a restart.
+            now = System::currentTimeMillis,
+            otherVpnActive = { tv.own.owntv.kevbox.vpn.otherVpnNetworkPresent(app) },
+            permissionGranted = { tv.own.owntv.kevbox.vpn.vpnPermissionGranted(app) },
+        )
+    }
+
+    single {
+        val vpnController = get<tv.own.owntv.kevbox.vpn.VpnController>()
         KevBoxCoordinator(
             auth = get(),
             reconciler = get(),
@@ -316,6 +356,8 @@ val kevboxModule = module {
             proxy = tv.own.owntv.kevbox.network.ManagedProxy(tv.own.owntv.kevbox.network.CoreProxyTarget(get())),
             checkinOnForeground = get<tv.own.owntv.kevbox.usage.LiveCheckin>()::onForeground,
             playNotesOnForeground = get<tv.own.owntv.kevbox.usage.PlayNotes>()::onForeground,
+            vpn = tv.own.owntv.kevbox.vpn.ManagedVpn(vpnController),
+            startVpn = vpnController::start,
         )
     }
     // KevBox Setup's login file (kevbox-setup docs/login-file.md), checked from MainActivity.onResume.

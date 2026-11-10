@@ -42,10 +42,12 @@ class ManagedProxy(private val target: ProxyTarget) {
     companion object {
         /**
          * The chosen playlist's proxy; with no choice, the only playlist's. Anything else (no rows,
-         * several and none chosen, a proxy switched off) is [PlaylistProxy.OFF].
+         * several and none chosen, a proxy switched off) is [PlaylistProxy.OFF]. A playlist whose VPN
+         * is on gets no proxy either: the VPN wins (0.6 AC-25, ManagedVpn).
          */
         fun proxyFor(rows: List<PlaylistRow>, chosenClientNumber: String?): PlaylistProxy {
             val row = rows.firstOrNull { it.clientNumber == chosenClientNumber } ?: rows.singleOrNull()
+            if (row?.vpn?.enabled == true) return PlaylistProxy.OFF
             return row?.proxy?.takeIf { it.enabled } ?: PlaylistProxy.OFF
         }
 

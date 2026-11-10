@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
+import tv.own.owntv.kevbox.supabase.PlaylistVpn
 
 class ManagedProxyTest {
     private val proxyA = PlaylistProxy(true, "a.example", 3128, "u", "p")
@@ -31,6 +32,16 @@ class ManagedProxyTest {
     @Test
     fun `a playlist whose proxy is off turns the proxy off`() {
         assertEquals(PlaylistProxy.OFF, ManagedProxy.proxyFor(listOf(row("1", proxyA.copy(enabled = false))), "1"))
+    }
+
+    @Test
+    fun `a playlist whose VPN is on gets no proxy - the VPN wins`() {
+        val vpn = PlaylistVpn(true, "vpn-de.premiumize.me", null, "vu", "vp", null)
+        val rows = listOf(row("1", proxyA).copy(vpn = vpn), row("2", proxyB))
+        assertEquals(PlaylistProxy.OFF, ManagedProxy.proxyFor(rows, "1"))
+        assertEquals(PlaylistProxy.OFF, ManagedProxy.proxyFor(listOf(rows[0]), null))
+        assertEquals(proxyB, ManagedProxy.proxyFor(rows, "2"))
+        assertEquals(proxyA, ManagedProxy.proxyFor(listOf(row("1", proxyA).copy(vpn = vpn.copy(enabled = false))), null))
     }
 
     @Test

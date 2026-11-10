@@ -102,6 +102,9 @@
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
 
+        <!-- KevBox: the one-time Android VPN prompt (0.6 AC-26); translucent so the channel keeps playing behind it. -->
+        <activity android:name=".kevbox.vpn.VpnConsentActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- KevBox: the OpenVPN engine's VPN service (extras/openvpn), the only engine part kept. It runs in
              the app's main process (the engine's patch drops android:process), so the VPN controller,
              event queue and fall-back store exist once. Only the system may bind it (BIND_VPN_SERVICE). -->

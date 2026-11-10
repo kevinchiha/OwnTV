@@ -1404,6 +1404,24 @@
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	infinite
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	resolv-retry
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/OvpnConfig.kt	resolv-retry 25
+1	regex	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	(?:rtt|round-trip) min/avg/max\\S* = ([0-9.]+)/([0-9.]+)/([0-9.]+)
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-c
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-i
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-n
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	-w
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	/system/bin/ping
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	0.2
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	2
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/Pinger.kt	3
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt	KevBoxVpn
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt	vpn prompt answer lost: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt	vpn prompt failed to open: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnConsentActivity.kt	vpn prompt unavailable: ${e.javaClass.simpleName}
+1	compiler	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	DEPRECATION
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	KevBoxVpn
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn engine start failed: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn runner call failed: ${e.javaClass.simpleName}
+1	log	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnController.kt	vpn runner step failed: ${e.javaClass.simpleName}
 1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	at
 1	json	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	client_number
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/vpn/VpnEvent.kt	connected

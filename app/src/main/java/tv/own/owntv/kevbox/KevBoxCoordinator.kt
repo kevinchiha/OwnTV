@@ -51,6 +51,8 @@ sealed interface GateState {
  * - Profiles: [ProfileDao.observeAll] goes to [PlaylistReconciler.watchProfiles] (AC-24).
  * - Proxy: after each good playlist fetch, a pick and a sign-out, [proxy] sets Core's global proxy to
  *   the one kevbox.dev holds for the playlist on screen.
+ * - VPN: right after the proxy, [vpn] hands the playlist on screen's VPN to the VPN controller; a
+ *   sign-out stops it. A failed fetch calls neither (0.6 AC-25).
  *
  * Each check is single flight: a trigger that arrives while one runs waits for that one instead of
  * starting a second fetch, unless the member changed since that one started: a flight started before
@@ -74,6 +76,10 @@ class KevBoxCoordinator(
     private val checkinOnForeground: () -> Unit = {},
     /** The play notes' foreground retry ([tv.own.owntv.kevbox.usage.PlayNotes.onForeground]). */
     private val playNotesOnForeground: () -> Unit = {},
+    /** The customer's VPN from kevbox.dev; null in tests that do not look at it. */
+    private val vpn: tv.own.owntv.kevbox.vpn.ManagedVpn? = null,
+    /** Starts the VPN controller ([tv.own.owntv.kevbox.vpn.VpnController.start]) with the timers, once. */
+    private val startVpn: () -> Unit = {},
 ) {
     /** True when the store held a visible pick at [start]: an offline start opens on it. */
     private val storedPick = MutableStateFlow(false)
@@ -115,6 +121,12 @@ class KevBoxCoordinator(
     fun start() {
         if (started) return
         started = true
+        // The engine runs in this process, so the controller exists once and starts here.
+        try {
+            startVpn()
+        } catch (_: Exception) {
+            // A VPN that cannot start must not keep the checks from running.
+        }
         scope.launch {
             // A store or Core read that throws must not keep the timers from starting.
             quietly { storedPick.value = reconciler.currentSourceId() != null }
@@ -191,6 +203,7 @@ class KevBoxCoordinator(
     suspend fun choose(clientNumber: String) {
         reconciler.choose(clientNumber)
         quietly { proxy?.apply(reconciler.rows.value, reconciler.currentClientNumber.value) }
+        quietly { vpn?.apply(reconciler.rows.value, reconciler.currentClientNumber.value) }
     }
 
     /** Sign-out and a refused refresh: this TV forgets the member and every line (AC-13, AC-14). */
@@ -200,6 +213,7 @@ class KevBoxCoordinator(
         quietly { auth.signOut() }
         quietly { reconciler.wipe() }
         quietly { proxy?.clear() }
+        quietly { vpn?.clear() }
         expiry.reset()
         access.reset()
         storedPick.value = false
@@ -233,6 +247,7 @@ class KevBoxCoordinator(
                 reconciler.apply(result.value)
                 // The playlist on screen decides the proxy, so this follows the reconcile.
                 quietly { proxy?.apply(result.value, reconciler.currentClientNumber.value) }
+                quietly { vpn?.apply(result.value, reconciler.currentClientNumber.value) }
             }
             Fetch.SessionRejected -> signOut()
             // A failed call is never "no rows": the store, the pick and playback stay as they are.

@@ -51,6 +51,8 @@ import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
+import tv.own.owntv.kevbox.vpn.ManagedVpn
+import tv.own.owntv.kevbox.vpn.VpnWant
 
 class KevBoxCoordinatorTest {
 
@@ -186,6 +188,11 @@ class KevBoxCoordinatorTest {
         @Volatile var checkinForegrounds = 0
         @Volatile var playNotesForegrounds = 0
 
+        // The VPN controller as ManagedVpn sees it: what it was handed, and how often.
+        val vpnWants: MutableList<VpnWant?> = java.util.Collections.synchronizedList(mutableListOf())
+        @Volatile var vpnSignOuts = 0
+        @Volatile var vpnStarts = 0
+
         // The timer's sleep: tell the test the loop is idle, then wait for the test to move the clock.
         private val idle = Channel<Unit>()
         private val go = Channel<Unit>()
@@ -226,6 +233,8 @@ class KevBoxCoordinatorTest {
                 proxy = tv.own.owntv.kevbox.network.ManagedProxy(proxyTarget),
                 checkinOnForeground = { checkinForegrounds += 1 },
                 playNotesOnForeground = { playNotesForegrounds += 1 },
+                vpn = ManagedVpn(wanted = { vpnWants += it }, signedOut = { vpnSignOuts += 1 }),
+                startVpn = { vpnStarts += 1 },
             )
             coordinator.start()
             idle.receive()
@@ -317,6 +326,30 @@ class KevBoxCoordinatorTest {
         coordinator.signOut()
 
         assertEquals(PlaylistProxy.OFF, proxyTarget.stored)
+    }
+
+    @Test
+    fun `a failed playlist check changes nothing, sign-out clears`() = harness {
+        signedIn()
+        val vpnRow = """[{"client_number":"1","name":"Line 1","server_url":"http://s1.example",""" +
+            """"username":"u1","password":"p1","vpn_enabled":true,"vpn_server":"vpn-de.premiumize.me",""" +
+            """"vpn_backup_server":null,"vpn_username":"vu","vpn_password":"vp","vpn_changed_at":"c1"}]"""
+        server.once(PLAYLIST, Canned(500, "oops"))
+        server.always(PLAYLIST, Canned(200, vpnRow))
+        start()
+        assertEquals(1, server.calls(PLAYLIST))
+        assertEquals(1, vpnStarts)
+        assertEquals(emptyList<VpnWant?>(), vpnWants.toList())
+
+        advance(15 * minute)
+        waitFor { vpnWants.size == 1 }
+        assertEquals("vpn-de.premiumize.me", vpnWants[0]?.server)
+        assertEquals("c1", vpnWants[0]?.changedAt)
+
+        coordinator.signOut()
+        assertEquals(1, vpnSignOuts)
+        assertEquals(1, vpnWants.size)
+        assertEquals(1, vpnStarts)
     }
 
     @Test
