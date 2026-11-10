@@ -65,10 +65,16 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
     }
 
     suspend fun selectPlaylists(accessToken: String): ApiResponse {
-        // Newest columns first. A server without migration 0023 refuses the VPN columns (PostgREST
-        // 400, code 42703): ask again without them, so the VPN reads as off. One without 0014 also
-        // refuses the proxy columns: ask a third time with neither, as before 0023 (AC-23).
-        val selects = listOf(PLAYLIST_COLUMNS + PROXY_COLUMNS + VPN_COLUMNS, PLAYLIST_COLUMNS + PROXY_COLUMNS, PLAYLIST_COLUMNS)
+        // Newest columns first. A server without migration 0024 refuses the encrypted proxy columns
+        // (PostgREST 400, code 42703): ask again without them, so the proxy reads as plain. One without
+        // 0023 refuses the VPN columns: ask without them too, so the VPN reads as off. One without 0014
+        // also refuses the proxy columns: ask a last time with none, as before 0023 (AC-23, AC-12).
+        val selects = listOf(
+            PLAYLIST_COLUMNS + PROXY_COLUMNS + PROXY_TLS_COLUMNS + VPN_COLUMNS,
+            PLAYLIST_COLUMNS + PROXY_COLUMNS + VPN_COLUMNS,
+            PLAYLIST_COLUMNS + PROXY_COLUMNS,
+            PLAYLIST_COLUMNS,
+        )
         var response: ApiResponse = UNREACHABLE
         for (select in selects) {
             response = send(PLAYLIST_PATH, mapOf("select" to select, "order" to "name.asc"), accessToken) { get() }
@@ -278,6 +284,7 @@ class SupabaseApi(http: OkHttpClient, baseUrl: String, private val anonKey: Stri
         const val PLAYLIST_PATH = "rest/v1/member_playlist"
         const val PLAYLIST_COLUMNS = "client_number,name,server_url,username,password"
         const val PROXY_COLUMNS = ",proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password"
+        const val PROXY_TLS_COLUMNS = ",proxy_tls_host,proxy_tls_port,proxy_tls_addr"
         const val VPN_COLUMNS = ",vpn_enabled,vpn_server,vpn_backup_server,vpn_username,vpn_password,vpn_changed_at"
         const val VPN_SERVER_PATH = "rest/v1/vpn_server"
         const val VPN_SERVER_COLUMNS = "host,label,config,backup_host,sort_order"

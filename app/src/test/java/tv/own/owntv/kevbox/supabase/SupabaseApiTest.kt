@@ -1,6 +1,16 @@
 package tv.own.owntv.kevbox.supabase
 
 import java.io.IOException
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.ServerSocket
+import java.net.SocketAddress
+import java.net.URI
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -14,6 +24,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -301,6 +312,85 @@ class SupabaseApiTest {
         assertEquals(ApiResponse.Http(200, "[]"), api.selectVpnServers("a1", emptyList()))
 
         assertEquals(0, server.requests.size)
+    }
+
+    /** A loopback HTTP origin that answers each request 200 `[]` and keeps its request line. */
+    private class Origin : AutoCloseable {
+        val socket = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
+        val requestLines: MutableList<String> = Collections.synchronizedList(mutableListOf())
+        private val thread = thread(isDaemon = true) {
+            while (!socket.isClosed) {
+                val client = try { socket.accept() } catch (_: IOException) { break }
+                client.use {
+                    val reader = it.getInputStream().bufferedReader()
+                    requestLines += reader.readLine().orEmpty()
+                    do {
+                        val header = reader.readLine()
+                    } while (!header.isNullOrEmpty())
+                    it.getOutputStream().write(
+                        ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
+                            "Content-Length: 2\r\nConnection: close\r\n\r\n[]").toByteArray(),
+                    )
+                    it.getOutputStream().flush()
+                }
+            }
+        }
+
+        override fun close() {
+            socket.close()
+            thread.join(1_000)
+        }
+    }
+
+    /** A loopback socket that stands in for Core's proxy: it counts each connection and drops it. */
+    private class ProxyRecorder : AutoCloseable {
+        val socket = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
+        val connections = AtomicInteger(0)
+        private val thread = thread(isDaemon = true) {
+            while (!socket.isClosed) {
+                val client = try { socket.accept() } catch (_: IOException) { break }
+                connections.incrementAndGet()
+                client.close()
+            }
+        }
+
+        override fun close() {
+            socket.close()
+            thread.join(1_000)
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun `KevBox's own calls go direct when Core's proxy points elsewhere`() = runBlocking {
+        Origin().use { origin ->
+            ProxyRecorder().use { recorder ->
+                val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress(InetAddress.getLoopbackAddress(), recorder.socket.localPort))
+                val authenticatorCalls = AtomicInteger(0)
+                val authenticator = Authenticator { _, response ->
+                    authenticatorCalls.incrementAndGet()
+                    response.request.newBuilder().header("Proxy-Authorization", "Basic eDp5").build()
+                }
+                val selector = object : ProxySelector() {
+                    override fun select(uri: URI?): List<Proxy> = listOf(proxy)
+                    override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) = Unit
+                }
+                // Core may set its proxy either way on the shared client; neither may reach KevBox's calls.
+                val shared = listOf(
+                    OkHttpClient.Builder().proxySelector(selector).proxyAuthenticator(authenticator).build(),
+                    OkHttpClient.Builder().proxy(proxy).proxyAuthenticator(authenticator).build(),
+                )
+                val base = "http://127.0.0.1:${origin.socket.localPort}"
+
+                for (http in shared) {
+                    assertEquals(ApiResponse.Http(200, "[]"), SupabaseApi(http, base, "anon-key").selectPlaylists("a1"))
+                }
+
+                assertEquals(2, origin.requestLines.size)
+                assertTrue(origin.requestLines.all { it.startsWith("GET /rest/v1/member_playlist?") })
+                assertEquals(0, recorder.connections.get())
+                assertEquals(0, authenticatorCalls.get())
+            }
+        }
     }
 
     private companion object {

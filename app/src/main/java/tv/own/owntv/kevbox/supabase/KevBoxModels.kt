@@ -49,9 +49,14 @@ data class VpnServer(
     val sortOrder: Int,
 )
 
+/** The encrypted address kevbox.dev set beside the plain proxy (migration 0024). [addr] is the raw trimmed text or null; the relay decides whether it is a usable IPv4 address. */
+data class ProxyTls(val host: String, val port: Int, val addr: String?)
+
 /**
  * A customer's HTTP proxy as kevbox.dev stores it beside the playlist (migration 0014). The TV applies
  * the visible playlist's proxy to Core's global proxy at each playlist check (ManagedProxy).
+ * [tls] is the encrypted address beside it (migration 0024), only on a proxy that reads as on and
+ * only when complete; null means plain. Core's stored proxy never carries one.
  */
 data class PlaylistProxy(
     val enabled: Boolean,
@@ -59,6 +64,7 @@ data class PlaylistProxy(
     val port: Int,
     val username: String,
     val password: String,
+    val tls: ProxyTls? = null,
 ) {
     companion object {
         val OFF = PlaylistProxy(enabled = false, host = "", port = 0, username = "", password = "")

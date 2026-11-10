@@ -31,8 +31,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.own.owntv.kevbox.supabase.AccessVerdict
 import tv.own.owntv.kevbox.supabase.Fetch
+import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
 import tv.own.owntv.kevbox.supabase.PlaylistVpn
+import tv.own.owntv.kevbox.supabase.ProxyTls
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
 import tv.own.owntv.kevbox.supabase.VPN_AUTO
@@ -366,6 +368,7 @@ class KevBoxAuthTest {
             assertEquals(ANON, read.header("apikey"))
             assertEquals(
                 "client_number,name,server_url,username,password,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password," +
+                    "proxy_tls_host,proxy_tls_port,proxy_tls_addr," +
                     "vpn_enabled,vpn_server,vpn_backup_server,vpn_username,vpn_password,vpn_changed_at",
                 read.url.queryParameter("select"),
             )
@@ -396,10 +399,11 @@ class KevBoxAuthTest {
     }
 
     @Test
-    fun `the playlist read falls back twice on 42703`() = runBlocking {
+    fun `the playlist read falls back once more on 42703`() = runBlocking {
         storeSession(expiresAtMs = clock + 600_000)
         server.on(
             PLAYLIST,
+            Canned(400, """{"code":"42703","message":"column member_playlist.proxy_tls_host does not exist"}"""),
             Canned(400, """{"code":"42703","message":"column member_playlist.vpn_enabled does not exist"}"""),
             Canned(400, """{"code":"42703","message":"column member_playlist.proxy_enabled does not exist"}"""),
             Canned(200, rowsBody),
@@ -408,16 +412,60 @@ class KevBoxAuthTest {
         val result = auth().playlists()
 
         assertEquals(Fetch.Ok(listOf(PlaylistRow("C1", "Home", "http://iptv.example", "u", "p"))), result)
-        assertEquals(3, server.calls(PLAYLIST))
+        assertEquals(4, server.calls(PLAYLIST))
         val selects = server.requests.map { it.url.queryParameter("select")!! }
-        assertTrue(selects[0].contains(",vpn_enabled,") && selects[0].contains(",proxy_enabled,"))
-        // Second: the proxy columns and no vpn_ (AC-23).
+        assertTrue(selects[0].contains(",proxy_tls_host,") && selects[0].contains(",vpn_enabled,"))
+        // Second: the proxy and VPN columns and no proxy_tls_ (AC-12).
         assertEquals(
-            "client_number,name,server_url,username,password,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password",
+            "client_number,name,server_url,username,password,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password," +
+                "vpn_enabled,vpn_server,vpn_backup_server,vpn_username,vpn_password,vpn_changed_at",
             selects[1],
         )
-        // Third: neither.
-        assertEquals("client_number,name,server_url,username,password", selects[2])
+        // Third: the proxy columns and no vpn_ (AC-23).
+        assertEquals(
+            "client_number,name,server_url,username,password,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password",
+            selects[2],
+        )
+        // Fourth: neither.
+        assertEquals("client_number,name,server_url,username,password", selects[3])
+    }
+
+    @Test
+    fun `an encrypted address reads only when complete and on`() = runBlocking {
+        storeSession(expiresAtMs = clock + 600_000)
+        val plain = """"proxy_enabled":true,"proxy_host":"proxy.example","proxy_port":3128,"proxy_username":"pu","proxy_password":"pp""""
+        fun row(n: Int, proxy: String, tls: String) =
+            """{"client_number":"C$n","name":"N$n","server_url":"http://x","username":"u","password":"p",$proxy,$tls}"""
+        val body = "[" + listOf(
+            // Complete, with spaces around each value; the host keeps its letter case.
+            row(1, plain, """"proxy_tls_host":" Proxy.KevBox.dev ","proxy_tls_port":443,"proxy_tls_addr":" 203.0.113.7 """"),
+            // Complete with a blank address, then with a null one.
+            row(2, plain, """"proxy_tls_host":"proxy.kevbox.dev","proxy_tls_port":443,"proxy_tls_addr":"   """"),
+            row(3, plain, """"proxy_tls_host":"proxy.kevbox.dev","proxy_tls_port":8443,"proxy_tls_addr":null"""),
+            // A blank host, port 0, port 70000 and a port sent as a string.
+            row(4, plain, """"proxy_tls_host":"  ","proxy_tls_port":443,"proxy_tls_addr":"203.0.113.7""""),
+            row(5, plain, """"proxy_tls_host":"proxy.kevbox.dev","proxy_tls_port":0,"proxy_tls_addr":"203.0.113.7""""),
+            row(6, plain, """"proxy_tls_host":"proxy.kevbox.dev","proxy_tls_port":70000,"proxy_tls_addr":"203.0.113.7""""),
+            row(7, plain, """"proxy_tls_host":"proxy.kevbox.dev","proxy_tls_port":"443","proxy_tls_addr":"203.0.113.7""""),
+            // The proxy switched off with all three set.
+            row(
+                8,
+                """"proxy_enabled":false,"proxy_host":"proxy.example","proxy_port":3128,"proxy_username":"pu","proxy_password":"pp"""",
+                """"proxy_tls_host":"proxy.kevbox.dev","proxy_tls_port":443,"proxy_tls_addr":"203.0.113.7"""",
+            ),
+        ).joinToString(",") + "]"
+        server.on(PLAYLIST, Canned(200, body))
+
+        val rows = (auth().playlists() as Fetch.Ok).value
+
+        val plainProxy = PlaylistProxy(true, "proxy.example", 3128, "pu", "pp")
+        assertEquals(plainProxy.copy(tls = ProxyTls("Proxy.KevBox.dev", 443, "203.0.113.7")), rows[0].proxy)
+        assertEquals(plainProxy.copy(tls = ProxyTls("proxy.kevbox.dev", 443, null)), rows[1].proxy)
+        assertEquals(plainProxy.copy(tls = ProxyTls("proxy.kevbox.dev", 8443, null)), rows[2].proxy)
+        // Incomplete: no encrypted address, and the plain proxy exactly as before (AC-18).
+        assertEquals(listOf(plainProxy), rows.subList(3, 7).map { it.proxy }.distinct())
+        assertEquals(PlaylistProxy.OFF, rows[7].proxy)
+        assertNull(rows[7].proxy.tls)
     }
 
     @Test
