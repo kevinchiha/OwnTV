@@ -338,7 +338,24 @@ val kevboxModule = module {
         )
     }
 
+    // The playlist socket (0.6): Supabase Realtime on the member's own member_playlist rows. Its
+    // callback resolves the coordinator only when a change arrives, so neither single needs the
+    // other to be built first.
     single {
+        val koin = getKoin()
+        tv.own.owntv.kevbox.realtime.PlaylistRealtime(
+            http = get(),
+            baseUrl = BuildConfig.KEVBOX_SUPABASE_URL,
+            anonKey = BuildConfig.KEVBOX_SUPABASE_ANON_KEY,
+            auth = get(),
+            scope = get(),
+            sleep = { kotlinx.coroutines.delay(it) },
+            onChange = { koin.get<KevBoxCoordinator>().onPlaylistChanged() },
+        )
+    }
+
+    single {
+        val koin = getKoin()
         val vpnController = get<tv.own.owntv.kevbox.vpn.VpnController>()
         KevBoxCoordinator(
             auth = get(),
@@ -358,6 +375,8 @@ val kevboxModule = module {
             playNotesOnForeground = get<tv.own.owntv.kevbox.usage.PlayNotes>()::onForeground,
             vpn = tv.own.owntv.kevbox.vpn.ManagedVpn(vpnController),
             startVpn = vpnController::start,
+            // Resolved only when called: the socket's callback points back at this coordinator.
+            startRealtime = { koin.get<tv.own.owntv.kevbox.realtime.PlaylistRealtime>().start() },
         )
     }
     // KevBox Setup's login file (kevbox-setup docs/login-file.md), checked from MainActivity.onResume.

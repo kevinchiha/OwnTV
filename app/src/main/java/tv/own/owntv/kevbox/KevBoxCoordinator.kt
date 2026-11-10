@@ -2,6 +2,7 @@
 package tv.own.owntv.kevbox
 
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -53,10 +54,14 @@ sealed interface GateState {
  *   the one kevbox.dev holds for the playlist on screen.
  * - VPN: right after the proxy, [vpn] hands the playlist on screen's VPN to the VPN controller; a
  *   sign-out stops it. A failed fetch calls neither (0.6 AC-25).
+ * - Realtime: [start] starts the playlist socket through [startRealtime]; each change it hears comes
+ *   back as [onPlaylistChanged] (0.6 AC-39).
  *
  * Each check is single flight: a trigger that arrives while one runs waits for that one instead of
  * starting a second fetch, unless the member changed since that one started: a flight started before
- * a sign-out or sign-in drops its answer, and a trigger after either starts a fresh one. The timers wake every [tickMs] through [sleep] and compare [now] with the
+ * a sign-out or sign-in drops its answer, and a trigger after either starts a fresh one. A playlist
+ * change is the exception: the running fetch may have read the row before the change, so it queues
+ * one more check behind it (at most one waits). The timers wake every [tickMs] through [sleep] and compare [now] with the
  * time each check last started, so a test drives them with a fake clock and a fake sleep.
  */
 class KevBoxCoordinator(
@@ -80,6 +85,12 @@ class KevBoxCoordinator(
     private val vpn: tv.own.owntv.kevbox.vpn.ManagedVpn? = null,
     /** Starts the VPN controller ([tv.own.owntv.kevbox.vpn.VpnController.start]) with the timers, once. */
     private val startVpn: () -> Unit = {},
+    /**
+     * Starts the playlist socket ([tv.own.owntv.kevbox.realtime.PlaylistRealtime.start]) with the
+     * timers, once. KevBoxModule resolves the socket only inside this call: the socket's own
+     * callback points back at this coordinator.
+     */
+    private val startRealtime: () -> Unit = {},
 ) {
     /** True when the store held a visible pick at [start]: an offline start opens on it. */
     private val storedPick = MutableStateFlow(false)
@@ -126,6 +137,11 @@ class KevBoxCoordinator(
             startVpn()
         } catch (_: Exception) {
             // A VPN that cannot start must not keep the checks from running.
+        }
+        try {
+            startRealtime()
+        } catch (_: Exception) {
+            // Without the socket the 15-minute check and the foreground check still run.
         }
         scope.launch {
             // A store or Core read that throws must not keep the timers from starting.
@@ -219,6 +235,16 @@ class KevBoxCoordinator(
         storedPick.value = false
     }
 
+    /**
+     * The playlist socket heard a change to the member's rows: a playlist check that starts after
+     * this call, at once or, when one is running, as soon as it ends (AC-33, AC-39). It leaves the
+     * 15-minute timer alone, so the timer still runs if the socket goes quiet.
+     */
+    fun onPlaylistChanged() {
+        val startedIn = session
+        scope.launch { playlistFlight.runAfter(startedIn) }
+    }
+
     /** Settings › Playlists › Update now: the playlist check, now, joined to one already running. */
     suspend fun checkPlaylistNow() = playlistCheck()
 
@@ -299,15 +325,51 @@ class KevBoxCoordinator(
         private var running: Deferred<Unit>? = null
         private var runningSession = 0
 
+        // The one run waiting for the running block to end, from [runAfter]; null once it has begun.
+        private var waiting: CompletableDeferred<Unit>? = null
+        private var waitingSession = 0
+
         suspend fun run(session: Int) {
+            val job = lock.withLock { joinable(session) ?: start(session) }
+            job.await()
+        }
+
+        /**
+         * A run that begins after this call: at once when none is running for [session], otherwise
+         * right after the running one ends. Calls while one already waits share it.
+         */
+        suspend fun runAfter(session: Int) {
             val job = lock.withLock {
-                running?.takeIf { it.isActive && runningSession == session }
-                    ?: scope.async { guarded(session) }.also {
-                        running = it
-                        runningSession = session
+                val current = joinable(session) ?: return@withLock start(session)
+                waiting?.takeIf { waitingSession == session }?.let { return@withLock it }
+                val next = CompletableDeferred<Unit>()
+                waiting = next
+                waitingSession = session
+                scope.launch {
+                    try {
+                        current.join()
+                        // Whatever runs now began after current ended, so after this call: join it.
+                        val flight = lock.withLock {
+                            if (waiting === next) waiting = null
+                            joinable(session) ?: start(session)
+                        }
+                        flight.await()
+                        next.complete(Unit)
+                    } catch (e: CancellationException) {
+                        next.cancel(e)
+                        throw e
                     }
+                }
+                next
             }
             job.await()
+        }
+
+        private fun joinable(session: Int): Deferred<Unit>? = running?.takeIf { it.isActive && runningSession == session }
+
+        private fun start(session: Int): Deferred<Unit> = scope.async { guarded(session) }.also {
+            running = it
+            runningSession = session
         }
 
         // A check that throws (a Core call failing mid-reconcile) must not end the timers.

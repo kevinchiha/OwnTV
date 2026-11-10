@@ -8,7 +8,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +45,9 @@ import tv.own.owntv.kevbox.playlist.PlaylistReconciler
 import tv.own.owntv.kevbox.playlist.PlaylistScreen
 import tv.own.owntv.kevbox.playlist.SourceFields
 import tv.own.owntv.kevbox.playlist.toFields
+import tv.own.owntv.kevbox.realtime.PlaylistRealtime
+import tv.own.owntv.kevbox.realtime.REALTIME_TOPIC
+import tv.own.owntv.kevbox.realtime.RealtimeSocket
 import tv.own.owntv.kevbox.session.KevBoxAuth
 import tv.own.owntv.kevbox.session.SessionStore
 import tv.own.owntv.kevbox.session.StoredSession
@@ -193,6 +198,9 @@ class KevBoxCoordinatorTest {
         @Volatile var vpnSignOuts = 0
         @Volatile var vpnStarts = 0
 
+        /** The coordinator's realtime hook; a test that wires the socket sets it before [start]. */
+        var startRealtime: () -> Unit = {}
+
         // The timer's sleep: tell the test the loop is idle, then wait for the test to move the clock.
         private val idle = Channel<Unit>()
         private val go = Channel<Unit>()
@@ -235,6 +243,7 @@ class KevBoxCoordinatorTest {
                 playNotesOnForeground = { playNotesForegrounds += 1 },
                 vpn = ManagedVpn(wanted = { vpnWants += it }, signedOut = { vpnSignOuts += 1 }),
                 startVpn = { vpnStarts += 1 },
+                startRealtime = { startRealtime() },
             )
             coordinator.start()
             idle.receive()
@@ -582,6 +591,105 @@ class KevBoxCoordinatorTest {
         latch.countDown()
         assertTrue(signingIn.await() is SignInResult.Success)
         assertEquals(1, answers.size)
+    }
+
+    @Test
+    fun `a change during a running check gets its own check`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+        assertEquals(1, server.calls(PLAYLIST))
+
+        // A check is out (it may have read the row before the change) when the change arrives.
+        val first = server.hold(PLAYLIST)
+        coordinator.onForeground()
+        waitFor { server.calls(PLAYLIST) == 2 }
+        coordinator.onPlaylistChanged()
+        repeat(50) { yield() }
+        assertEquals(2, server.calls(PLAYLIST))
+
+        // The queued check holds too, so the test can count while it is out.
+        val second = server.hold(PLAYLIST)
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1"))), Canned(200, rowsBody(row("1"), row("2"))))
+        first.countDown()
+        waitFor { server.calls(PLAYLIST) == 3 }
+        second.countDown()
+
+        // The queued check read the row after the change: its second line reached the TV.
+        reconciler.rows.await { it.size == 2 }
+        delay(200)
+        assertEquals(3, server.calls(PLAYLIST))
+    }
+
+    @Test
+    fun `two changes during a running check add only one more`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        start()
+
+        val first = server.hold(PLAYLIST)
+        coordinator.onPlaylistChanged() // nothing runs: this one starts at once
+        waitFor { server.calls(PLAYLIST) == 2 }
+        coordinator.onPlaylistChanged()
+        coordinator.onPlaylistChanged()
+        coordinator.onForeground() // an ordinary trigger still joins the running check
+        repeat(50) { yield() }
+        assertEquals(2, server.calls(PLAYLIST))
+
+        first.countDown()
+        waitFor { server.calls(PLAYLIST) == 3 }
+        delay(200)
+        assertEquals(3, server.calls(PLAYLIST))
+    }
+
+    @Test
+    fun `a change triggers a check within 5 seconds`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1"))))
+        // A socket that answers the join ok; the test pushes the change frame itself.
+        val sockets = java.util.Collections.synchronizedList(mutableListOf<RealtimeSocket.Events>())
+        startRealtime = {
+            PlaylistRealtime(
+                url = "wss://kevbox.example/realtime/v1/websocket?apikey=anon&vsn=1.0.0",
+                auth = auth,
+                scope = scope,
+                sleep = { awaitCancellation() },
+                onChange = { coordinator.onPlaylistChanged() },
+                connect = { _, events ->
+                    sockets += events
+                    object : RealtimeSocket {
+                        override fun send(text: String): Boolean {
+                            val frame = JSONObject(text)
+                            if (frame.getString("event") == "phx_join") {
+                                events.onMessage(
+                                    """{"topic":"$REALTIME_TOPIC","event":"phx_reply","ref":"${frame.getString("ref")}",""" +
+                                        """"payload":{"status":"ok","response":{}}}""",
+                                )
+                            }
+                            return true
+                        }
+
+                        override fun close() = Unit
+                    }
+                },
+            ).start()
+        }
+        start()
+        waitFor { sockets.size == 1 }
+        // The start check and the one the join starts (it may join the start check) settle first.
+        waitFor { server.calls(PLAYLIST) >= 1 }
+        delay(200)
+        val before = server.calls(PLAYLIST)
+        val clockBefore = clock
+
+        sockets[0].onMessage(
+            """{"topic":"$REALTIME_TOPIC","event":"postgres_changes","ref":null,"payload":{"data":{"type":"UPDATE"}}}""",
+        )
+
+        waitFor { server.calls(PLAYLIST) == before + 1 }
+        assertEquals(clockBefore, clock) // no timer tick: the change alone started it
+        delay(200)
+        assertEquals(before + 1, server.calls(PLAYLIST))
     }
 
     @Test

@@ -200,6 +200,17 @@ class KevBoxAuth(
         }
     }
 
+    /**
+     * A fresh access token, refreshed first when it expires within a minute. For the Realtime socket,
+     * which outlives any one [signedInCall]. The caller must never log it.
+     */
+    suspend fun accessToken(): Fetch<String> = when (val fresh = freshSession()) {
+        is Fetch.Ok -> Fetch.Ok(fresh.value.accessToken)
+        Fetch.Failed -> Fetch.Failed
+        Fetch.SessionRejected -> Fetch.SessionRejected
+        Fetch.SignedOut -> Fetch.SignedOut
+    }
+
     /** The stored session, refreshed first when its access token expires within a minute. */
     private suspend fun freshSession(): Fetch<StoredSession> {
         val session = store.load() ?: return Fetch.SignedOut
