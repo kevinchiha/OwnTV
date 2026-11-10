@@ -1,5 +1,6 @@
 package tv.own.owntv.kevbox
 
+import android.content.SharedPreferences
 import java.net.UnknownHostException
 import java.time.LocalDate
 import java.util.concurrent.CountDownLatch
@@ -41,6 +42,11 @@ import tv.own.owntv.kevbox.access.VerdictPrefs
 import tv.own.owntv.kevbox.expiry.ExpiryMonitor
 import tv.own.owntv.kevbox.expiry.ExpiryPopup
 import tv.own.owntv.kevbox.expiry.ExpiryPrefs
+import tv.own.owntv.kevbox.network.KeptRelay
+import tv.own.owntv.kevbox.network.RELAY_LOOPBACK
+import tv.own.owntv.kevbox.network.RELAY_PORT
+import tv.own.owntv.kevbox.network.Relay
+import tv.own.owntv.kevbox.network.RelayTarget
 import tv.own.owntv.kevbox.playlist.LocalSources
 import tv.own.owntv.kevbox.playlist.ManagedSourceStore
 import tv.own.owntv.kevbox.playlist.ManagedState
@@ -57,6 +63,7 @@ import tv.own.owntv.kevbox.session.StoredSession
 import tv.own.owntv.kevbox.supabase.AccessVerdict
 import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
+import tv.own.owntv.kevbox.supabase.ProxyTls
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
 import tv.own.owntv.kevbox.vpn.ManagedVpn
@@ -180,6 +187,62 @@ class KevBoxCoordinatorTest {
     }
     private class MemoryVerdictPrefs : VerdictPrefs { override var last: AccessVerdict? = null }
 
+    /** The encrypted proxy's relay as ManagedProxy sees it; [beforeStart] runs at each start. */
+    private class FakeRelay(@Volatile var port: Int = RELAY_PORT) : Relay {
+        @Volatile var target: RelayTarget? = null
+        val starts: MutableList<RelayTarget> = java.util.Collections.synchronizedList(mutableListOf())
+        @Volatile var beforeStart: () -> Unit = {}
+        override fun start(target: RelayTarget): Int {
+            beforeStart()
+            starts += target
+            this.target = target
+            return port
+        }
+        override fun stop() { target = null }
+    }
+
+    /** In-memory SharedPreferences: the JVM's android.jar stub would silently drop every write. */
+    private class MemoryPrefs : SharedPreferences {
+        val values = mutableMapOf<String, Any?>()
+
+        override fun getAll(): MutableMap<String, *> = values.toMutableMap()
+        override fun getString(key: String, defValue: String?) = values[key] as String? ?: defValue
+        override fun getStringSet(key: String, defValues: MutableSet<String>?) = defValues
+        override fun getInt(key: String, defValue: Int) = values[key] as Int? ?: defValue
+        override fun getLong(key: String, defValue: Long) = values[key] as Long? ?: defValue
+        override fun getFloat(key: String, defValue: Float) = defValue
+        override fun getBoolean(key: String, defValue: Boolean) = defValue
+        override fun contains(key: String) = key in values
+        override fun registerOnSharedPreferenceChangeListener(
+            listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+        ) = Unit
+        override fun unregisterOnSharedPreferenceChangeListener(
+            listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+        ) = Unit
+
+        override fun edit(): SharedPreferences.Editor = object : SharedPreferences.Editor {
+            private val pending = mutableMapOf<String, Any?>()
+            private val removed = mutableSetOf<String>()
+            override fun putString(key: String, value: String?) = apply { pending[key] = value }
+            override fun putStringSet(key: String, values: MutableSet<String>?) = apply { pending[key] = values }
+            override fun putInt(key: String, value: Int) = apply { pending[key] = value }
+            override fun putLong(key: String, value: Long) = apply { pending[key] = value }
+            override fun putFloat(key: String, value: Float) = apply { pending[key] = value }
+            override fun putBoolean(key: String, value: Boolean) = apply { pending[key] = value }
+            override fun remove(key: String) = apply { removed += key }
+            override fun clear() = apply { removed += values.keys }
+            override fun commit(): Boolean {
+                removed.forEach { values.remove(it) }
+                values.putAll(pending)
+                return true
+            }
+            override fun apply() {
+                commit()
+            }
+        }
+    }
+
+
     // --- harness -------------------------------------------------------------------------------
 
     private inner class Harness(val scope: CoroutineScope) {
@@ -190,6 +253,10 @@ class KevBoxCoordinatorTest {
         val reconciler = PlaylistReconciler(core, store)
         val playing = MutableStateFlow(false)
         val proxyTarget = FakeProxyTarget()
+        val relay = FakeRelay()
+
+        /** The kept encrypted address; a test seeds it before [start] to act as an earlier run. */
+        val relayPrefs = MemoryPrefs()
         val tests = MutableStateFlow(0)
         @Volatile var testResult: SourceTestResult = SourceTestResult.Ok()
         var clock = 1_000_000_000_000L
@@ -244,7 +311,7 @@ class KevBoxCoordinatorTest {
                 scope = scope,
                 now = { clock },
                 sleep = { idle.send(Unit); go.receive() },
-                proxy = tv.own.owntv.kevbox.network.ManagedProxy(proxyTarget),
+                proxy = tv.own.owntv.kevbox.network.ManagedProxy(proxyTarget, relay, KeptRelay(relayPrefs)),
                 checkinOnForeground = { checkinForegrounds += 1 },
                 playNotesOnForeground = { playNotesForegrounds += 1 },
                 vpn = ManagedVpn(wanted = { vpnWants += it }, signedOut = { vpnSignOuts += 1 }),
@@ -282,10 +349,17 @@ class KevBoxCoordinatorTest {
         """{"client_number":"${it.clientNumber}","name":"${it.name}","server_url":"${it.serverUrl}",""" +
             """"username":"${it.username}","password":"${it.password}",""" +
             """"proxy_enabled":${it.proxy.enabled},"proxy_host":"${it.proxy.host}","proxy_port":${it.proxy.port},""" +
-            """"proxy_username":"${it.proxy.username}","proxy_password":"${it.proxy.password}"}"""
+            """"proxy_username":"${it.proxy.username}","proxy_password":"${it.proxy.password}"""" +
+            (it.proxy.tls?.let { tls ->
+                val addr = tls.addr?.let { a -> "\"$a\"" } ?: "null"
+                ""","proxy_tls_host":"${tls.host}","proxy_tls_port":${tls.port},"proxy_tls_addr":$addr"""
+            } ?: "") + "}"
     }
 
     private val proxyA = PlaylistProxy(enabled = true, host = "proxy.example", port = 3128, username = "pu", password = "pp")
+    private val tlsA = ProxyTls(host = "tls.example", port = 443, addr = "203.0.113.7")
+    private val relayA = RelayTarget("tls.example", 443, "203.0.113.7")
+    private fun loopback(port: Int) = PlaylistProxy(enabled = true, host = RELAY_LOOPBACK, port = port, username = "pu", password = "pp")
 
     private fun tokenBody(access: String, refresh: String) = JSONObject()
         .put("access_token", access)
@@ -832,6 +906,62 @@ class KevBoxCoordinatorTest {
 
         assertEquals(SignInResult.WrongCredentials, result)
         assertEquals(listOf<SignInResult>(SignInResult.WrongCredentials), answers)
+    }
+
+    @Test
+    fun `start restarts the relay from the kept address before the first playlist check, and re-tunes nothing`() = harness {
+        signedIn()
+        // An earlier run left the relay's address kept and Core on the loopback; this run's port differs.
+        KeptRelay(relayPrefs).save(relayA)
+        proxyTarget.stored = loopback(RELAY_PORT)
+        relay.port = RELAY_PORT + 1
+        val playlistCallsAtStart = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        relay.beforeStart = { playlistCallsAtStart += server.calls(PLAYLIST) }
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA.copy(tls = tlsA)))))
+
+        start()
+
+        assertEquals(0, playlistCallsAtStart.first())
+        assertEquals(1, server.calls(PLAYLIST))
+        assertEquals(relayA, relay.target)
+        // Resume moved Core to the new port; the check after it found nothing else to change.
+        assertEquals(loopback(RELAY_PORT + 1), proxyTarget.stored)
+        assertEquals(1, proxyTarget.saves)
+        assertEquals(0, restarts)
+    }
+
+    @Test
+    fun `an encrypted address change alone re-tunes the playing channel`() = harness {
+        signedIn()
+        server.once(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA.copy(tls = tlsA)))))
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA.copy(tls = tlsA.copy(addr = "203.0.113.8"))))))
+        start()
+        assertEquals(loopback(RELAY_PORT), proxyTarget.stored)
+        assertEquals(1, restarts)
+
+        // Only the encrypted address moved: Core's 127.0.0.1 setting stays, the channel still re-tunes.
+        advance(15 * minute)
+        assertEquals(relayA.copy(addr = "203.0.113.8"), relay.target)
+        assertEquals(1, proxyTarget.saves)
+        assertEquals(2, restarts)
+
+        // The same address again: nothing.
+        advance(15 * minute)
+        assertEquals(2, restarts)
+    }
+
+    @Test
+    fun `signing out stops the relay and forgets the kept address`() = harness {
+        signedIn()
+        server.always(PLAYLIST, Canned(200, rowsBody(row("1").copy(proxy = proxyA.copy(tls = tlsA)))))
+        start()
+        assertEquals(relayA, relay.target)
+
+        coordinator.signOut()
+
+        assertNull(relay.target)
+        assertNull(KeptRelay(relayPrefs).load())
+        assertEquals(PlaylistProxy.OFF, proxyTarget.stored)
     }
 
     private companion object {

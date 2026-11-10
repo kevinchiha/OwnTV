@@ -1073,6 +1073,20 @@
 1	empty	app/src/main/java/tv/own/owntv/kevbox/network/DnsDefault.kt	\0
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/DnsDefault.kt	cloudflare_doh_applied
 1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/DnsDefault.kt	kevbox_dns_default
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/KeptRelay.kt	kevbox_relay
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/KeptRelay.kt	relay_addr
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/KeptRelay.kt	relay_host
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/KeptRelay.kt	relay_port
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	127.0.0.1
+1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	KevBoxRelay
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	TLS
+1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	host name mismatch
+1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	kevbox-relay
+1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	no address
+1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	no port
+1	log	app/src/main/java/tv/own/owntv/kevbox/network/LocalRelay.kt	relay: connection refused ${e.javaClass.simpleName}
+1	protocol	app/src/main/java/tv/own/owntv/kevbox/network/RelayTrust.kt	X.509
+1	preference-key	app/src/main/java/tv/own/owntv/kevbox/network/RelayTrust.kt	kevbox-relay-test-ca.pem
 1	sql	app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt	DELETE FROM profile_source WHERE sourceId = ?
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/playlist/CoreLocalSources.kt	kevbox
 1	json	app/src/main/java/tv/own/owntv/kevbox/playlist/ManagedSourceStore.kt	hidden
@@ -1241,6 +1255,9 @@
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	proxy_host
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	proxy_password
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	proxy_port
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	proxy_tls_addr
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	proxy_tls_host
+1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	proxy_tls_port
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	proxy_username
 1	json	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	refresh_token
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/session/KevBoxAuth.kt	refresh_token_already_used
@@ -1344,6 +1361,7 @@
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	)
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,proxy_enabled,proxy_host,proxy_port,proxy_username,proxy_password
+1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,proxy_tls_host,proxy_tls_port,proxy_tls_addr
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,sport
 1	uri	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	,vpn_enabled,vpn_server,vpn_backup_server,vpn_username,vpn_password,vpn_changed_at
 1	protocol	app/src/main/java/tv/own/owntv/kevbox/supabase/SupabaseApi.kt	42703

@@ -45,6 +45,11 @@
 # KevBox: check_error_codes_match: the app's tools/kevbox/live-error-codes.json equals kevbox's
 #         src/lib/live-error-codes.json, so the admin labels every code the TVs send (a warning only
 #         when the kevbox checkout is missing).
+# KevBox: check_relay_min_version: kevbox's RELAY_MIN_VERSION (packages/core/src/liveVersion.ts)
+#         equals this version on the first release that holds the encrypted proxy relay, and is not
+#         above it on later ones, so kevbox never calls a TV "encrypted" that still uses the plain
+#         proxy port (a warning only when the kevbox checkout is missing; a checkout without the
+#         line, or a latest release tag this clone lacks, stops the script).
 #
 # Then it deletes any release APK an earlier build left in Gradle's output folders (so a stale
 # APK can never ship under a new tag), builds the standard (arm) and x86_64 release APKs, copies
@@ -136,6 +141,7 @@ check_code_above_latest "$version" "$latest" || die "stopped: version code not a
   check_sentry_settings "${SENTRY_AUTH_TOKEN:-}" "${SENTRY_ORG:-}" "${SENTRY_PROJECT:-}"
 ) || die "stopped: incomplete Sentry settings in $supabase_env"
 check_error_codes_match "$kevbox_repo" || die "stopped: error codes differ from kevbox"
+check_relay_min_version "$version" "$latest" "$kevbox_repo" || die "stopped: kevbox's RELAY_MIN_VERSION is missing or does not match this release"
 early_users=""
 if (( no_silent == 0 )); then
   # Only this line leaves read_early_users' subshell; the signing values stay inside it.

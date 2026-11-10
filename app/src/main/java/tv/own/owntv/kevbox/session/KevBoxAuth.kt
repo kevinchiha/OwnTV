@@ -19,6 +19,7 @@ import tv.own.owntv.kevbox.supabase.Fetch
 import tv.own.owntv.kevbox.supabase.PlaylistProxy
 import tv.own.owntv.kevbox.supabase.PlaylistRow
 import tv.own.owntv.kevbox.supabase.PlaylistVpn
+import tv.own.owntv.kevbox.supabase.ProxyTls
 import tv.own.owntv.kevbox.supabase.SignInResult
 import tv.own.owntv.kevbox.supabase.SupabaseApi
 import tv.own.owntv.kevbox.supabase.VpnServer
@@ -319,6 +320,7 @@ class KevBoxAuth(
     /**
      * The row's proxy columns. A server without them (before migration 0014), a null column or a
      * proxy switched off all read as [PlaylistProxy.OFF]; so does one without a usable address.
+     * A proxy that reads as on also carries its encrypted address when that one is complete.
      */
     private fun parseProxy(row: JSONObject): PlaylistProxy {
         if (row.opt(PROXY_ENABLED) != true) return PlaylistProxy.OFF
@@ -331,7 +333,21 @@ class KevBoxAuth(
             port = port,
             username = (row.opt(PROXY_USERNAME) as? String)?.trim().orEmpty(),
             password = (row.opt(PROXY_PASSWORD) as? String).orEmpty(),
+            tls = parseProxyTls(row),
         )
+    }
+
+    /**
+     * The encrypted address (migration 0024), or null for plain: a server without the columns, a
+     * blank host or a port that is not a number in 1-65535 all read as plain. The host is kept as
+     * written (it is the name the certificate is checked against); a blank address reads as null.
+     */
+    private fun parseProxyTls(row: JSONObject): ProxyTls? {
+        val host = (row.opt(PROXY_TLS_HOST) as? String)?.trim().orEmpty()
+        val port = (row.opt(PROXY_TLS_PORT) as? Number)?.toLong() ?: 0L
+        if (host.isEmpty() || port !in 1L..65535L) return null
+        val addr = (row.opt(PROXY_TLS_ADDR) as? String)?.trim()?.takeIf { it.isNotEmpty() }
+        return ProxyTls(host = host, port = port.toInt(), addr = addr)
     }
 
     /**
@@ -435,6 +451,9 @@ class KevBoxAuth(
         const val PROXY_PORT = "proxy_port"
         const val PROXY_USERNAME = "proxy_username"
         const val PROXY_PASSWORD = "proxy_password"
+        const val PROXY_TLS_HOST = "proxy_tls_host"
+        const val PROXY_TLS_PORT = "proxy_tls_port"
+        const val PROXY_TLS_ADDR = "proxy_tls_addr"
         const val VPN_ENABLED = "vpn_enabled"
         const val VPN_SERVER = "vpn_server"
         const val VPN_BACKUP_SERVER = "vpn_backup_server"

@@ -3,9 +3,12 @@ package tv.own.owntv.kevbox.errors
 
 import android.content.Context
 import android.net.Uri
+import java.io.InputStream
+import javax.net.ssl.X509TrustManager
 import kotlin.reflect.KProperty1
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import okhttp3.Dns
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -32,6 +35,8 @@ import tv.own.owntv.core.launcher.LauncherIntegrationRepository
 import tv.own.owntv.core.live.LiveEpgReader
 import tv.own.owntv.core.live.ProviderTags
 import tv.own.owntv.core.model.MediaType
+import tv.own.owntv.core.network.DnsConfigHolder
+import tv.own.owntv.core.network.ExtraTrustAnchors
 import tv.own.owntv.core.parser.XtEpgEntry
 import tv.own.owntv.core.parser.XtreamClient
 import tv.own.owntv.core.repository.ActiveProfileSources
@@ -149,6 +154,14 @@ class CoreContractTest {
         listOf(hiddenCategoryIds, observeCategories, profileById, isKids, hiddenCategories, channelCategory).forEach { assertNotNull(it) }
         // HomeRows.favorites copies EpgViewModel's guideOrder with one branch per value.
         assertEquals(listOf("ALPHA", "PROVIDER", "LIVE_TV", "CATCHUP", "FAVORITES"), guideSorts)
+
+        // 0.7 encrypted proxy: the relay checks persovps's certificate against the roots Core trusts
+        // (Android's plus Core's bundled Let's Encrypt roots) and looks the host up through Core's DNS.
+        val extraAnchors: (InputStream) -> ExtraTrustAnchors = ::ExtraTrustAnchors
+        val extraTrust: KProperty1<ExtraTrustAnchors, X509TrustManager> = ExtraTrustAnchors::trustManager
+        val extraRootsRes: Int = tv.own.owntv.core.R.raw.isrg_extra_roots
+        val coreDns: KProperty1<DnsConfigHolder, Dns> = DnsConfigHolder::dns
+        listOf(extraAnchors, extraTrust, coreDns, extraRootsRes).forEach { assertNotNull(it) }
 
         listOf(playerErrors, exoActive, previewErrors, reason, raw, result, finishedAt, failedMessage, lastError, playerFailure, previewFailure)
             .forEach { assertNotNull(it) }
