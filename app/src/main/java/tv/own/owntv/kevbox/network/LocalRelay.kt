@@ -187,14 +187,25 @@ class LocalRelay internal constructor(
             if (upstream == null) close(connection)
         }
         if (upstream == null) return
+        // Both sides' streams are taken here, where a failure is caught. The player may already
+        // have hung up and closed the connection; asking a closed socket for a stream throws, and
+        // on a pool thread that is an uncaught exception that kills the app (KEVBOX-LIVE-8).
+        val streams = try {
+            Streams(upstream.inputStream, upstream.outputStream, connection.player.getInputStream(), connection.player.getOutputStream())
+        } catch (e: IOException) {
+            close(connection)
+            return
+        }
         try {
-            pool.execute { copy(connection, upstream.inputStream, connection.player.getOutputStream()) }
+            pool.execute { copy(connection, streams.fromServer, streams.toPlayer) }
         } catch (e: RuntimeException) {
             close(connection)
             return
         }
-        copy(connection, connection.player.getInputStream(), upstream.outputStream)
+        copy(connection, streams.fromPlayer, streams.toServer)
     }
+
+    private class Streams(val fromServer: InputStream, val toServer: OutputStream, val fromPlayer: InputStream, val toPlayer: OutputStream)
 
     /** TCP to the address (or each looked-up one in turn), then TLS with [RelayTarget.host] as the server name, chain and name checked. */
     private fun connect(connection: Connection, to: RelayTarget): SSLSocket {

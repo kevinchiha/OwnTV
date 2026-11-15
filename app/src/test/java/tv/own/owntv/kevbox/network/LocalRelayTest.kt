@@ -37,6 +37,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
+private const val HANG_UPS = 300
+
 class LocalRelayTest {
     private val cleanup = mutableListOf<Closeable>()
     private val relays = mutableListOf<LocalRelay>()
@@ -224,6 +226,30 @@ class LocalRelayTest {
         }
         assertTrue("start() kept returning the dead port", reached)
         assertEquals(2, made)
+    }
+
+    @Test(timeout = 60_000)
+    fun `a player that hangs up at once never throws on a relay thread`() {
+        // KEVBOX-LIVE-8: the player closed before the relay's second thread asked the TLS socket
+        // for its stream; "Socket is closed" escaped that thread and Android killed the app.
+        val server = keep(RelayFixtures.TlsEcho(RelayFixtures.RELAY_TEST_P12))
+        val port = relay().start(RelayTarget(RelayFixtures.HOST, server.port, "127.0.0.1"))
+        val escaped = CopyOnWriteArrayList<Throwable>()
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { _, e -> escaped += e }
+        try {
+            repeat(HANG_UPS) {
+                RelayFixtures.player(port).close()
+            }
+            // Every hang-up reaches the server, then its relay threads get time to finish.
+            val deadline = System.currentTimeMillis() + 20_000
+            while (server.accepted.get() < HANG_UPS && System.currentTimeMillis() < deadline) Thread.sleep(20)
+            Thread.sleep(1_000)
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous)
+        }
+        assertEquals("escaped a relay thread: $escaped", emptyList<Throwable>(), escaped.toList())
+        RelayFixtures.assertRoundTrip(keep(RelayFixtures.player(port)), "still serving\r\n".toByteArray())
     }
 
     @Test(timeout = 60_000)
