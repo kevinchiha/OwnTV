@@ -51,6 +51,27 @@ Every step below works out the starting point with `git merge-base` rather than 
 | Upstream tag | Core | Merged | First KevBox release |
 | --- | --- | --- | --- |
 | `v5.2.1` (includes `v5.2.0`) | `1.0.69` | 2026-10-26, merge `05643f20` | `5.2.1.1` |
+| `v5.2.2` | `1.0.71` | 2026-11-18, merge `306261b8` | `5.2.2.1` |
+
+What the `v5.2.2` merge changed for KevBox Live:
+
+- Upstream split big files: EPG sources code moved to `EpgSourceRow.kt` and `EpgSourceForm.kt`, Settings
+  search and startup dialogs to `SettingsSearchEntry.kt` and `StartupSettingsDialogs.kt`, and Search got
+  `SearchFieldRow.kt`. KevBox's changes moved with the code; the table below has their new proofs.
+- Kevin's picks for the new rows (2026-11-18): picture-in-picture off and hidden; auto frame rate (films
+  and the new Live TV switch) off and hidden; guide Move up / Move down and its priority line hidden;
+  Player buttons hidden. Start on boot or wake, the Settings PIN lock and menu labels stay visible on
+  their defaults (off, off, never). `kevbox/settings/HiddenSettingsOff.kt` keeps Live auto frame rate and
+  picture-in-picture off, because Core's Live switch copies the old single auto frame rate switch until
+  it migrates.
+- Upstream's Settings search entries need `key = LiveOnlySettings.X` too, or a hidden row still turns
+  up in search (the two auto frame rate entries did). Search for the hidden rows' words after a merge.
+- Kept out: Core's local auto-sync listener (members cannot pair devices), upstream's "focus the playing
+  channel" in Live TV, and the two last-channel startup choices.
+- Core 1.0.71 dropped `SourceRepository.updateSource` (KevBox now calls the DAO update itself in
+  `CoreLocalSources.kt`), changed `snapshotChannels` and removed Sports' `returnToMatch`.
+- Core 1.0.71 moves the app database to version 53. A 5.2.1.x build crashes on that database, so a box
+  on 5.2.2 cannot go back to 5.2.1 without clearing the app's data.
 
 What the `v5.2.1` merge changed for KevBox Live:
 
