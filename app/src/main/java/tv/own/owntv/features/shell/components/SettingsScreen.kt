@@ -1050,9 +1050,11 @@ fun SettingsScreen(
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_hdr"), stringResource(R.string.settings_quick_prefer_sdr), stringResource(R.string.settings_search_keywords_prefer_sdr), OwnTVIcon.VIDEO, TileTone.PRIMARY,
                 chip = if (hdr) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (hdr) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { settingsVm.setPreferSdr(!hdr) },
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_afr"), stringResource(R.string.settings_auto_frame_rate_films), stringResource(R.string.settings_search_keywords_afr), OwnTVIcon.VIDEO, TileTone.PRIMARY,
-                chip = if (autoFrameRateFilms) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (autoFrameRateFilms) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { toggleAutoFrameRate(searchFieldFocus, false) },
+                chip = if (autoFrameRateFilms) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (autoFrameRateFilms) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false,
+                key = tv.own.owntv.kevbox.settings.LiveOnlySettings.VP_AFR) { toggleAutoFrameRate(searchFieldFocus, false) }, // KevBox: key, hidden (2026-11-18)
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_afr_live"), stringResource(R.string.settings_auto_frame_rate_live), stringResource(R.string.settings_search_keywords_afr), OwnTVIcon.LIVE_TV, TileTone.PRIMARY,
-                chip = if (autoFrameRateLive) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (autoFrameRateLive) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { toggleAutoFrameRate(searchFieldFocus, true) },
+                chip = if (autoFrameRateLive) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (autoFrameRateLive) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false,
+                key = tv.own.owntv.kevbox.settings.LiveOnlySettings.VP_AFR_LIVE) { toggleAutoFrameRate(searchFieldFocus, true) }, // KevBox: key, hidden (2026-11-18)
             SettingsSearchEntry(tv.own.owntv.features.settings.videoRowPath("vp_surround"), stringResource(R.string.settings_surround_sound), stringResource(R.string.settings_search_keywords_surround), OwnTVIcon.AUDIO, TileTone.SECONDARY,
                 chip = surroundModeLabel(surroundMode), chipTone = if (surroundMode == SurroundMode.STEREO) TileTone.SECONDARY else TileTone.PRIMARY, showChevron = false) { settingsVm.cycleSurroundMode() },
             // KevBox: catch-up wording (AC-17).
