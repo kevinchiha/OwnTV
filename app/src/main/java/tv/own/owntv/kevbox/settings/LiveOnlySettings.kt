@@ -37,6 +37,9 @@ object LiveOnlySettings {
     const val VP_MULTIVIEW = "vp_multiview"
     const val VP_MULTIVIEW_TILES = "vp_multiview_tiles"
     const val VP_PREVIEW_AUDIO = "vp_preview_audio"
+    // Upstream v5.2.2's "OK previews first" (Live TV / TV Guide): KevBox Live's box flow already decides
+    // what OK does, so the row stays hidden until Kevin decides.
+    const val VP_PREVIEW_ON_OK = "vp_preview_on_ok"
 
     // The Quick mute switch (AC-9, AC-13)
     const val QUICK_PREVIEW_SOUND = "quick_preview_sound"
@@ -46,12 +49,13 @@ object LiveOnlySettings {
     const val ANDROID_TV_HOME = "android_tv_home"
     const val ANDROID_TV_HOME_REFRESH = "android_tv_home_refresh"
 
-    /** Exactly the 25 keys above. */
+    /** Exactly the 26 keys above. */
     val HIDDEN_KEYS: Set<String> = setOf(
         LIVE_LAYOUT, LIVE_OPENS_IN, VOD_LAYOUT, TAB_PANEL_WIDTH, TAB_CONTENT_MENUS, BROWSING_LISTS,
         TAB_HOME, TAB_METADATA, TAB_OPEN_SUBTITLES, ACCENT, FOCUS_HIGHLIGHT,
         VP_LIVE_ENGINE, VP_LIVE_ENGINE_SOURCES, VP_VOD_ENGINE, VP_VOD_ENGINE_SOURCES, VP_RESET_PINS,
         VP_RESUME, VP_AFR_PAUSE, VP_AFR_RESOLUTION, VP_MULTIVIEW, VP_MULTIVIEW_TILES, VP_PREVIEW_AUDIO,
+        VP_PREVIEW_ON_OK,
         QUICK_PREVIEW_SOUND, ANDROID_TV_HOME, ANDROID_TV_HOME_REFRESH,
     )
 

@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,8 +52,11 @@ import org.koin.androidx.compose.koinViewModel
 import tv.own.owntv.BuildConfig
 import tv.own.owntv.R
 // KevBox: BackupScreen and LocalSyncScreen imports removed with their More items.
+import tv.own.owntv.features.profiles.PinPrompt
 import tv.own.owntv.features.settings.DeveloperScreen
 import tv.own.owntv.features.settings.SettingsViewModel
+import tv.own.owntv.features.settings.lock.SettingsPinViewModel
+import tv.own.owntv.core.settings.guardsPage
 import tv.own.owntv.features.shell.components.RailAvatar
 // KevBox: SettingsGroup names the App group the About languages button opens.
 import tv.own.owntv.features.shell.components.SettingsGroup
@@ -72,6 +76,10 @@ import tv.own.owntv.ui.theme.stageText
 // playlist), and ACCOUNT shows the signed-in email with Sign out (AC-14). RESTART is KevBox's
 // Restart app, last in the App group (Kevin, 2026-10-14).
 private enum class MoreItem { SETTINGS, FAVORITES, HISTORY, ACCOUNT, ERROR_LOG, ABOUT, RESTART, DEVELOPER }
+
+/** The pages that ask for the Settings PIN when it is on. */
+// KevBox: Developer only; KevBox Live has no Backup & Restore or Local sync items.
+private val PIN_PAGES = setOf(MoreItem.DEVELOPER)
 
 /**
  * More: the glass section sheet, topped by the profile, and one page on the right
@@ -101,8 +109,17 @@ fun MoreScreen(
     modifier: Modifier = Modifier,
     vm: MoreCountsViewModel = koinViewModel(),
     settingsVm: SettingsViewModel = koinViewModel(),
+    pinVm: SettingsPinViewModel = koinViewModel(),
 ) {
-    var selected by rememberSaveable { mutableStateOf(MoreItem.SETTINGS) }
+    // Backup & Restore, Local sync and Developer can restore or copy settings, so the Settings PIN
+    // guards them too; one unlock holds until More is left.
+    val pinLock by pinVm.lock.collectAsStateWithLifecycle()
+    var pinPagesUnlocked by remember(pinLock.profileId) { mutableStateOf(false) }
+    var askPinFor by remember { mutableStateOf<MoreItem?>(null) }
+    val pinShut: (MoreItem) -> Boolean = { it in PIN_PAGES && pinLock.guardsPage(pinPagesUnlocked) }
+    var chosen by rememberSaveable { mutableStateOf(MoreItem.SETTINGS) }
+    // A guarded page left chosen on an earlier visit stays shut until the PIN is entered again.
+    val selected by rememberUpdatedState(if (pinShut(chosen)) MoreItem.SETTINGS else chosen)
     val itemFocus = remember { MoreItem.entries.associateWith { FocusRequester() } }
     // What OK / ▶ focuses on the page: a fixed target, or the page's own choice (its first row).
     val pageTarget = remember { FocusRequester() }
@@ -112,7 +129,12 @@ fun MoreScreen(
     val backToSheet: () -> Unit = { runCatching { itemFocus.getValue(selected).requestFocus() } }
     // Like the rail: ▲ ▼ move focus, OK selects the item (its page shows, focus stays on the item),
     // ▶ goes into the page that is shown.
-    val choose: (MoreItem) -> Unit = { item -> if (item != selected) { selected = item; pageEntry = null } }
+    val choose: (MoreItem) -> Unit = { item ->
+        when {
+            !pinShut(item) -> if (item != selected) { chosen = item; pageEntry = null }
+            pinLock.loaded -> askPinFor = item
+        }
+    }
 
     // The rail's ▶ lands on the item the sheet was last on.
     DisposableEffect(onEntryHook) {
@@ -226,6 +248,16 @@ fun MoreScreen(
                 MoreItem.DEVELOPER -> Box(Modifier.focusRequester(pageTarget).focusGroup()) { DeveloperScreen(onBack = backToSheet) }
             }
         }
+    }
+    val pinItem = askPinFor
+    val pin = pinLock.pin
+    if (pinItem != null && pin != null) {
+        PinPrompt(
+            pin = pin,
+            door = tv.own.owntv.core.categorylock.PinDoor.SETTINGS,
+            onUnlock = { pinPagesUnlocked = true; askPinFor = null; chosen = pinItem; pageEntry = null },
+            onDismiss = { askPinFor = null },
+        )
     }
 }
 
