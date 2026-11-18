@@ -19,18 +19,18 @@ class LiveOnlySettingsTest {
             "browsing_lists", "tab_HOME", "tab_METADATA", "tab_OPEN_SUBTITLES", "accent", "focus_highlight",
             "vp_live_engine", "vp_live_engine_sources", "vp_vod_engine", "vp_vod_engine_sources",
             "vp_reset_pins", "vp_resume", "vp_afr_pause", "vp_afr_resolution", "vp_multiview",
-            "vp_multiview_tiles", "vp_preview_audio",
+            "vp_multiview_tiles", "vp_preview_audio", "vp_preview_on_ok", "vp_afr", "vp_afr_live", "vp_pip",
             "quick_preview_sound",
             "android_tv_home", "android_tv_home_refresh",
         )
-        assertEquals(25, expected.size)
+        assertEquals(29, expected.size)
         assertEquals(expected, LiveOnlySettings.HIDDEN_KEYS)
         expected.forEach { assertFalse(it, LiveOnlySettings.shows(it)) }
     }
 
     @Test
     fun keysOutsideTheListStillShow() {
-        listOf("vp_afr", "vp_reset_live_pins", "vp_forget_fixes", "quick_live_preview", "tab_CUSTOMIZE", "tab_SPORTS")
+        listOf("vp_mini", "vp_reset_live_pins", "vp_forget_fixes", "quick_live_preview", "tab_CUSTOMIZE", "tab_SPORTS")
             .forEach { assertTrue(it, LiveOnlySettings.shows(it)) }
     }
 

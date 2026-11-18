@@ -247,6 +247,7 @@ val kevboxModule = module {
     single { tv.own.owntv.kevbox.sports.ListedChannels(get(), get()) }
     // KevBox's Sports defaults (Any commentary language), started from OwnTVApp.
     single { tv.own.owntv.kevbox.sports.SportsDefaults(get(), get(), scope = get()) }
+    single { tv.own.owntv.kevbox.settings.HiddenSettingsOff(get(), scope = get()) }
     // Replaces Core's SportsSource (this module loads after Core's, and Koin keeps the last definition):
     // the same ESPN source, with "today" asked by date so a Lebanese morning sees that night's games.
     single<tv.own.owntv.core.sports.SportsSource> {

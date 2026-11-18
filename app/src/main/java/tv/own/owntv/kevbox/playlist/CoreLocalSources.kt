@@ -99,7 +99,9 @@ class CoreLocalSources(
         // The save runs inside the guide lock, after the old feed is gone, so a sync finishing meanwhile
         // cannot re-add the old feed. If the removal fails or is cancelled, the save never runs, the
         // stored fields still differ from the row, and the next reconcile retries both (AC-28).
-        guideFeeds.replaceFor(existing, updated) { sourceRepository.updateSource(updated) }
+        // Core 1.0.71 dropped SourceRepository.updateSource, which was this same DAO update. Core's new
+        // SourceEditor.save would also schedule its own resync; KevBox's reconcile already syncs after a change.
+        guideFeeds.replaceFor(existing, updated) { sourceDao.update(updated) }
     }
 
     override suspend fun link(sourceId: Long, profileIds: List<Long>) {

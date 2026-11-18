@@ -209,7 +209,7 @@ internal class MiniGuideLoader(
             MiniGuideQuery.Favorites -> channelDao.snapshotFavoritesManual(pid, ContentOrderEntity.FAV_CONTEXT, liveIds, limit)
             MiniGuideQuery.History -> channelDao.recentlyWatched(pid, limit).first().filter { it.sourceId in liveIds }
             MiniGuideQuery.Catchup -> channelDao.snapshotCatchup(liveIds, limit)
-            is MiniGuideQuery.Custom -> customCategories?.snapshotChannels(pid, query.id, liveIds, limit).orEmpty()
+            is MiniGuideQuery.Custom -> customCategories?.snapshotChannels(pid, query.id, liveIds, false, limit).orEmpty()
             MiniGuideQuery.All -> channelDao.snapshotAll(liveIds, limit)
         }
         return raw
@@ -442,7 +442,7 @@ private fun MiniGrid(data: MiniGuideData, modifier: Modifier) {
             // and wraps to a second line inside GuideChannelLabel the same way.
             val numberW = maxOf(38f, (data.rows.maxOfOrNull { it.channel.number?.toString()?.length ?: 0 } ?: 0) * 11f).mpx
             GuideRuler(
-                windowStart = data.windowStart, windowEnd = data.windowEnd, now = now, scrollPx = 0,
+                windowStart = data.windowStart, windowEnd = data.windowEnd, now = now, scrollPx = { 0 },
                 modifier = Modifier.padding(start = labelW).fillMaxWidth().height(40.mpx),
             )
             Column(Modifier.padding(top = 48.mpx).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(GuideGridDefaults.RowGap)) {
@@ -460,7 +460,7 @@ private fun MiniGrid(data: MiniGuideData, modifier: Modifier) {
                                 catchupIds = emptySet(),
                                 recordingStarts = emptySet(),
                                 reminderStarts = emptySet(),
-                                scrollPx = 0,
+                                scrollPx = { 0 },
                             )
                         }
                     }

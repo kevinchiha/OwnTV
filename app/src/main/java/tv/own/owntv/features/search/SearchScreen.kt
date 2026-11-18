@@ -35,7 +35,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusDirection
@@ -45,10 +44,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.KeyEventType // KevBox: the field's ▼ hook
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent // KevBox: the field's ▼ hook
+import androidx.compose.ui.input.key.type // KevBox: the field's ▼ hook
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -89,6 +88,7 @@ import tv.own.owntv.features.shell.components.VodMeta
 import tv.own.owntv.features.shell.components.VodTitleInfo
 import tv.own.owntv.features.shell.components.vodRating
 import tv.own.owntv.features.shell.components.vodRuntime
+import tv.own.owntv.ui.components.BlurredPoster
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.format.localizedInteger
 import tv.own.owntv.ui.stage.PlaylistMark
@@ -96,7 +96,6 @@ import tv.own.owntv.ui.stage.StageKeyHints
 import tv.own.owntv.ui.components.chNavPaging // KevBox: CH+ / CH− in the results
 import tv.own.owntv.ui.stage.StagePlaylistMark
 import tv.own.owntv.ui.stage.StageRow
-import tv.own.owntv.ui.stage.StageSearchField
 import tv.own.owntv.ui.stage.StageSurface
 import tv.own.owntv.ui.stage.StageTab
 import tv.own.owntv.ui.stage.StageTag
@@ -205,7 +204,6 @@ fun SearchScreen(
     val fieldFocus = remember { FocusRequester() }
     val filterFocus = remember { SearchKind.entries.associateWith { FocusRequester() } }
     val jumpFocus = remember { FocusRequester() }
-    val scheduleFocus = remember { FocusRequester() }
     val rowFocus = remember { HashMap<String, FocusRequester>() }
     fun requesterFor(key: String) = rowFocus.getOrPut(key) { FocusRequester() }
 
@@ -243,8 +241,7 @@ fun SearchScreen(
     var focusedKey by remember { mutableStateOf<String?>(null) }
     val active = entries.firstOrNull { it.key == focusedKey && it.isResult() } ?: entries.firstOrNull { it.isResult() }
     var listHasFocus by remember { mutableStateOf(false) }
-    var scheduleHasFocus by remember { mutableStateOf(false) }
-    val activeChannel = active?.channel()?.takeIf { showingResults && (listHasFocus || scheduleHasFocus) }
+    val activeChannel = active?.channel()?.takeIf { showingResults && listHasFocus }
 
     // KevBox: the channel OK put in the box. It lives on the shell's video stage, like the grid's, so it
     // outlasts full screen; it keeps playing, and the panel keeps showing it, while focus moves on.
@@ -413,14 +410,18 @@ fun SearchScreen(
         } else {
             Text(stringResource(R.string.search_title), style = stageText(46, 800, (-1).mpxSp), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = titleModifier)
         }
-        StageSearchField(
+        SearchFieldRow(
             query = query,
             onQueryChange = vm::setQuery,
             placeholder = stringResource(R.string.kevbox_search_field_hint), // KevBox: channels and programs only
+            fieldFocus = fieldFocus,
+            // KevBox: ▼ is handled by the key hook below; without results it goes to the launcher.
+            focusDown = if (!showingResults) jumpFocus else FocusRequester.Default,
+            // KevBox: the focus and ▼ hooks sit on the whole row (field and upstream's voice-search mic), so
+            // ▼ from the mic behaves as ▼ from the field.
             modifier = Modifier
                 .padding(start = listX, top = 118.mpx)
                 .width(listW)
-                .focusRequester(fieldFocus)
                 .onFocusChanged { fieldHasFocus = it.hasFocus } // KevBox: for ▼'s wait below
                 // KevBox: no filter buttons, so ▼ lands on the first result (or KevBox's tabs, below), from the
                 // pill and from the text being edited alike (the default search found nothing below the field).
@@ -457,8 +458,7 @@ fun SearchScreen(
                         if (e.type == KeyEventType.KeyDown) scope.launch { focusRow(first.key) }
                         true
                     } else false
-                }
-                .focusProperties { down = if (!showingResults) jumpFocus else FocusRequester.Default }, // KevBox: ▼ handled above
+                },
         )
 
         if (!showingResults) {
@@ -619,14 +619,7 @@ fun SearchScreen(
                                 onClick = { goTo(e) },
                                 onLongClick = { openInGuide(e) }, // KevBox: Hold OK opens the channel in Live TV's guide
                                 leading = { LivePlate(ch.displayLogoUrl, 76.mpx, 54.mpx) },
-                                modifier = rowModifier.onPreviewKeyEvent { k ->
-                                    // ▶ reaches the schedule under the preview, as on Live TV.
-                                    if (k.type == KeyEventType.KeyDown && k.key == Key.DirectionRight && nowNext?.next != null) {
-                                        runCatching { scheduleFocus.requestFocus() }.getOrDefault(false)
-                                    } else {
-                                        false
-                                    }
-                                },
+                                modifier = rowModifier,
                             )
                         }
                         is Entry.Programme -> {
@@ -679,12 +672,8 @@ fun SearchScreen(
                     previewEngine = liveVm.previewEngine,
                     showVideo = previewEnabled && box != null,
                     singleSessionBlocked = singleSessionBlocked,
-                    scheduleFocus = scheduleFocus,
-                    // A programme picked here plays its channel, as OK on the row does.
-                    onOpenProgramme = { vm.lastFocusKey = active.key; vm.rememberCurrentQuery(); play(activeCh) },
-                    onBackToList = { runCatching { requesterFor(active.key).requestFocus() } },
                     videoStage = videoStage, // KevBox: the shell's one video window, as the grid's box
-                    modifier = panelModifier.onFocusChanged { scheduleHasFocus = it.hasFocus },
+                    modifier = panelModifier,
                 )
                 active is Entry.Movie -> PosterPanel(
                     movieTitleInfo(active.movie, focusedMeta?.takeIf { it.first == active.key }?.second, metadataMode.tmdbWins),
@@ -716,7 +705,6 @@ fun SearchScreen(
                         },
                     ),
                 )
-                if (active?.channel() != null) add("▶" to stringResource(R.string.content_key_schedule))
                 // KevBox: Hold OK opens the channel in Live TV's guide.
                 if (active?.channel() != null) add(stringResource(R.string.content_key_hold_ok) to stringResource(R.string.kevbox_key_guide))
                 if (searchChNavEnabled) add(stringResource(R.string.kevbox_key_ch) to stringResource(R.string.content_key_page)) // KevBox: CH± paging
@@ -906,16 +894,17 @@ private fun PosterPanel(info: VodTitleInfo, series: Boolean, modifier: Modifier 
                 .background(Color.Black),
         ) {
             val frameH = maxHeight
+            val posterUrl = info.posterUrl
             if (!info.backdropUrl.isNullOrBlank()) {
                 AsyncImage(
                     model = info.backdropUrl, contentDescription = null, contentScale = ContentScale.Crop,
                     alignment = BiasAlignment(0f, -0.4f), modifier = Modifier.fillMaxSize(),
                 )
-            } else if (!info.posterUrl.isNullOrBlank()) {
-                AsyncImage(model = info.posterUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur(36.mpx))
+            } else if (!posterUrl.isNullOrBlank()) {
+                BlurredPoster(url = posterUrl, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
                 AsyncImage(
-                    model = info.posterUrl, contentDescription = null, contentScale = ContentScale.Fit,
+                    model = posterUrl, contentDescription = null, contentScale = ContentScale.Fit,
                     modifier = Modifier.align(Alignment.TopEnd).padding(end = 40.mpx, top = 36.mpx).height(frameH - 72.mpx).clip(RoundedCornerShape(14.mpx)),
                 )
             }
