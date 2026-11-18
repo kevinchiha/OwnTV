@@ -192,7 +192,9 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         }
         // Local auto-sync: the paired-only listener and the moments a pass is tried (OwnTV to the
         // front or the back, the network back). Core owns what that means; no hourly check on a TV.
-        runCatching { GlobalContext.get().get<tv.own.owntv.core.sync.work.LocalAutoSyncStarter>().start(periodic = false) }
+        // KevBox: no auto-sync listener. Members cannot pair devices (Local sync is locked, AC-33), so it
+        // could never have a partner; v5.2.2 started it at every launch.
+        // runCatching { GlobalContext.get().get<tv.own.owntv.core.sync.work.LocalAutoSyncStarter>().start(periodic = false) }
         // NOTE: cold start does ZERO heavy DB work. Index + ANALYZE maintenance is piggy-backed onto the
         // operation that actually changes the data — ImportFinalizer.finalize() for normal re-syncs, the
         // deferred content-index worker after a fresh import, the EpgRepository refresh after every EPG
