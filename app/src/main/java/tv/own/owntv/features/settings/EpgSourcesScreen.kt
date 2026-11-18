@@ -143,10 +143,9 @@ fun EpgSourcesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, startOnA
                     },
                     actionsFocus = actionsFocus,
                     keepPanel = source.id == contextId,
-                    priority = epgSourcePriorityLine(index, sources.size),
-                    orderActions = epgSourceOrderActions(sources.size) { up ->
-                        contextId = source.id; contextIndex = index; vm.move(source, up)
-                    },
+                    // KevBox: no guide priority line and no Move up / Move down (Kevin, 2026-11-18).
+                    priority = null,
+                    orderActions = emptyList(),
                     onFocused = { contextId = source.id; contextIndex = index },
                     onResync = { contextId = source.id; contextIndex = index; vm.resync(source) },
                     onCancelSync = { contextId = source.id; contextIndex = index; vm.cancelSync(source) },

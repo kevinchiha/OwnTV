@@ -769,7 +769,8 @@ internal fun VideoPlayerGroupRows(
         ),
     ) {
         group.parts.forEachIndexed { partIndex, (headingRes, sections) ->
-            StageSettingsHeading(stringResource(headingRes), sections.sumOf { counts[it] }, first = firstHeading && partIndex == 0)
+            // KevBox: a heading whose rows KevBox Live all hides (Frame rate) is left out.
+            if (sections.sumOf { counts[it] } > 0) StageSettingsHeading(stringResource(headingRes), sections.sumOf { counts[it] }, first = firstHeading && partIndex == 0)
             sections.forEach { section ->
                 when (section) {
                     SECTION_PLAYER -> {

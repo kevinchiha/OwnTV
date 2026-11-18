@@ -40,6 +40,11 @@ object LiveOnlySettings {
     // Upstream v5.2.2's "OK previews first" (Live TV / TV Guide): KevBox Live's box flow already decides
     // what OK does, so the row stays hidden until Kevin decides.
     const val VP_PREVIEW_ON_OK = "vp_preview_on_ok"
+    // Hidden by Kevin, 2026-11-18: Auto frame rate (films and, since v5.2.2, Live TV on its own switch) and
+    // v5.2.2's picture-in-picture. HiddenSettingsOff keeps the Live TV one and picture-in-picture off.
+    const val VP_AFR = "vp_afr"
+    const val VP_AFR_LIVE = "vp_afr_live"
+    const val VP_PIP = "vp_pip"
 
     // The Quick mute switch (AC-9, AC-13)
     const val QUICK_PREVIEW_SOUND = "quick_preview_sound"
@@ -55,7 +60,7 @@ object LiveOnlySettings {
         TAB_HOME, TAB_METADATA, TAB_OPEN_SUBTITLES, ACCENT, FOCUS_HIGHLIGHT,
         VP_LIVE_ENGINE, VP_LIVE_ENGINE_SOURCES, VP_VOD_ENGINE, VP_VOD_ENGINE_SOURCES, VP_RESET_PINS,
         VP_RESUME, VP_AFR_PAUSE, VP_AFR_RESOLUTION, VP_MULTIVIEW, VP_MULTIVIEW_TILES, VP_PREVIEW_AUDIO,
-        VP_PREVIEW_ON_OK,
+        VP_PREVIEW_ON_OK, VP_AFR, VP_AFR_LIVE, VP_PIP,
         QUICK_PREVIEW_SOUND, ANDROID_TV_HOME, ANDROID_TV_HOME_REFRESH,
     )
 

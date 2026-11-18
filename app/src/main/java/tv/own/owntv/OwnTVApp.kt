@@ -145,6 +145,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         GlobalContext.get().get<tv.own.owntv.kevbox.refresh.PlaylistRefreshSetting>().start()
         // KevBox: Sports starts every profile on Any commentary language unless it picked its own.
         GlobalContext.get().get<tv.own.owntv.kevbox.sports.SportsDefaults>().start()
+        // KevBox: Live TV auto frame rate and picture-in-picture stay off; their rows are hidden.
+        GlobalContext.get().get<tv.own.owntv.kevbox.settings.HiddenSettingsOff>().start()
         // KevBox: an in-app update installs with its profile, so it starts compiled (UpdateProfileAttacher).
         GlobalContext.get().get<tv.own.owntv.kevbox.release.UpdateProfileAttacher>().start()
         // KevBox: on Android 12+ new releases install with no prompt while nobody watches (SilentUpdateScheduler).

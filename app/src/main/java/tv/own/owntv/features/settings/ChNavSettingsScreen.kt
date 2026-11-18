@@ -172,7 +172,9 @@ fun ChNavSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier.focusRequester(downSkipFocus),
             help = settingHelp(null, downTitle, downDesc, downValue, pinnable = false),
         )
-        PlayerButtonsSettingsRows(scrollState)
+        // KevBox: no Player buttons rows (what OK does, CH+/CH- swap, number keys); KevBox sets OK and CH+/CH-
+        // itself (Kevin, 2026-11-18).
+        // PlayerButtonsSettingsRows(scrollState)
     }
 
     val warnText = stringResource(R.string.settings_large_skips_warning)
